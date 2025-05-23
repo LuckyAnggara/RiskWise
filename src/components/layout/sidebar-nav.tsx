@@ -3,7 +3,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Target, Settings, ShieldAlert, Users } from "lucide-react";
+import { LayoutDashboard, Target, Settings, ShieldAlert, Users, ListChecks } from "lucide-react"; // Added ListChecks
 import { cn } from "@/lib/utils";
 import {
   SidebarMenu,
@@ -24,8 +24,8 @@ interface NavItem {
 const navItems: NavItem[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard, matchSegments: 1 },
   { href: "/goals", label: "Goals", icon: Target, matchSegments: 1 },
+  { href: "/all-risks", label: "All Risks", icon: ListChecks, matchSegments: 1 }, // New Nav Item
   // Example of future items:
-  // { href: "/risks", label: "All Risks", icon: ShieldAlert, matchSegments: 1 },
   // { href: "/team", label: "Team", icon: Users, matchSegments: 1 },
   // { href: "/settings", label: "Settings", icon: Settings, matchSegments: 1 },
 ];
@@ -38,6 +38,10 @@ export function SidebarNav() {
     if (href === "/") return pathname === "/";
     const pathSegments = pathname.split("/").filter(Boolean);
     const hrefSegments = href.split("/").filter(Boolean);
+    // For /all-risks, ensure it matches exactly or if pathSegments length is same as hrefSegments
+    if (href === "/all-risks") {
+      return pathname === href || (pathSegments.length === hrefSegments.length && pathSegments.every((seg, i) => seg === hrefSegments[i]));
+    }
     if (pathSegments.length < matchSegments || hrefSegments.length < matchSegments) return false;
     for (let i = 0; i < matchSegments; i++) {
       if (pathSegments[i] !== hrefSegments[i]) return false;
