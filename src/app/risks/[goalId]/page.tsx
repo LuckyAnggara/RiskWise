@@ -10,7 +10,7 @@ import { RiskListItem } from '@/components/risks/risk-list-item';
 import { RiskAnalysisModal } from '@/components/risks/risk-analysis-modal';
 import { RiskControlModal } from '@/components/risks/risk-control-modal';
 import type { Goal, Risk, Control } from '@/lib/types';
-import { ArrowLeft, ShieldAlert, Loader2 } from 'lucide-react'; // Added Loader2
+import { ArrowLeft, ShieldAlert, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Separator } from '@/components/ui/separator';
 
@@ -30,7 +30,7 @@ export default function GoalRisksPage() {
   const [goal, setGoal] = useState<Goal | null>(null);
   const [risks, setRisks] = useState<Risk[]>([]);
   const [controls, setControls] = useState<Control[]>([]);
-  const [isLoading, setIsLoading] = useState(true); // Added loading state
+  const [isLoading, setIsLoading] = useState(true);
   
   const [selectedRiskForAnalysis, setSelectedRiskForAnalysis] = useState<Risk | null>(null);
   const [isAnalysisModalOpen, setIsAnalysisModalOpen] = useState(false);
@@ -42,7 +42,8 @@ export default function GoalRisksPage() {
   const { toast } = useToast();
 
   const loadData = useCallback(() => {
-    if (typeof window !== 'undefined') {
+    setIsLoading(true);
+    if (typeof window !== 'undefined' && goalId) {
       const storedGoalsData = localStorage.getItem('riskwise-goals');
       const allGoals: Goal[] = storedGoalsData ? JSON.parse(storedGoalsData) : INITIAL_GOALS;
       const currentGoal = allGoals.find(g => g.id === goalId);
@@ -62,25 +63,20 @@ export default function GoalRisksPage() {
         });
         setControls(allRiskControls);
       }
+    } else if (!goalId) {
+        setGoal(null);
+        setRisks([]);
+        setControls([]);
     }
     setIsLoading(false);
   }, [goalId]);
 
   useEffect(() => {
-    if (goalId) {
-      // setIsLoading(true); // Optionally reset loading state if goalId can change dynamically without remount
-      loadData();
-    } else {
-      // No goalId, so not loading specific goal data
-      setGoal(null);
-      setRisks([]);
-      setControls([]);
-      setIsLoading(false);
-    }
-  }, [goalId, loadData]);
+    loadData();
+  }, [loadData]);
 
   const updateRisksInStorage = (updatedRisks: Risk[]) => {
-    if (typeof window !== 'undefined') {
+    if (typeof window !== 'undefined' && goalId) {
       localStorage.setItem(`riskwise-risks-${goalId}`, JSON.stringify(updatedRisks));
     }
   };
@@ -95,15 +91,21 @@ export default function GoalRisksPage() {
   const handleRisksIdentified = (newRisks: Risk[]) => {
     const updatedRisksState = [...risks, ...newRisks];
     setRisks(updatedRisksState);
-    if (typeof window !== 'undefined') {
+    if (typeof window !== 'undefined' && goalId) {
       localStorage.setItem(`riskwise-risks-${goalId}`, JSON.stringify(updatedRisksState));
     }
+  };
+  
+  const handleOpenAnalysisModal = (riskToAnalyze: Risk) => {
+    setSelectedRiskForAnalysis(riskToAnalyze);
+    setIsAnalysisModalOpen(true);
   };
 
   const handleSaveRiskAnalysis = (updatedRisk: Risk) => {
     const newRisksState = risks.map(r => r.id === updatedRisk.id ? updatedRisk : r);
     setRisks(newRisksState);
     updateRisksInStorage(newRisksState);
+    // Call toast outside of the setRisks updater
     toast({ title: "Risk Analyzed", description: `Analysis saved for risk: "${updatedRisk.description}"`});
     setIsAnalysisModalOpen(false);
     setSelectedRiskForAnalysis(null);
@@ -130,7 +132,6 @@ export default function GoalRisksPage() {
     }
     
     updateControlsInStorage(control.riskId, updatedRiskControlsList);
-    // Rebuild the main controls state from potentially multiple risk-specific storages
     updatedOverallControls = controls.filter(c => c.riskId !== control.riskId).concat(updatedRiskControlsList);
     setControls(updatedOverallControls);
     
@@ -180,7 +181,7 @@ export default function GoalRisksPage() {
     );
   }
   
-  if (!goal) {
+  if (!goal && !isLoading) { // Ensure not to show "not found" while still loading
     return (
       <div className="flex flex-col items-center justify-center h-full py-10">
         <ShieldAlert className="w-16 h-16 text-muted-foreground mb-4" />
@@ -189,6 +190,18 @@ export default function GoalRisksPage() {
           <ArrowLeft className="mr-2 h-4 w-4" /> Back to Goals
         </Button>
       </div>
+    );
+  }
+
+  if (!goal) { // Fallback if still no goal after loading (should be caught above but as safeguard)
+    return (
+        <div className="flex flex-col items-center justify-center h-full py-10">
+         <ShieldAlert className="w-16 h-16 text-muted-foreground mb-4" />
+         <p className="text-xl text-muted-foreground">Goal not found or still loading.</p>
+         <Button onClick={() => router.push('/goals')} className="mt-4">
+            <ArrowLeft className="mr-2 h-4 w-4" /> Back to Goals
+         </Button>
+       </div>
     );
   }
 
@@ -225,7 +238,7 @@ export default function GoalRisksPage() {
               <RiskListItem
                 key={risk.id}
                 risk={risk}
-                controls={controls}
+                controls={controls.filter(c => c.riskId === risk.id)}
                 onAnalyze={handleOpenAnalysisModal}
                 onAddControl={(r) => handleOpenControlModal(r)}
                 onEditControl={(c) => {
