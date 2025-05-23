@@ -18,7 +18,7 @@ import { SidebarNav } from "./sidebar-nav";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { LogOut, User } from "lucide-react";
+import { LogOut, User, Settings } from "lucide-react"; // Added Settings here
 import { Toaster } from "@/components/ui/toaster";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
