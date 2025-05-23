@@ -41,24 +41,26 @@ export default function GoalRisksPage() {
   const { toast } = useToast();
 
   const loadData = useCallback(() => {
-    const storedGoals = localStorage.getItem('riskwise-goals');
-    const allGoals: Goal[] = storedGoals ? JSON.parse(storedGoals) : INITIAL_GOALS;
-    const currentGoal = allGoals.find(g => g.id === goalId);
-    setGoal(currentGoal || null);
+    if (typeof window !== 'undefined') {
+      const storedGoals = localStorage.getItem('riskwise-goals');
+      const allGoals: Goal[] = storedGoals ? JSON.parse(storedGoals) : INITIAL_GOALS;
+      const currentGoal = allGoals.find(g => g.id === goalId);
+      setGoal(currentGoal || null);
 
-    if (currentGoal) {
-      const storedRisks = localStorage.getItem(`riskwise-risks-${goalId}`);
-      const currentRisks: Risk[] = storedRisks ? JSON.parse(storedRisks) : [];
-      setRisks(currentRisks);
+      if (currentGoal) {
+        const storedRisks = localStorage.getItem(`riskwise-risks-${goalId}`);
+        const currentRisks: Risk[] = storedRisks ? JSON.parse(storedRisks) : [];
+        setRisks(currentRisks);
 
-      let allRiskControls: Control[] = [];
-      currentRisks.forEach(risk => {
-        const storedControls = localStorage.getItem(`riskwise-controls-${risk.id}`);
-        if (storedControls) {
-          allRiskControls = [...allRiskControls, ...JSON.parse(storedControls)];
-        }
-      });
-      setControls(allRiskControls);
+        let allRiskControls: Control[] = [];
+        currentRisks.forEach(risk => {
+          const storedControls = localStorage.getItem(`riskwise-controls-${risk.id}`);
+          if (storedControls) {
+            allRiskControls = [...allRiskControls, ...JSON.parse(storedControls)];
+          }
+        });
+        setControls(allRiskControls);
+      }
     }
   }, [goalId]);
 
@@ -69,29 +71,27 @@ export default function GoalRisksPage() {
   }, [goalId, loadData]);
 
   const updateRisksInStorage = (updatedRisks: Risk[]) => {
-    localStorage.setItem(`riskwise-risks-${goalId}`, JSON.stringify(updatedRisks));
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(`riskwise-risks-${goalId}`, JSON.stringify(updatedRisks));
+    }
   };
 
   const updateControlsInStorage = (riskId: string, updatedControlsForRisk: Control[]) => {
-    const otherControls = controls.filter(c => c.riskId !== riskId);
-    const allUpdatedControls = [...otherControls, ...updatedControlsForRisk];
-    setControls(allUpdatedControls); // Update overall controls state
-
-    // This is tricky, as controls are stored per risk. We need to update the specific risk's controls.
-    // For simplicity here, we'll just update the overall controls state.
-    // A better approach for localStorage would be to store all controls in one key, or refetch/reconstruct.
-    // This current localstorage strategy is simplified.
-    // The most straightforward for this structure would be:
-    localStorage.setItem(`riskwise-controls-${riskId}`, JSON.stringify(updatedControlsForRisk));
+     if (typeof window !== 'undefined') {
+        localStorage.setItem(`riskwise-controls-${riskId}`, JSON.stringify(updatedControlsForRisk));
+     }
+    // Update overall controls state after updating storage
+    setControls(prevControls => {
+        const otherControls = prevControls.filter(c => c.riskId !== riskId);
+        return [...otherControls, ...updatedControlsForRisk];
+    });
   };
 
 
   const handleRisksIdentified = (newRisks: Risk[]) => {
-    setRisks(prev => {
-      const updated = [...prev, ...newRisks];
-      updateRisksInStorage(updated);
-      return updated;
-    });
+    const updated = [...risks, ...newRisks];
+    setRisks(updated);
+    updateRisksInStorage(updated);
   };
 
   const handleOpenAnalysisModal = (riskToAnalyze: Risk) => {
@@ -100,12 +100,10 @@ export default function GoalRisksPage() {
   };
 
   const handleSaveRiskAnalysis = (updatedRisk: Risk) => {
-    setRisks(prev => {
-      const updated = prev.map(r => r.id === updatedRisk.id ? updatedRisk : r);
-      updateRisksInStorage(updated);
-      toast({ title: "Risk Analyzed", description: `Analysis saved for risk: "${updatedRisk.description}"`});
-      return updated;
-    });
+    const newRisksState = risks.map(r => r.id === updatedRisk.id ? updatedRisk : r);
+    setRisks(newRisksState);
+    updateRisksInStorage(newRisksState);
+    toast({ title: "Risk Analyzed", description: `Analysis saved for risk: "${updatedRisk.description}"`});
     setIsAnalysisModalOpen(false);
     setSelectedRiskForAnalysis(null);
   };
@@ -117,41 +115,42 @@ export default function GoalRisksPage() {
   };
 
   const handleSaveControl = (control: Control) => {
+    // Filter controls for the specific risk from the main controls state
     const riskSpecificControls = controls.filter(c => c.riskId === control.riskId);
     const existingIndex = riskSpecificControls.findIndex(c => c.id === control.id);
     let updatedRiskControls;
 
     if (existingIndex > -1) {
-      updatedRiskControls = [...riskSpecificControls];
-      updatedRiskControls[existingIndex] = control;
+      updatedRiskControls = riskSpecificControls.map(c => c.id === control.id ? control : c);
       toast({ title: "Control Updated", description: `Control "${control.description}" updated.` });
     } else {
       updatedRiskControls = [...riskSpecificControls, control];
       toast({ title: "Control Added", description: `Control "${control.description}" added.` });
     }
+    // This will update localStorage and then call setControls with the merged list
     updateControlsInStorage(control.riskId, updatedRiskControls);
-    // also update the main controls state for immediate UI update
-    setControls(prevControls => {
-        const otherControls = prevControls.filter(c => c.riskId !== control.riskId);
-        return [...otherControls, ...updatedRiskControls];
-    });
+    
     setIsControlModalOpen(false);
     setSelectedRiskForControl(null);
     setSelectedControlForEdit(null);
   };
 
   const handleDeleteRisk = (riskIdToDelete: string) => {
-    setRisks(prev => {
-      const riskToDelete = prev.find(r => r.id === riskIdToDelete);
-      const updated = prev.filter(r => r.id !== riskIdToDelete);
-      updateRisksInStorage(updated);
-      if(riskToDelete) toast({ title: "Risk Deleted", description: `Risk "${riskToDelete.description}" deleted.`, variant: "destructive" });
+    const riskToDelete = risks.find(r => r.id === riskIdToDelete);
+    const updatedRisksState = risks.filter(r => r.id !== riskIdToDelete);
+    
+    setRisks(updatedRisksState);
+    updateRisksInStorage(updatedRisksState);
+
+    if(riskToDelete) {
+      toast({ title: "Risk Deleted", description: `Risk "${riskToDelete.description}" deleted.`, variant: "destructive" });
+    }
       
-      // Delete associated controls
+    // Delete associated controls from localStorage and state
+    if (typeof window !== 'undefined') {
       localStorage.removeItem(`riskwise-controls-${riskIdToDelete}`);
-      setControls(currentControls => currentControls.filter(c => c.riskId !== riskIdToDelete));
-      return updated;
-    });
+    }
+    setControls(currentControls => currentControls.filter(c => c.riskId !== riskIdToDelete));
   };
 
   const handleDeleteControl = (controlIdToDelete: string) => {
@@ -159,25 +158,38 @@ export default function GoalRisksPage() {
     if (!controlToDelete) return;
 
     const riskIdOfControl = controlToDelete.riskId;
-    const updatedRiskControls = controls.filter(c => c.id !== controlIdToDelete && c.riskId === riskIdOfControl);
+    // Filter out the deleted control for the specific risk
+    const updatedRiskControls = controls
+        .filter(c => c.riskId === riskIdOfControl && c.id !== controlIdToDelete);
     
+    // This will update localStorage and then call setControls with the merged list
     updateControlsInStorage(riskIdOfControl, updatedRiskControls);
-    setControls(prevControls => prevControls.filter(c => c.id !== controlIdToDelete)); // update main state
 
     toast({ title: "Control Deleted", description: `Control "${controlToDelete.description}" deleted.`, variant: "destructive" });
   };
 
-  if (!goal) {
-    return (
+  if (typeof window !== 'undefined' && !goal && localStorage.getItem('riskwise-goals')) { // Check if localStorage has been checked
+    // This case indicates data might still be loading or goal truly not found after load
+     return (
       <div className="flex flex-col items-center justify-center h-full">
         <ShieldAlert className="w-16 h-16 text-muted-foreground mb-4" />
-        <p className="text-xl text-muted-foreground">Goal not found.</p>
+        <p className="text-xl text-muted-foreground">Goal not found or still loading.</p>
         <Button onClick={() => router.push('/goals')} className="mt-4">
           <ArrowLeft className="mr-2 h-4 w-4" /> Back to Goals
         </Button>
       </div>
     );
   }
+  
+  // Initial render before useEffect/loadData completes, or if goal is truly null
+  if (!goal) {
+    return (
+         <div className="flex flex-col items-center justify-center h-full">
+            <p className="text-xl text-muted-foreground">Loading goal data...</p>
+         </div>
+    );
+  }
+
 
   return (
     <div className="space-y-8">
