@@ -6,7 +6,7 @@ import { PageHeader } from '@/components/ui/page-header';
 import { GoalCard } from '@/components/goals/goal-card';
 import { AddGoalDialog } from '@/components/goals/add-goal-dialog';
 import type { Goal } from '@/lib/types';
-import { PlusCircle } from 'lucide-react';
+import { PlusCircle, Target } from 'lucide-react'; // Added Target here
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 
@@ -24,17 +24,25 @@ export default function GoalsPage() {
 
   useEffect(() => {
     // Simulate fetching data
-    const storedGoals = localStorage.getItem('riskwise-goals');
-    if (storedGoals) {
-      setGoals(JSON.parse(storedGoals));
+    let storedGoalsData = null;
+    if (typeof window !== 'undefined') {
+      storedGoalsData = localStorage.getItem('riskwise-goals');
+    }
+    
+    if (storedGoalsData) {
+      setGoals(JSON.parse(storedGoalsData));
     } else {
       setGoals(INITIAL_GOALS);
-      localStorage.setItem('riskwise-goals', JSON.stringify(INITIAL_GOALS));
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('riskwise-goals', JSON.stringify(INITIAL_GOALS));
+      }
     }
   }, []);
 
   const updateLocalStorage = (updatedGoals: Goal[]) => {
-    localStorage.setItem('riskwise-goals', JSON.stringify(updatedGoals));
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('riskwise-goals', JSON.stringify(updatedGoals));
+    }
   };
 
   const handleGoalSave = (goal: Goal) => {
@@ -63,13 +71,15 @@ export default function GoalsPage() {
         toast({ title: "Goal Deleted", description: `Goal "${goalToDelete.name}" has been deleted.`, variant: "destructive" });
       }
       // Also delete associated risks and controls from localStorage if they exist
-      const storedRisks = localStorage.getItem(`riskwise-risks-${goalId}`);
-      if (storedRisks) {
-        localStorage.removeItem(`riskwise-risks-${goalId}`);
-        const risks: Array<{id: string}> = JSON.parse(storedRisks);
-        risks.forEach(risk => {
-          localStorage.removeItem(`riskwise-controls-${risk.id}`);
-        });
+      if (typeof window !== 'undefined') {
+        const storedRisks = localStorage.getItem(`riskwise-risks-${goalId}`);
+        if (storedRisks) {
+          localStorage.removeItem(`riskwise-risks-${goalId}`);
+          const risks: Array<{id: string}> = JSON.parse(storedRisks);
+          risks.forEach(risk => {
+            localStorage.removeItem(`riskwise-controls-${risk.id}`);
+          });
+        }
       }
       return updatedGoals;
     });
