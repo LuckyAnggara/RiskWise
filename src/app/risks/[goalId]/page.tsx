@@ -10,11 +10,11 @@ import { RiskListItem } from '@/components/risks/risk-list-item';
 import { RiskAnalysisModal } from '@/components/risks/risk-analysis-modal';
 import { RiskControlModal } from '@/components/risks/risk-control-modal';
 import type { Goal, Risk, Control } from '@/lib/types';
-import { ArrowLeft, ShieldAlert } from 'lucide-react';
+import { ArrowLeft, ShieldAlert, Loader2 } from 'lucide-react'; // Added Loader2
 import { useToast } from '@/hooks/use-toast';
 import { Separator } from '@/components/ui/separator';
 
-// Mock goals - in a real app, fetch this based on goalId
+// Mock goals - in a real app, fetch this based on goalId or a global store
 const INITIAL_GOALS: Goal[] = [
   { id: 'g1', name: 'Launch New Product X', description: 'Successfully develop and launch Product X by Q4 2024 to capture 5% market share within the first year.', createdAt: '2023-10-15T10:00:00Z' },
   { id: 'g2', name: 'Improve Customer Satisfaction', description: 'Increase overall customer satisfaction (CSAT) score from 80% to 90% by end of 2024 through improved support and product usability.', createdAt: '2023-11-01T14:30:00Z' },
@@ -30,6 +30,7 @@ export default function GoalRisksPage() {
   const [goal, setGoal] = useState<Goal | null>(null);
   const [risks, setRisks] = useState<Risk[]>([]);
   const [controls, setControls] = useState<Control[]>([]);
+  const [isLoading, setIsLoading] = useState(true); // Added loading state
   
   const [selectedRiskForAnalysis, setSelectedRiskForAnalysis] = useState<Risk | null>(null);
   const [isAnalysisModalOpen, setIsAnalysisModalOpen] = useState(false);
@@ -42,31 +43,39 @@ export default function GoalRisksPage() {
 
   const loadData = useCallback(() => {
     if (typeof window !== 'undefined') {
-      const storedGoals = localStorage.getItem('riskwise-goals');
-      const allGoals: Goal[] = storedGoals ? JSON.parse(storedGoals) : INITIAL_GOALS;
+      const storedGoalsData = localStorage.getItem('riskwise-goals');
+      const allGoals: Goal[] = storedGoalsData ? JSON.parse(storedGoalsData) : INITIAL_GOALS;
       const currentGoal = allGoals.find(g => g.id === goalId);
       setGoal(currentGoal || null);
 
       if (currentGoal) {
-        const storedRisks = localStorage.getItem(`riskwise-risks-${goalId}`);
-        const currentRisks: Risk[] = storedRisks ? JSON.parse(storedRisks) : [];
+        const storedRisksData = localStorage.getItem(`riskwise-risks-${goalId}`);
+        const currentRisks: Risk[] = storedRisksData ? JSON.parse(storedRisksData) : [];
         setRisks(currentRisks);
 
         let allRiskControls: Control[] = [];
         currentRisks.forEach(risk => {
-          const storedControls = localStorage.getItem(`riskwise-controls-${risk.id}`);
-          if (storedControls) {
-            allRiskControls = [...allRiskControls, ...JSON.parse(storedControls)];
+          const storedControlsData = localStorage.getItem(`riskwise-controls-${risk.id}`);
+          if (storedControlsData) {
+            allRiskControls = [...allRiskControls, ...JSON.parse(storedControlsData)];
           }
         });
         setControls(allRiskControls);
       }
     }
+    setIsLoading(false);
   }, [goalId]);
 
   useEffect(() => {
     if (goalId) {
+      // setIsLoading(true); // Optionally reset loading state if goalId can change dynamically without remount
       loadData();
+    } else {
+      // No goalId, so not loading specific goal data
+      setGoal(null);
+      setRisks([]);
+      setControls([]);
+      setIsLoading(false);
     }
   }, [goalId, loadData]);
 
@@ -80,23 +89,15 @@ export default function GoalRisksPage() {
      if (typeof window !== 'undefined') {
         localStorage.setItem(`riskwise-controls-${riskId}`, JSON.stringify(updatedControlsForRisk));
      }
-    // Update overall controls state after updating storage
-    setControls(prevControls => {
-        const otherControls = prevControls.filter(c => c.riskId !== riskId);
-        return [...otherControls, ...updatedControlsForRisk];
-    });
   };
 
 
   const handleRisksIdentified = (newRisks: Risk[]) => {
-    const updated = [...risks, ...newRisks];
-    setRisks(updated);
-    updateRisksInStorage(updated);
-  };
-
-  const handleOpenAnalysisModal = (riskToAnalyze: Risk) => {
-    setSelectedRiskForAnalysis(riskToAnalyze);
-    setIsAnalysisModalOpen(true);
+    const updatedRisksState = [...risks, ...newRisks];
+    setRisks(updatedRisksState);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(`riskwise-risks-${goalId}`, JSON.stringify(updatedRisksState));
+    }
   };
 
   const handleSaveRiskAnalysis = (updatedRisk: Risk) => {
@@ -115,20 +116,23 @@ export default function GoalRisksPage() {
   };
 
   const handleSaveControl = (control: Control) => {
-    // Filter controls for the specific risk from the main controls state
+    let updatedOverallControls: Control[];
     const riskSpecificControls = controls.filter(c => c.riskId === control.riskId);
     const existingIndex = riskSpecificControls.findIndex(c => c.id === control.id);
-    let updatedRiskControls;
+    let updatedRiskControlsList: Control[];
 
     if (existingIndex > -1) {
-      updatedRiskControls = riskSpecificControls.map(c => c.id === control.id ? control : c);
+      updatedRiskControlsList = riskSpecificControls.map(c => c.id === control.id ? control : c);
       toast({ title: "Control Updated", description: `Control "${control.description}" updated.` });
     } else {
-      updatedRiskControls = [...riskSpecificControls, control];
+      updatedRiskControlsList = [...riskSpecificControls, control];
       toast({ title: "Control Added", description: `Control "${control.description}" added.` });
     }
-    // This will update localStorage and then call setControls with the merged list
-    updateControlsInStorage(control.riskId, updatedRiskControls);
+    
+    updateControlsInStorage(control.riskId, updatedRiskControlsList);
+    // Rebuild the main controls state from potentially multiple risk-specific storages
+    updatedOverallControls = controls.filter(c => c.riskId !== control.riskId).concat(updatedRiskControlsList);
+    setControls(updatedOverallControls);
     
     setIsControlModalOpen(false);
     setSelectedRiskForControl(null);
@@ -146,7 +150,6 @@ export default function GoalRisksPage() {
       toast({ title: "Risk Deleted", description: `Risk "${riskToDelete.description}" deleted.`, variant: "destructive" });
     }
       
-    // Delete associated controls from localStorage and state
     if (typeof window !== 'undefined') {
       localStorage.removeItem(`riskwise-controls-${riskIdToDelete}`);
     }
@@ -158,35 +161,34 @@ export default function GoalRisksPage() {
     if (!controlToDelete) return;
 
     const riskIdOfControl = controlToDelete.riskId;
-    // Filter out the deleted control for the specific risk
-    const updatedRiskControls = controls
+    const updatedRiskControlsList = controls
         .filter(c => c.riskId === riskIdOfControl && c.id !== controlIdToDelete);
     
-    // This will update localStorage and then call setControls with the merged list
-    updateControlsInStorage(riskIdOfControl, updatedRiskControls);
+    updateControlsInStorage(riskIdOfControl, updatedRiskControlsList);
+    const updatedOverallControls = controls.filter(c => c.id !== controlIdToDelete);
+    setControls(updatedOverallControls);
 
     toast({ title: "Control Deleted", description: `Control "${controlToDelete.description}" deleted.`, variant: "destructive" });
   };
 
-  if (typeof window !== 'undefined' && !goal && localStorage.getItem('riskwise-goals')) { // Check if localStorage has been checked
-    // This case indicates data might still be loading or goal truly not found after load
-     return (
-      <div className="flex flex-col items-center justify-center h-full">
-        <ShieldAlert className="w-16 h-16 text-muted-foreground mb-4" />
-        <p className="text-xl text-muted-foreground">Goal not found or still loading.</p>
-        <Button onClick={() => router.push('/goals')} className="mt-4">
-          <ArrowLeft className="mr-2 h-4 w-4" /> Back to Goals
-        </Button>
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full py-10">
+        <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
+        <p className="text-xl text-muted-foreground">Loading goal data...</p>
       </div>
     );
   }
   
-  // Initial render before useEffect/loadData completes, or if goal is truly null
   if (!goal) {
     return (
-         <div className="flex flex-col items-center justify-center h-full">
-            <p className="text-xl text-muted-foreground">Loading goal data...</p>
-         </div>
+      <div className="flex flex-col items-center justify-center h-full py-10">
+        <ShieldAlert className="w-16 h-16 text-muted-foreground mb-4" />
+        <p className="text-xl text-muted-foreground">Goal not found.</p>
+        <Button onClick={() => router.push('/goals')} className="mt-4">
+          <ArrowLeft className="mr-2 h-4 w-4" /> Back to Goals
+        </Button>
+      </div>
     );
   }
 
@@ -223,10 +225,13 @@ export default function GoalRisksPage() {
               <RiskListItem
                 key={risk.id}
                 risk={risk}
-                controls={controls} // Pass all controls, filtering happens inside
+                controls={controls}
                 onAnalyze={handleOpenAnalysisModal}
                 onAddControl={(r) => handleOpenControlModal(r)}
-                onEditControl={(c) => handleOpenControlModal(risks.find(r => r.id === c.riskId)!, c)}
+                onEditControl={(c) => {
+                    const parentRisk = risks.find(r => r.id === c.riskId);
+                    if (parentRisk) handleOpenControlModal(parentRisk, c);
+                }}
                 onDeleteRisk={handleDeleteRisk}
                 onDeleteControl={handleDeleteControl}
               />
@@ -252,3 +257,4 @@ export default function GoalRisksPage() {
     </div>
   );
 }
+
