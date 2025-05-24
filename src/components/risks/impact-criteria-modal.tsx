@@ -86,16 +86,16 @@ const impactCriteriaData = [
 export function ImpactCriteriaModal({ isOpen, onOpenChange }: ImpactCriteriaModalProps) {
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl"> {/* Increased width */}
+      <DialogContent className="max-w-4xl">
         <DialogHeader>
           <DialogTitle>Panduan Kriteria Dampak Risiko</DialogTitle>
           <DialogDescription>
             Gunakan tabel ini sebagai panduan untuk menentukan level dampak risiko.
           </DialogDescription>
         </DialogHeader>
-        <ScrollArea className="h-[70vh] w-full"> {/* Added ScrollArea */}
+        <ScrollArea className="h-[70vh] w-full whitespace-nowrap rounded-md border"> {/* Added whitespace-nowrap for horizontal scroll */}
           <div className="py-4">
-            <Table>
+            <Table className="min-w-max"> {/* Added min-w-max to allow table to expand */}
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[5%] font-semibold">No</TableHead>
@@ -111,12 +111,12 @@ export function ImpactCriteriaModal({ isOpen, onOpenChange }: ImpactCriteriaModa
                 {impactCriteriaData.map((item, index) => (
                   <TableRow key={index}>
                     <TableCell>{item.no}</TableCell>
-                    <TableCell>{item.areaDampak}</TableCell>
-                    <TableCell>{item.tidakSignifikan}</TableCell>
-                    <TableCell>{item.minor}</TableCell>
-                    <TableCell>{item.moderat}</TableCell>
-                    <TableCell>{item.signifikan}</TableCell>
-                    <TableCell>{item.sangatSignifikan}</TableCell>
+                    <TableCell className="whitespace-normal">{item.areaDampak}</TableCell> {/* Allow area dampak to wrap */}
+                    <TableCell className="whitespace-normal">{item.tidakSignifikan}</TableCell>
+                    <TableCell className="whitespace-normal">{item.minor}</TableCell>
+                    <TableCell className="whitespace-normal">{item.moderat}</TableCell>
+                    <TableCell className="whitespace-normal">{item.signifikan}</TableCell>
+                    <TableCell className="whitespace-normal">{item.sangatSignifikan}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -130,3 +130,4 @@ export function ImpactCriteriaModal({ isOpen, onOpenChange }: ImpactCriteriaModa
     </Dialog>
   );
 }
+

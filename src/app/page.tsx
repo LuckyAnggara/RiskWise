@@ -22,11 +22,11 @@ const MOCK_GOALS_TEMPLATE: Omit<Goal, 'uprId' | 'period'>[] = [
 ];
 
 const MOCK_POTENTIAL_RISKS_TEMPLATE: Omit<PotentialRisk, 'goalId'>[] = [ 
-  { id: 'pr1', description: 'Gangguan rantai pasok (Mock)', category: 'Operasional', owner: 'Kepala Rantai Pasok', likelihood: 'High', impact: 'Very High', identifiedAt: new Date().toISOString() },
-  { id: 'pr2', description: 'Pesaing meluncurkan produk serupa (Mock)', category: 'Strategis', owner: 'Tim Produk', likelihood: 'Medium', impact: 'High', identifiedAt: new Date().toISOString() },
-  { id: 'pr3', description: 'Perubahan regulasi (Mock)', category: 'Kepatuhan', owner: 'Departemen Legal', likelihood: 'Low', impact: 'Medium', identifiedAt: new Date().toISOString() },
-  { id: 'pr4', description: 'Kepergian anggota tim kunci (Mock)', category: 'Sumber Daya Manusia', owner: 'Manajer SDM', likelihood: 'Medium', impact: 'High', identifiedAt: new Date().toISOString()},
-  { id: 'pr5', description: 'Penurunan ekonomi mempengaruhi permintaan (Mock)', category: 'Keuangan', owner: 'CFO', likelihood: 'High', impact: 'High', identifiedAt: new Date().toISOString()},
+  { id: 'pr1', description: 'Gangguan rantai pasok (Mock)', category: 'Operasional', owner: 'Kepala Rantai Pasok', likelihood: 'Tinggi', impact: 'Sangat Tinggi', identifiedAt: new Date().toISOString() },
+  { id: 'pr2', description: 'Pesaing meluncurkan produk serupa (Mock)', category: 'Strategis', owner: 'Tim Produk', likelihood: 'Sedang', impact: 'Tinggi', identifiedAt: new Date().toISOString() },
+  { id: 'pr3', description: 'Perubahan regulasi (Mock)', category: 'Kepatuhan', owner: 'Departemen Legal', likelihood: 'Rendah', impact: 'Sedang', identifiedAt: new Date().toISOString() },
+  { id: 'pr4', description: 'Kepergian anggota tim kunci (Mock)', category: 'Sumber Daya Manusia', owner: 'Manajer SDM', likelihood: 'Sedang', impact: 'Tinggi', identifiedAt: new Date().toISOString()},
+  { id: 'pr5', description: 'Penurunan ekonomi mempengaruhi permintaan (Mock)', category: 'Keuangan', owner: 'CFO', likelihood: 'Tinggi', impact: 'Tinggi', identifiedAt: new Date().toISOString()},
 ];
 
 const MOCK_CONTROLS_TEMPLATE: Omit<Control, 'potentialRiskId'>[] = [ 
@@ -37,15 +37,33 @@ const MOCK_CONTROLS_TEMPLATE: Omit<Control, 'potentialRiskId'>[] = [
 
 const getRiskLevel = (likelihood: LikelihoodImpactLevel | null, impact: LikelihoodImpactLevel | null): string => {
   if (!likelihood || !impact) return 'N/A';
-  const L = { 'Very Low': 1, 'Low': 2, 'Medium': 3, 'High': 4, 'Very High': 5 };
-  const I = { 'Very Low': 1, 'Low': 2, 'Medium': 3, 'High': 4, 'Very High': 5 };
-  const score = L[likelihood] * I[impact];
+  const L: { [key in LikelihoodImpactLevel]: number } = { 'Sangat Rendah': 1, 'Rendah': 2, 'Sedang': 3, 'Tinggi': 4, 'Sangat Tinggi': 5 };
+  const I: { [key in LikelihoodImpactLevel]: number } = { 'Sangat Rendah': 1, 'Rendah': 2, 'Sedang': 3, 'Tinggi': 4, 'Sangat Tinggi': 5 };
+  
+  const likelihoodValue = L[likelihood];
+  const impactValue = I[impact];
 
-  if (score >= 15) return 'Kritis'; 
-  if (score >= 10) return 'Tinggi';
-  if (score >= 5) return 'Sedang';
-  if (score >=3) return 'Rendah';
-  return 'Sangat Rendah';
+  if (!likelihoodValue || !impactValue) return 'N/A';
+
+  const score = likelihoodValue * impactValue;
+
+  if (score >= 20) return 'Sangat Tinggi';
+  if (score >= 16) return 'Tinggi';
+  if (score >= 12) return 'Sedang';
+  if (score >= 6) return 'Rendah';
+  if (score >= 1) return 'Sangat Rendah';
+  return 'N/A';
+};
+
+const getRiskLevelColor = (level: string) => {
+  switch (level.toLowerCase()) {
+    case 'sangat tinggi': return 'bg-red-600 hover:bg-red-700 text-white';
+    case 'tinggi': return 'bg-orange-500 hover:bg-orange-600 text-white';
+    case 'sedang': return 'bg-yellow-400 hover:bg-yellow-500 text-black dark:bg-yellow-500 dark:text-black';
+    case 'rendah': return 'bg-blue-500 hover:bg-blue-600 text-white';
+    case 'sangat rendah': return 'bg-green-500 hover:bg-green-600 text-white';
+    default: return 'bg-gray-400 hover:bg-gray-500 text-white';
+  }
 };
 
 const chartConfig = {
@@ -130,7 +148,7 @@ export default function DashboardPage() {
         }
         return acc;
       }, [] as { name: string; count: number }[]).sort((a,b) => {
-        const order = ['Sangat Rendah', 'Rendah', 'Sedang', 'Tinggi', 'Kritis', 'N/A'];
+        const order = ['Sangat Rendah', 'Rendah', 'Sedang', 'Tinggi', 'Sangat Tinggi', 'N/A'];
         return order.indexOf(a.name) - order.indexOf(b.name);
       });
       setRiskLevelChartData(chartData);
@@ -150,12 +168,12 @@ export default function DashboardPage() {
   const highPriorityPotentialRisks = potentialRisks
     .filter(pRisk => {
         const level = getRiskLevel(pRisk.likelihood, pRisk.impact);
-        return level === 'Kritis' || level === 'Tinggi';
+        return level === 'Sangat Tinggi' || level === 'Tinggi';
     })
     .slice(0, 5);
   
   const totalPotentialRisksCount = potentialRisks.length;
-  const criticalPotentialRisksNum = potentialRisks.filter(pr => getRiskLevel(pr.likelihood, pr.impact) === 'Kritis').length;
+  const criticalPotentialRisksNum = potentialRisks.filter(pr => getRiskLevel(pr.likelihood, pr.impact) === 'Sangat Tinggi').length;
   const controlsImplementedCount = controls.filter(c => c.status === 'Implemented').length;
 
   return (
@@ -180,7 +198,7 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{totalPotentialRisksCount}</div>
-            <p className="text-xs text-muted-foreground">{criticalPotentialRisksNum} potensi risiko kritis</p>
+            <p className="text-xs text-muted-foreground">{criticalPotentialRisksNum} potensi risiko sangat tinggi</p>
           </CardContent>
         </Card>
         <Card>
@@ -236,7 +254,7 @@ export default function DashboardPage() {
         <Card>
           <CardHeader>
             <CardTitle>Potensi Risiko Prioritas Tinggi</CardTitle>
-            <CardDescription>5 potensi risiko teratas level kritis atau tinggi yang memerlukan perhatian untuk UPR/Periode ini.</CardDescription>
+            <CardDescription>5 potensi risiko teratas level sangat tinggi atau tinggi yang memerlukan perhatian untuk UPR/Periode ini.</CardDescription>
           </CardHeader>
           <CardContent>
             {highPriorityPotentialRisks.length > 0 ? (
@@ -262,17 +280,7 @@ export default function DashboardPage() {
                         </TableCell>
                         <TableCell className="text-xs max-w-[100px] truncate" title={pRisk.owner || ''}>{pRisk.owner || 'N/A'}</TableCell>
                         <TableCell>
-                          <Badge variant={
-                            level === 'Kritis' ? 'destructive' :
-                            level === 'Tinggi' ? 'destructive' : 
-                            level === 'Sedang' ? 'secondary' : 
-                            'outline'
-                          }
-                          className={level === 'Sedang' ? 'bg-yellow-500 text-black dark:bg-yellow-400 dark:text-black' : 
-                                     level === 'Sangat Rendah' ? 'bg-sky-500 text-white dark:bg-sky-600' :
-                                     level === 'Rendah' ? 'bg-green-500 text-white dark:bg-green-600' : 
-                                     (level === 'Tinggi' ? 'bg-orange-500 text-white dark:bg-orange-600' : '')}
-                          >
+                          <Badge className={`${getRiskLevelColor(level)}`}>
                             {level}
                           </Badge>
                         </TableCell>
@@ -291,3 +299,4 @@ export default function DashboardPage() {
     </div>
   );
 }
+

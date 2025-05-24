@@ -28,24 +28,31 @@ const getRiskCausesStorageKey = (uprId: string, period: string, potentialRiskId:
 
 const getRiskLevel = (likelihood: LikelihoodImpactLevel | null, impact: LikelihoodImpactLevel | null): string => {
   if (!likelihood || !impact) return 'N/A';
-  const L = { 'Very Low': 1, 'Low': 2, 'Medium': 3, 'High': 4, 'Very High': 5 };
-  const I = { 'Very Low': 1, 'Low': 2, 'Medium': 3, 'High': 4, 'Very High': 5 };
-  const score = L[likelihood] * I[impact];
+  const L: { [key in LikelihoodImpactLevel]: number } = { 'Sangat Rendah': 1, 'Rendah': 2, 'Sedang': 3, 'Tinggi': 4, 'Sangat Tinggi': 5 };
+  const I: { [key in LikelihoodImpactLevel]: number } = { 'Sangat Rendah': 1, 'Rendah': 2, 'Sedang': 3, 'Tinggi': 4, 'Sangat Tinggi': 5 };
+  
+  const likelihoodValue = L[likelihood];
+  const impactValue = I[impact];
 
-  if (score >= 20) return 'Kritis';
-  if (score >= 12) return 'Tinggi';
-  if (score >= 6) return 'Sedang';
-  if (score >= 3) return 'Rendah';
-  return 'Sangat Rendah';
+  if (!likelihoodValue || !impactValue) return 'N/A';
+
+  const score = likelihoodValue * impactValue;
+
+  if (score >= 20) return 'Sangat Tinggi';
+  if (score >= 16) return 'Tinggi';
+  if (score >= 12) return 'Sedang';
+  if (score >= 6) return 'Rendah';
+  if (score >= 1) return 'Sangat Rendah';
+  return 'N/A';
 };
 
 const getRiskLevelColor = (level: string) => {
   switch (level.toLowerCase()) {
-    case 'kritis': return 'bg-red-600 hover:bg-red-700';
-    case 'tinggi': return 'bg-orange-500 hover:bg-orange-600';
+    case 'sangat tinggi': return 'bg-red-600 hover:bg-red-700 text-white';
+    case 'tinggi': return 'bg-orange-500 hover:bg-orange-600 text-white';
     case 'sedang': return 'bg-yellow-400 hover:bg-yellow-500 text-black dark:bg-yellow-500 dark:text-black';
-    case 'rendah': return 'bg-green-500 hover:bg-green-600';
-    case 'sangat rendah': return 'bg-sky-500 hover:bg-sky-600';
+    case 'rendah': return 'bg-blue-500 hover:bg-blue-600 text-white';
+    case 'sangat rendah': return 'bg-green-500 hover:bg-green-600 text-white';
     default: return 'bg-gray-400 hover:bg-gray-500 text-white';
   }
 };
@@ -392,7 +399,7 @@ export default function GoalRisksPage() {
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          <Badge className={`${getRiskLevelColor(riskLevelValue)} text-white`}>
+                          <Badge className={`${getRiskLevelColor(riskLevelValue)}`}>
                             {riskLevelValue}
                           </Badge>
                         </TableCell>
@@ -473,3 +480,5 @@ export default function GoalRisksPage() {
     </div>
   );
 }
+
+    

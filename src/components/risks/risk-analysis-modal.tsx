@@ -15,9 +15,10 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { PotentialRisk, LikelihoodImpactLevel } from '@/lib/types';
 import { LIKELIHOOD_IMPACT_LEVELS } from '@/lib/types';
-import { Info } from 'lucide-react';
+import { Info, BarChartHorizontalBig } from 'lucide-react'; // Added BarChartHorizontalBig for Matrix
 import { LikelihoodCriteriaModal } from './likelihood-criteria-modal';
-import { ImpactCriteriaModal } from './impact-criteria-modal'; // Import the new ImpactCriteriaModal
+import { ImpactCriteriaModal } from './impact-criteria-modal';
+import { RiskMatrixModal } from './risk-matrix-modal'; // Import the new RiskMatrixModal
 
 interface RiskAnalysisModalProps {
   potentialRisk: PotentialRisk | null;
@@ -30,14 +31,14 @@ export function RiskAnalysisModal({ potentialRisk, isOpen, onOpenChange, onSave 
   const [likelihood, setLikelihood] = useState<LikelihoodImpactLevel | null>(null);
   const [impact, setImpact] = useState<LikelihoodImpactLevel | null>(null);
   const [isLikelihoodCriteriaModalOpen, setIsLikelihoodCriteriaModalOpen] = useState(false);
-  const [isImpactCriteriaModalOpen, setIsImpactCriteriaModalOpen] = useState(false); // State for impact criteria modal
+  const [isImpactCriteriaModalOpen, setIsImpactCriteriaModalOpen] = useState(false);
+  const [isRiskMatrixModalOpen, setIsRiskMatrixModalOpen] = useState(false); // State for risk matrix modal
 
   useEffect(() => {
     if (potentialRisk && isOpen) {
       setLikelihood(potentialRisk.likelihood);
       setImpact(potentialRisk.impact);
     } else if (!isOpen) {
-      // Reset state when modal closes
       setLikelihood(null);
       setImpact(null);
     }
@@ -68,7 +69,7 @@ export function RiskAnalysisModal({ potentialRisk, isOpen, onOpenChange, onSave 
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-4 items-center gap-x-2 gap-y-1"> {/* Adjusted gap for tighter layout */}
+            <div className="grid grid-cols-4 items-center gap-x-2 gap-y-1">
               <div className="col-span-1 text-right flex justify-end items-center">
                 <Label htmlFor="likelihood" className="mr-1 whitespace-nowrap">
                   Probabilitas
@@ -98,7 +99,7 @@ export function RiskAnalysisModal({ potentialRisk, isOpen, onOpenChange, onSave 
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid grid-cols-4 items-center gap-x-2 gap-y-1"> {/* Adjusted gap for tighter layout */}
+            <div className="grid grid-cols-4 items-center gap-x-2 gap-y-1">
               <div className="col-span-1 text-right flex justify-end items-center">
                 <Label htmlFor="impact" className="mr-1 whitespace-nowrap">
                   Dampak
@@ -128,6 +129,18 @@ export function RiskAnalysisModal({ potentialRisk, isOpen, onOpenChange, onSave 
                 </SelectContent>
               </Select>
             </div>
+            <div className="col-start-2 col-span-3 mt-2">
+               <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => setIsRiskMatrixModalOpen(true)} 
+                  type="button"
+                  className="w-full"
+                >
+                  <BarChartHorizontalBig className="mr-2 h-4 w-4" />
+                  Lihat Matriks Profil Risiko
+                </Button>
+            </div>
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Batal</Button>
@@ -143,6 +156,10 @@ export function RiskAnalysisModal({ potentialRisk, isOpen, onOpenChange, onSave 
       <ImpactCriteriaModal 
         isOpen={isImpactCriteriaModalOpen}
         onOpenChange={setIsImpactCriteriaModalOpen}
+      />
+      <RiskMatrixModal
+        isOpen={isRiskMatrixModalOpen}
+        onOpenChange={setIsRiskMatrixModalOpen}
       />
     </>
   );

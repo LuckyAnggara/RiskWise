@@ -1,6 +1,6 @@
 
-export type LikelihoodImpactLevel = 'Very Low' | 'Low' | 'Medium' | 'High' | 'Very High';
-export const LIKELIHOOD_IMPACT_LEVELS: LikelihoodImpactLevel[] = ['Very Low', 'Low', 'Medium', 'High', 'Very High'];
+export type LikelihoodImpactLevel = 'Sangat Rendah' | 'Rendah' | 'Sedang' | 'Tinggi' | 'Sangat Tinggi';
+export const LIKELIHOOD_IMPACT_LEVELS: LikelihoodImpactLevel[] = ['Sangat Rendah', 'Rendah', 'Sedang', 'Tinggi', 'Sangat Tinggi'];
 
 export const RISK_CATEGORIES = [
   'Kebijakan', 
@@ -55,11 +55,12 @@ export interface Control {
   id:string;
   potentialRiskId: string; // Links to PotentialRisk
   description: string;
-  effectiveness: 'Low' | 'Medium' | 'High' | null;
-  status: 'Planned' | 'In Progress' | 'Implemented' | 'Ineffective';
+  effectiveness: 'Low' | 'Medium' | 'High' | null; // Tetap Inggris untuk kemudahan internal jika perlu, atau bisa juga dilokalisasi
+  status: 'Planned' | 'In Progress' | 'Implemented' | 'Ineffective'; // Sama, bisa dilokalisasi
   createdAt: string; // ISO date string
   updatedAt?: string; // ISO date string
 }
 
 // Example: Combined Risk Level (can be calculated)
-export type RiskLevel = 'Low' | 'Medium' | 'High' | 'Critical';
+export type RiskLevel = 'Sangat Rendah' | 'Rendah' | 'Sedang' | 'Tinggi' | 'Sangat Tinggi';
+
