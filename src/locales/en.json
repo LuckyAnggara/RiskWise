@@ -37,7 +37,8 @@
     "tableHeaderOwner": "Owner",
     "tableHeaderLevel": "Level",
     "tableHeaderGoal": "Goal",
-    "stableTrend": "Stable"
+    "stableTrend": "Stable",
+    "loadingData": "Loading dashboard data..."
   },
   "GoalsPage": {
     "title": "Goals",
@@ -48,7 +49,16 @@
     "goalCardCreated": "Created: {date}",
     "goalCardRisks": "{count} Risk",
     "goalCardRisks_plural": "{count} Risks",
-    "goalCardViewRisks": "View Risks"
+    "goalCardViewRisks": "View Risks",
+    "toastGoalUpdatedTitle": "Goal Updated",
+    "toastGoalUpdatedDescription": "Goal \"{name}\" has been successfully updated.",
+    "toastGoalAddedTitle": "Goal Added",
+    "toastGoalAddedDescription": "New goal \"{name}\" has been successfully added.",
+    "toastGoalDeletedTitle": "Goal Deleted",
+    "toastGoalDeletedDescription": "Goal \"{name}\" has been deleted.",
+    "loadingData": "Loading goals data...",
+    "editGoalAriaLabel": "Edit goal {name}",
+    "deleteGoalAriaLabel": "Delete goal {name}"
   },
   "AddGoalDialog": {
     "addTitle": "Add New Goal",
@@ -84,7 +94,38 @@
     "dropdownManageControls": "Manage Controls",
     "dropdownDeletePotentialRisk": "Delete Potential Risk",
     "toastCannotAddRiskTitle": "Cannot Add Risk",
-    "toastCannotAddRiskDescription": "Please create at least one goal for the current UPR/Period before adding a potential risk."
+    "toastCannotAddRiskDescription": "Please create at least one goal for the current UPR/Period before adding a potential risk.",
+    "loadingData": "Loading all potential risks data...",
+    "toastPRAnalyzedTitle": "Potential Risk Analyzed",
+    "toastPRAnalyzedDescription": "Analysis saved for: \"{description}\"",
+    "toastControlUpdatedTitle": "Control Updated",
+    "toastControlAddedTitle": "Control Added",
+    "toastControlSavedDescription": "Control \"{description}\" {action}.",
+    "toastPRDeletedTitle": "Potential Risk Deleted",
+    "toastPRDeletedDescription": "Potential risk \"{description}\" deleted.",
+    "toastControlDeletedTitle": "Control Deleted",
+    "toastControlDeletedDescription": "Control \"{description}\" deleted."
+  },
+  "GoalRisksPage": {
+    "title": "Potential Risks for Goal: {goalName}",
+    "pageDescription": "{goalDescription}",
+    "backToGoalsButton": "Back to Goals",
+    "identifiedPotentialRisksTitle": "Identified Potential Risks ({count})",
+    "emptyStateTitle": "No potential risks identified yet",
+    "emptyStateDescription": "Use the AI tool above to brainstorm potential risks for this goal.",
+    "loadingData": "Loading goal and potential risk data...",
+    "goalNotFound": "Goal not found for UPR: {uprId}, Period: {period}.",
+    "toastPotentialRisksIdentifiedTitle": "Potential Risks Identified!",
+    "toastPotentialRisksIdentifiedDescription": "{count} potential risks brainstormed for \"{goalName}\". You can now edit their details and add causes.",
+    "toastAnalysisSavedTitle": "Potential Risk Analyzed",
+    "toastAnalysisSavedDescription": "Analysis saved for: \"{description}\"",
+    "toastControlUpdatedTitle": "Control Updated",
+    "toastControlAddedTitle": "Control Added",
+    "toastControlSavedDescription": "Control \"{description}\" {action}.",
+    "toastPotentialRiskDeletedTitle": "Potential Risk Deleted",
+    "toastPotentialRiskDeletedDescription": "Potential risk \"{description}\" deleted.",
+    "toastControlDeletedTitle": "Control Deleted",
+    "toastControlDeletedDescription": "Control \"{description}\" deleted."
   },
   "ManagePotentialRiskPage": {
     "addTitle": "Add New Potential Risk",
@@ -247,3 +288,5 @@
       "success": "Success"
   }
 }
+
+    
