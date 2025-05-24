@@ -1,13 +1,14 @@
 
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { PageHeader } from '@/components/ui/page-header';
 import { GoalCard } from '@/components/goals/goal-card';
 import { AddGoalDialog } from '@/components/goals/add-goal-dialog';
 import type { Goal, PotentialRisk } from '@/lib/types';
-import { PlusCircle, Target, Loader2 } from 'lucide-react';
+import { PlusCircle, Target, Loader2, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { getCurrentUprId, getCurrentPeriod, initializeAppContext } from '@/lib/upr-period-context';
 
@@ -28,6 +29,7 @@ export default function GoalsPage() {
   const [currentUprId, setCurrentUprId] = useState('');
   const [currentPeriod, setCurrentPeriod] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
   const { toast } = useToast();
 
   useEffect(() => {
@@ -103,6 +105,16 @@ export default function GoalsPage() {
       return updatedGoals;
     });
   };
+
+  const filteredGoals = useMemo(() => {
+    if (!searchTerm) {
+      return goals;
+    }
+    return goals.filter(goal => 
+      goal.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      goal.description.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [goals, searchTerm]);
   
   if (isLoading || !currentUprId || !currentPeriod) {
     return (
@@ -132,7 +144,30 @@ export default function GoalsPage() {
         }
       />
 
-      {goals.length === 0 ? (
+      <div className="mb-4">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            type="search"
+            placeholder="Cari sasaran berdasarkan nama atau deskripsi..."
+            className="pl-10 w-full md:w-1/2 lg:w-1/3"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+        </div>
+      </div>
+
+      {filteredGoals.length === 0 && goals.length > 0 && searchTerm && (
+        <div className="text-center py-10 border-2 border-dashed border-muted-foreground/30 rounded-lg">
+          <Search className="mx-auto h-12 w-12 text-muted-foreground" />
+          <h3 className="mt-2 text-lg font-medium">Tidak ada sasaran ditemukan</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Tidak ada sasaran yang cocok dengan kata kunci pencarian Anda: "{searchTerm}".
+          </p>
+        </div>
+      )}
+
+      {filteredGoals.length === 0 && (goals.length === 0 || !searchTerm) && (
         <div className="text-center py-10 border-2 border-dashed border-muted-foreground/30 rounded-lg">
           <Target className="mx-auto h-12 w-12 text-muted-foreground" />
           <h3 className="mt-2 text-lg font-medium">Belum ada sasaran untuk UPR/Periode ini</h3>
@@ -152,9 +187,11 @@ export default function GoalsPage() {
             />
           </div>
         </div>
-      ) : (
+      )}
+
+      {filteredGoals.length > 0 && (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {goals.map((goal) => (
+          {filteredGoals.map((goal) => (
             <GoalCard 
               key={goal.id} 
               goal={goal} 

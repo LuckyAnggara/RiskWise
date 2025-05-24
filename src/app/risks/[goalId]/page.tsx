@@ -302,7 +302,7 @@ export default function GoalRisksPage() {
 
       <div>
         <div className="flex items-center justify-between mb-4">
-            <h2 className="text-2xl font-semibold">Potensi Risiko Teridentifikasi ({potentialRisks.length})</h2>
+            <h2 className="text-xl font-semibold">Potensi Risiko Teridentifikasi ({potentialRisks.length})</h2>
             <div className="flex items-center space-x-2">
                 <Button 
                     variant={viewMode === 'card' ? 'default' : 'outline'} 

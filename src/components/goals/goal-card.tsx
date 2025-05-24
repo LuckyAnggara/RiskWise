@@ -38,16 +38,16 @@ export function GoalCard({ goal, riskCount = 0, onEditGoal, onDeleteGoal }: Goal
             </Button>
           </div>
         </div>
-        <CardTitle className="text-xl">{goal.name}</CardTitle>
-        <CardDescription className="line-clamp-3 min-h-[3.75rem]">{goal.description}</CardDescription>
+        <CardTitle className="text-lg">{goal.name}</CardTitle> 
+        <CardDescription className="line-clamp-3 min-h-[3.75rem] text-sm">{goal.description}</CardDescription>
       </CardHeader>
       <CardContent className="flex-grow">
-        <p className="text-sm text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           Dibuat: {new Date(goal.createdAt).toLocaleDateString()}
         </p>
       </CardContent>
       <CardFooter className="flex justify-between items-center">
-        <div className="text-sm text-muted-foreground">
+        <div className="text-xs text-muted-foreground">
           {riskCount} {riskCount === 1 ? 'Risiko' : 'Risiko'}
         </div>
         <Link href={`/risks/${goal.id}`} passHref>
