@@ -1,7 +1,7 @@
 
 "use client";
 
-import {Link} from 'next-intl'; // Corrected import
+import NextLink from 'next/link'; // Using NextLink to avoid conflict
 import { usePathname } from "next/navigation";
 import { LayoutDashboard, Target, ListChecks, Cog } from "lucide-react"; 
 import { cn } from "@/lib/utils";
@@ -13,20 +13,21 @@ import {
   SidebarGroupLabel,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { useTranslations } from 'next-intl';
+import { useTranslations, useLocale } from 'next-intl';
 
 interface NavItem {
   key: string; 
-  href: string;
+  href: string; // Base href, without locale
   icon: React.ElementType;
 }
 
 export function SidebarNav() {
   const t = useTranslations('SidebarNav');
-  const pathname = usePathname(); 
+  const pathname = usePathname(); // Full path with locale
+  const locale = useLocale();
   const { openMobile, setOpenMobile } = useSidebar();
 
-  const cleanPathname = pathname.replace(/^\/(en|id)/, '') || '/';
+  const cleanPathname = pathname.startsWith(`/${locale}`) ? pathname.substring(`/${locale}`.length) || '/' : pathname;
 
   const navItems: NavItem[] = [
     { key: "dashboard", href: "/", icon: LayoutDashboard },
@@ -49,25 +50,27 @@ export function SidebarNav() {
     <SidebarMenu>
       <SidebarGroup>
         <SidebarGroupLabel>{t('menu')}</SidebarGroupLabel>
-        {navItems.map((item) => (
-          <SidebarMenuItem key={item.href}>
-            <Link href={item.href}>
-              <SidebarMenuButton
-                asChild
-                isActive={isActive(item.href)}
-                tooltip={t(item.key)}
-                onClick={() => {
-                  if (openMobile) setOpenMobile(false);
-                }}
-              >
-                <a>
+        {navItems.map((item) => {
+          // Construct the full href with locale for next/link
+          const fullHref = `/${locale}${item.href === "/" ? "" : item.href}`;
+          return (
+            <SidebarMenuItem key={item.href}>
+              <NextLink href={fullHref} passHref legacyBehavior>
+                <SidebarMenuButton
+                  as="a" // Ensure SidebarMenuButton renders as an 'a' tag due to legacyBehavior
+                  isActive={isActive(item.href)}
+                  tooltip={t(item.key)}
+                  onClick={() => {
+                    if (openMobile) setOpenMobile(false);
+                  }}
+                >
                   <item.icon className="h-5 w-5" />
                   <span>{t(item.key)}</span>
-                </a>
-              </SidebarMenuButton>
-            </Link>
-          </SidebarMenuItem>
-        ))}
+                </SidebarMenuButton>
+              </NextLink>
+            </SidebarMenuItem>
+          );
+        })}
       </SidebarGroup>
     </SidebarMenu>
   );

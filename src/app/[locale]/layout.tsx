@@ -22,25 +22,29 @@ type Props = {
 };
  
 export default async function LocaleLayout({children, params: {locale}}: Props) {
+  console.log(`[LocaleLayout] Rendering for locale: ${locale}`);
   const supportedLocales = ['en', 'id'];
   if (!supportedLocales.includes(locale)) {
+    console.error(`[LocaleLayout] Unsupported locale: ${locale}. Calling notFound().`);
     notFound();
   }
  
   let messages;
   try {
     messages = await getMessages();
+    console.log(`[LocaleLayout] Messages received from getMessages() for locale ${locale}. Type: ${typeof messages}, Value:`, messages ? Object.keys(messages).length > 0 ? "{...}" : "{}" : messages);
     // Explicitly check if messages is a non-null object.
-    // If messages are still not a valid object here, something is fundamentally wrong
-    // with the message-loading pipeline or getMessages itself.
     if (typeof messages !== 'object' || messages === null) {
-      // console.error(`[LocaleLayout] Critical: Messages for locale ${locale} resolved by getMessages() were not a valid object. Received:`, messages);
+      console.error(`[LocaleLayout] Critical: Messages for locale ${locale} resolved by getMessages() were not a valid object. Received:`, messages, ". Calling notFound().");
       notFound(); 
     }
+     if (Object.keys(messages).length === 0 && locale !== 'id') { // Allow 'id' to be initially empty
+        console.warn(`[LocaleLayout] Messages for locale ${locale} is an empty object after getMessages(). This might lead to issues.`);
+        // Potentially call notFound() if empty messages are not allowed for a primary locale like 'en'
+        // For now, we let it pass to see provider behavior with {}
+     }
   } catch (error) {
-    // This might happen if i18n.ts throws an error that isn't caught,
-    // or if getMessages() itself throws.
-    // console.error(`[LocaleLayout] Critical: Error fetching messages via getMessages() for locale ${locale}:`, error);
+    console.error(`[LocaleLayout] Critical: Error fetching messages via getMessages() for locale ${locale}:`, error, ". Calling notFound().");
     notFound();
   }
  
@@ -56,4 +60,3 @@ export default async function LocaleLayout({children, params: {locale}}: Props) 
     </html>
   );
 }
-

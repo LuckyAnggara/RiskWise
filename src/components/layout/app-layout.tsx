@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import {Link} from 'next-intl'; // Corrected import
+import NextLink from 'next/link'; // Using NextLink to avoid conflict if next-intl/Link was also aliased to Link
 import {
   SidebarProvider,
   Sidebar,
@@ -21,10 +21,11 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { LogOut, User, Settings as SettingsIcon } from "lucide-react";
 import { Toaster } from "@/components/ui/toaster";
 import { getCurrentUprId, getCurrentPeriod, initializeAppContext } from '@/lib/upr-period-context';
-import { useTranslations } from 'next-intl';
+import { useTranslations, useLocale } from 'next-intl';
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const t = useTranslations('AppLayout');
+  const locale = useLocale();
   const [currentUpr, setCurrentUpr] = useState('');
   const [currentPeriodDisplay, setCurrentPeriodDisplay] = useState('');
 
@@ -34,17 +35,19 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     setCurrentPeriodDisplay(context.period);
   }, []);
 
+  const homeHref = `/${locale}`;
+  const settingsHref = `/${locale}/settings`;
 
   return (
     <SidebarProvider defaultOpen>
       <Sidebar variant="sidebar" collapsible="icon" side="left">
         <SidebarHeader className="p-4">
-          <Link href="/" className="flex items-center gap-2 group-data-[collapsible=icon]:justify-center">
+          <NextLink href={homeHref} className="flex items-center gap-2 group-data-[collapsible=icon]:justify-center">
             <AppLogo className="h-8 w-8 text-primary" />
             <span className="font-semibold text-lg text-primary group-data-[collapsible=icon]:hidden">
               RiskWise
             </span>
-          </Link>
+          </NextLink>
         </SidebarHeader>
         <Separator className="group-data-[collapsible=icon]:hidden" />
         <SidebarContent>
@@ -84,10 +87,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                 <span>{t('profile')}</span>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
-                <Link href="/settings">
+                <NextLink href={settingsHref}>
                   <SettingsIcon className="mr-2 h-4 w-4" />
                   <span>{t('settings')}</span>
-                </Link>
+                </NextLink>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => alert('Logout functionality to be implemented.')}>
