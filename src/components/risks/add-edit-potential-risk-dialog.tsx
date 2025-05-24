@@ -10,7 +10,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger, // Added DialogTrigger
+  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -43,6 +43,8 @@ interface AddEditPotentialRiskDialogProps {
   currentUprId: string;
   currentPeriod: string;
 }
+
+const NO_CATEGORY_SENTINEL = "__NONE__"; // Sentinel value for "No Category"
 
 export function AddEditPotentialRiskDialog({ 
   goals, 
@@ -108,7 +110,7 @@ export function AddEditPotentialRiskDialog({
       id: existingPotentialRisk?.id || `prisk_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       goalId: data.goalId,
       description: data.description,
-      category: data.category,
+      category: data.category, // This will be null if "_No Category_" was selected
       owner: data.owner || null, // Ensure owner is null if empty string
       likelihood: existingPotentialRisk?.likelihood || null,
       impact: existingPotentialRisk?.impact || null,
@@ -178,14 +180,20 @@ export function AddEditPotentialRiskDialog({
           <div className="space-y-1.5">
             <Label htmlFor="categoryPotentialRisk">Risk Category</Label>
             <Select
-              value={selectedCategory || ""}
-              onValueChange={(value) => setValue("category", value as RiskCategory, { shouldValidate: true })}
+              value={selectedCategory || ""} // If selectedCategory is null, Select value is "", showing placeholder
+              onValueChange={(value) => {
+                if (value === NO_CATEGORY_SENTINEL) {
+                  setValue("category", null, { shouldValidate: true });
+                } else {
+                  setValue("category", value as RiskCategory, { shouldValidate: true });
+                }
+              }}
             >
               <SelectTrigger id="categoryPotentialRisk" className={errors.category ? "border-destructive" : ""}>
                 <SelectValue placeholder="Select category (optional)" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">_No Category_</SelectItem>
+                <SelectItem value={NO_CATEGORY_SENTINEL}>_No Category_</SelectItem>
                 {RISK_CATEGORIES.map(cat => (
                   <SelectItem key={cat} value={cat}>{cat}</SelectItem>
                 ))}
