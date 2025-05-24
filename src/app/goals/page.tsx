@@ -6,16 +6,24 @@ import { PageHeader } from '@/components/ui/page-header';
 import { GoalCard } from '@/components/goals/goal-card';
 import { AddGoalDialog } from '@/components/goals/add-goal-dialog';
 import type { Goal } from '@/lib/types';
-import { PlusCircle, Target } from 'lucide-react'; // Added Target here
+import { PlusCircle, Target } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 
-// Mock data for initial state - in a real app, this would come from a store or API
-const INITIAL_GOALS: Goal[] = [
+// Simulated current UPR and Period context
+const CURRENT_UPR_ID = 'UPR001';
+const CURRENT_PERIOD = '2024';
+
+// Initial data if localStorage is empty, will be tagged with current UPR/Period
+const INITIAL_GOALS_TEMPLATE: Omit<Goal, 'uprId' | 'period'>[] = [
   { id: 'g1', name: 'Launch New Product X', description: 'Successfully develop and launch Product X by Q4 2024 to capture 5% market share within the first year.', createdAt: '2023-10-15T10:00:00Z' },
   { id: 'g2', name: 'Improve Customer Satisfaction', description: 'Increase overall customer satisfaction (CSAT) score from 80% to 90% by end of 2024 through improved support and product usability.', createdAt: '2023-11-01T14:30:00Z' },
   { id: 'g3', name: 'Expand to European Market', description: 'Establish a market presence in at least 3 key European countries by mid-2025, achieving initial sales targets.', createdAt: '2024-01-20T09:15:00Z' },
 ];
+
+const getGoalsStorageKey = (uprId: string, period: string) => `riskwise-upr${uprId}-period${period}-goals`;
+const getRisksStorageKey = (uprId: string, period: string, goalId: string) => `riskwise-upr${uprId}-period${period}-goal${goalId}-risks`;
+const getControlsStorageKey = (uprId: string, period: string, riskId: string) => `riskwise-upr${uprId}-period${period}-risk${riskId}-controls`;
 
 
 export default function GoalsPage() {
@@ -23,39 +31,53 @@ export default function GoalsPage() {
   const { toast } = useToast();
 
   useEffect(() => {
-    // Simulate fetching data
     let storedGoalsData = null;
     if (typeof window !== 'undefined') {
-      storedGoalsData = localStorage.getItem('riskwise-goals');
+      const storageKey = getGoalsStorageKey(CURRENT_UPR_ID, CURRENT_PERIOD);
+      storedGoalsData = localStorage.getItem(storageKey);
     }
     
     if (storedGoalsData) {
       setGoals(JSON.parse(storedGoalsData));
     } else {
-      setGoals(INITIAL_GOALS);
+      const initialGoalsWithContext = INITIAL_GOALS_TEMPLATE.map(g => ({
+        ...g,
+        uprId: CURRENT_UPR_ID,
+        period: CURRENT_PERIOD,
+      }));
+      setGoals(initialGoalsWithContext);
       if (typeof window !== 'undefined') {
-        localStorage.setItem('riskwise-goals', JSON.stringify(INITIAL_GOALS));
+        const storageKey = getGoalsStorageKey(CURRENT_UPR_ID, CURRENT_PERIOD);
+        localStorage.setItem(storageKey, JSON.stringify(initialGoalsWithContext));
       }
     }
   }, []);
 
   const updateLocalStorage = (updatedGoals: Goal[]) => {
     if (typeof window !== 'undefined') {
-      localStorage.setItem('riskwise-goals', JSON.stringify(updatedGoals));
+      const storageKey = getGoalsStorageKey(CURRENT_UPR_ID, CURRENT_PERIOD);
+      localStorage.setItem(storageKey, JSON.stringify(updatedGoals));
     }
   };
 
   const handleGoalSave = (goal: Goal) => {
+    // Ensure the goal has the current UPR ID and Period
+    const goalWithContext = {
+      ...goal,
+      uprId: CURRENT_UPR_ID,
+      period: CURRENT_PERIOD,
+    };
+
     setGoals(prevGoals => {
-      const existingIndex = prevGoals.findIndex(g => g.id === goal.id);
+      const existingIndex = prevGoals.findIndex(g => g.id === goalWithContext.id);
       let updatedGoals;
       if (existingIndex > -1) {
         updatedGoals = [...prevGoals];
-        updatedGoals[existingIndex] = goal;
-        toast({ title: "Goal Updated", description: `Goal "${goal.name}" has been successfully updated.` });
+        updatedGoals[existingIndex] = goalWithContext;
+        toast({ title: "Goal Updated", description: `Goal "${goalWithContext.name}" has been successfully updated.` });
       } else {
-        updatedGoals = [goal, ...prevGoals];
-        toast({ title: "Goal Added", description: `New goal "${goal.name}" has been successfully added.` });
+        updatedGoals = [goalWithContext, ...prevGoals];
+        toast({ title: "Goal Added", description: `New goal "${goalWithContext.name}" has been successfully added.` });
       }
       updateLocalStorage(updatedGoals);
       return updatedGoals;
@@ -70,14 +92,16 @@ export default function GoalsPage() {
       if (goalToDelete) {
         toast({ title: "Goal Deleted", description: `Goal "${goalToDelete.name}" has been deleted.`, variant: "destructive" });
       }
-      // Also delete associated risks and controls from localStorage if they exist
-      if (typeof window !== 'undefined') {
-        const storedRisks = localStorage.getItem(`riskwise-risks-${goalId}`);
+      
+      if (typeof window !== 'undefined' && goalToDelete) {
+        const risksStorageKey = getRisksStorageKey(goalToDelete.uprId, goalToDelete.period, goalId);
+        const storedRisks = localStorage.getItem(risksStorageKey);
         if (storedRisks) {
-          localStorage.removeItem(`riskwise-risks-${goalId}`);
+          localStorage.removeItem(risksStorageKey);
           const risks: Array<{id: string}> = JSON.parse(storedRisks);
           risks.forEach(risk => {
-            localStorage.removeItem(`riskwise-controls-${risk.id}`);
+            const controlsStorageKey = getControlsStorageKey(goalToDelete.uprId, goalToDelete.period, risk.id);
+            localStorage.removeItem(controlsStorageKey);
           });
         }
       }
@@ -88,10 +112,13 @@ export default function GoalsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Goals"
-        description="Define and manage your strategic objectives."
+        title={`Goals for UPR: ${CURRENT_UPR_ID} (Period: ${CURRENT_PERIOD})`}
+        description="Define and manage your strategic objectives for the current unit and period."
         actions={
-          <AddGoalDialog onGoalSave={handleGoalSave} 
+          <AddGoalDialog 
+            onGoalSave={handleGoalSave}
+            currentUprId={CURRENT_UPR_ID}
+            currentPeriod={CURRENT_PERIOD}
             triggerButton={
               <Button>
                 <PlusCircle className="mr-2 h-4 w-4" /> Add New Goal
@@ -104,12 +131,15 @@ export default function GoalsPage() {
       {goals.length === 0 ? (
         <div className="text-center py-10">
           <Target className="mx-auto h-12 w-12 text-muted-foreground" />
-          <h3 className="mt-2 text-lg font-medium">No goals yet</h3>
+          <h3 className="mt-2 text-lg font-medium">No goals yet for this UPR/Period</h3>
           <p className="mt-1 text-sm text-muted-foreground">
             Get started by adding your first goal.
           </p>
           <div className="mt-6">
-            <AddGoalDialog onGoalSave={handleGoalSave} 
+            <AddGoalDialog 
+              onGoalSave={handleGoalSave} 
+              currentUprId={CURRENT_UPR_ID}
+              currentPeriod={CURRENT_PERIOD}
               triggerButton={
                 <Button>
                   <PlusCircle className="mr-2 h-4 w-4" /> Add New Goal
@@ -126,7 +156,6 @@ export default function GoalsPage() {
               goal={goal} 
               onEditGoal={handleGoalSave} 
               onDeleteGoal={handleGoalDelete}
-              // riskCount can be fetched or calculated if risks are managed globally
             />
           ))}
         </div>

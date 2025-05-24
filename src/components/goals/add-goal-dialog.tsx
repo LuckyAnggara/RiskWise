@@ -32,9 +32,11 @@ interface AddGoalDialogProps {
   onGoalSave: (goal: Goal) => void;
   existingGoal?: Goal | null;
   triggerButton?: React.ReactNode;
+  currentUprId: string;
+  currentPeriod: string;
 }
 
-export function AddGoalDialog({ onGoalSave, existingGoal, triggerButton }: AddGoalDialogProps) {
+export function AddGoalDialog({ onGoalSave, existingGoal, triggerButton, currentUprId, currentPeriod }: AddGoalDialogProps) {
   const [open, setOpen] = useState(false);
   const {
     register,
@@ -65,6 +67,8 @@ export function AddGoalDialog({ onGoalSave, existingGoal, triggerButton }: AddGo
       id: existingGoal?.id || `goal_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       ...data,
       createdAt: existingGoal?.createdAt || new Date().toISOString(),
+      uprId: existingGoal?.uprId || currentUprId,
+      period: existingGoal?.period || currentPeriod,
     };
     onGoalSave(newGoal);
     setOpen(false);
@@ -87,6 +91,7 @@ export function AddGoalDialog({ onGoalSave, existingGoal, triggerButton }: AddGo
           <DialogTitle>{existingGoal ? "Edit Goal" : "Add New Goal"}</DialogTitle>
           <DialogDescription>
             {existingGoal ? "Update the details of your goal." : "Define a new goal to start managing its risks."}
+            {` For UPR: ${currentUprId}, Period: ${currentPeriod}`}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)} className="grid gap-4 py-4">

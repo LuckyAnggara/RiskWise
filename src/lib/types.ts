@@ -7,22 +7,23 @@ export interface Goal {
   name: string;
   description: string;
   createdAt: string; // ISO date string
+  uprId: string; // Unit Pemilik Risiko ID
+  period: string; // e.g., "2024", "2025"
 }
 
 export interface Risk {
   id: string;
-  goalId: string;
+  goalId: string; // Will link to a Goal that has uprId and period
   description: string;
   likelihood: LikelihoodImpactLevel | null;
   impact: LikelihoodImpactLevel | null;
   identifiedAt: string; // ISO date string
   analysisCompletedAt?: string; // ISO date string
-  // controls are managed separately or implicitly linked
 }
 
 export interface Control {
   id:string;
-  riskId: string;
+  riskId: string; // Will link to a Risk, which links to a Goal with uprId and period
   description: string;
   effectiveness: 'Low' | 'Medium' | 'High' | null;
   status: 'Planned' | 'In Progress' | 'Implemented' | 'Ineffective';

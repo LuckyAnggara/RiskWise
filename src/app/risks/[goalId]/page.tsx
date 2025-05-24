@@ -18,24 +18,26 @@ import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Card, CardContent } from "@/components/ui/card";
 
-// Mock goals - in a real app, fetch this based on goalId or a global store
-const INITIAL_GOALS: Goal[] = [
-  { id: 'g1', name: 'Launch New Product X', description: 'Successfully develop and launch Product X by Q4 2024 to capture 5% market share within the first year.', createdAt: '2023-10-15T10:00:00Z' },
-  { id: 'g2', name: 'Improve Customer Satisfaction', description: 'Increase overall customer satisfaction (CSAT) score from 80% to 90% by end of 2024 through improved support and product usability.', createdAt: '2023-11-01T14:30:00Z' },
-  { id: 'g3', name: 'Expand to European Market', description: 'Establish a market presence in at least 3 key European countries by mid-2025, achieving initial sales targets.', createdAt: '2024-01-20T09:15:00Z' },
-];
+// Simulated current UPR and Period context - ideally this comes from a global context
+const CURRENT_UPR_ID = 'UPR001';
+const CURRENT_PERIOD = '2024';
 
-// Helper functions for risk level and color (moved from RiskListItem)
+const getGoalsStorageKey = (uprId: string, period: string) => `riskwise-upr${uprId}-period${period}-goals`;
+const getRisksStorageKey = (uprId: string, period: string, goalId: string) => `riskwise-upr${uprId}-period${period}-goal${goalId}-risks`;
+const getControlsStorageKey = (uprId: string, period: string, riskId: string) => `riskwise-upr${uprId}-period${period}-risk${riskId}-controls`;
+
+
+// Helper functions for risk level and color
 const getRiskLevel = (likelihood: LikelihoodImpactLevel | null, impact: LikelihoodImpactLevel | null): string => {
   if (!likelihood || !impact) return 'N/A';
   const L = { 'Very Low': 1, 'Low': 2, 'Medium': 3, 'High': 4, 'Very High': 5 };
   const I = { 'Very Low': 1, 'Low': 2, 'Medium': 3, 'High': 4, 'Very High': 5 };
   const score = L[likelihood] * I[impact];
 
-  if (score >= 20) return 'Critical'; // e.g. Very High * Very High
-  if (score >= 12) return 'High';   // e.g. High * High / Very High * Medium
-  if (score >= 6) return 'Medium';  // e.g. Medium * Medium / High * Low
-  if (score >= 3) return 'Low';     // e.g. Low * Low / Medium * Very Low
+  if (score >= 20) return 'Critical';
+  if (score >= 12) return 'High';
+  if (score >= 6) return 'Medium';
+  if (score >= 3) return 'Low';
   return 'Very Low';
 };
 
@@ -46,7 +48,7 @@ const getRiskLevelColor = (level: string) => {
     case 'medium': return 'bg-yellow-400 hover:bg-yellow-500 text-black';
     case 'low': return 'bg-green-500 hover:bg-green-600';
     case 'very low': return 'bg-sky-500 hover:bg-sky-600';
-    default: return 'bg-gray-400 hover:bg-gray-500 text-white'; // Ensure N/A has white text
+    default: return 'bg-gray-400 hover:bg-gray-500 text-white';
   }
 };
 
@@ -59,7 +61,7 @@ export default function GoalRisksPage() {
   const [goal, setGoal] = useState<Goal | null>(null);
   const [risks, setRisks] = useState<Risk[]>([]);
   const [controls, setControls] = useState<Control[]>([]);
-  const [pageIsLoading, setPageIsLoading] = useState(true); // Renamed to avoid conflict
+  const [isLoading, setIsLoading] = useState(true);
   const [viewMode, setViewMode] = useState<'card' | 'table'>('card');
   
   const [selectedRiskForAnalysis, setSelectedRiskForAnalysis] = useState<Risk | null>(null);
@@ -73,68 +75,74 @@ export default function GoalRisksPage() {
 
   const loadData = useCallback(() => {
     if (typeof window !== 'undefined' && goalId) {
-      const storedGoalsData = localStorage.getItem('riskwise-goals');
-      const allGoals: Goal[] = storedGoalsData ? JSON.parse(storedGoalsData) : INITIAL_GOALS;
-      const currentGoal = allGoals.find(g => g.id === goalId);
+      setIsLoading(true);
+      const goalsStorageKey = getGoalsStorageKey(CURRENT_UPR_ID, CURRENT_PERIOD);
+      const storedGoalsData = localStorage.getItem(goalsStorageKey);
+      const allGoals: Goal[] = storedGoalsData ? JSON.parse(storedGoalsData) : [];
+      const currentGoal = allGoals.find(g => g.id === goalId && g.uprId === CURRENT_UPR_ID && g.period === CURRENT_PERIOD);
+      
       setGoal(currentGoal || null);
 
       if (currentGoal) {
-        const storedRisksData = localStorage.getItem(`riskwise-risks-${goalId}`);
+        const risksStorageKey = getRisksStorageKey(currentGoal.uprId, currentGoal.period, goalId);
+        const storedRisksData = localStorage.getItem(risksStorageKey);
         const currentRisks: Risk[] = storedRisksData ? JSON.parse(storedRisksData) : [];
         setRisks(currentRisks);
 
         let allRiskControls: Control[] = [];
         currentRisks.forEach(risk => {
-          const storedControlsData = localStorage.getItem(`riskwise-controls-${risk.id}`);
+          const controlsStorageKey = getControlsStorageKey(currentGoal.uprId, currentGoal.period, risk.id);
+          const storedControlsData = localStorage.getItem(controlsStorageKey);
           if (storedControlsData) {
             allRiskControls = [...allRiskControls, ...JSON.parse(storedControlsData)];
           }
         });
         setControls(allRiskControls);
       }
-       setPageIsLoading(false);
-    } else if (!goalId) {
+      setIsLoading(false);
+    } else if (!goalId && typeof window !== 'undefined') {
         setGoal(null);
         setRisks([]);
         setControls([]);
-        setPageIsLoading(false);
+        setIsLoading(false);
     }
-    // If window is undefined (SSR), keep pageIsLoading true until client-side useEffect runs
   }, [goalId]);
 
   useEffect(() => {
-     // Only run loadData on client-side
     if (typeof window !== 'undefined') {
       loadData();
     }
   }, [loadData]);
   
-  // Additional useEffect to set pageIsLoading to false on client if it was true from SSR.
   useEffect(() => {
-    if (typeof window !== 'undefined' && pageIsLoading) {
-      setPageIsLoading(false);
+    if (typeof window !== 'undefined' && isLoading) {
+       // This handles the case where SSR might have isLoading=true, then client sets it.
+      // If loadData already set it to false, this won't run.
+      const tm = setTimeout(() => setIsLoading(false), 0); // Ensure it runs after initial hydration attempts
+      return () => clearTimeout(tm);
     }
-  }, [pageIsLoading]);
+  }, [isLoading]);
 
 
-  const updateRisksInStorage = (updatedRisks: Risk[]) => {
-    if (typeof window !== 'undefined' && goalId) {
-      localStorage.setItem(`riskwise-risks-${goalId}`, JSON.stringify(updatedRisks));
+  const updateRisksInStorage = (goalForRisks: Goal, updatedRisks: Risk[]) => {
+    if (typeof window !== 'undefined' && goalForRisks) {
+      const key = getRisksStorageKey(goalForRisks.uprId, goalForRisks.period, goalForRisks.id);
+      localStorage.setItem(key, JSON.stringify(updatedRisks));
     }
   };
 
-  const updateControlsInStorage = (riskId: string, updatedControlsForRisk: Control[]) => {
-     if (typeof window !== 'undefined') {
-        localStorage.setItem(`riskwise-controls-${riskId}`, JSON.stringify(updatedControlsForRisk));
+  const updateControlsInStorage = (goalForControls: Goal, riskId: string, updatedControlsForRisk: Control[]) => {
+     if (typeof window !== 'undefined' && goalForControls) {
+        const key = getControlsStorageKey(goalForControls.uprId, goalForControls.period, riskId);
+        localStorage.setItem(key, JSON.stringify(updatedControlsForRisk));
      }
   };
 
   const handleRisksIdentified = (newRisks: Risk[]) => {
+    if (!goal) return;
     const updatedRisksState = [...risks, ...newRisks];
     setRisks(updatedRisksState);
-    if (typeof window !== 'undefined' && goalId) {
-      localStorage.setItem(`riskwise-risks-${goalId}`, JSON.stringify(updatedRisksState));
-    }
+    updateRisksInStorage(goal, updatedRisksState);
   };
   
   const handleOpenAnalysisModal = (riskToAnalyze: Risk) => {
@@ -143,9 +151,10 @@ export default function GoalRisksPage() {
   };
 
   const handleSaveRiskAnalysis = (updatedRisk: Risk) => {
+    if (!goal) return;
     const newRisksState = risks.map(r => r.id === updatedRisk.id ? updatedRisk : r);
     setRisks(newRisksState);
-    updateRisksInStorage(newRisksState);
+    updateRisksInStorage(goal, newRisksState);
     toast({ title: "Risk Analyzed", description: `Analysis saved for risk: "${updatedRisk.description}"`});
     setIsAnalysisModalOpen(false);
     setSelectedRiskForAnalysis(null);
@@ -158,6 +167,7 @@ export default function GoalRisksPage() {
   };
 
   const handleSaveControl = (control: Control) => {
+    if (!goal) return;
     const riskSpecificControls = controls.filter(c => c.riskId === control.riskId);
     const existingIndex = riskSpecificControls.findIndex(c => c.id === control.id);
     let updatedRiskControlsList: Control[];
@@ -168,15 +178,14 @@ export default function GoalRisksPage() {
       updatedRiskControlsList = [...riskSpecificControls, control];
     }
     
-    updateControlsInStorage(control.riskId, updatedRiskControlsList);
+    updateControlsInStorage(goal, control.riskId, updatedRiskControlsList);
     const updatedOverallControls = controls.filter(c => c.riskId !== control.riskId).concat(updatedRiskControlsList);
     setControls(updatedOverallControls);
     
-    if (existingIndex > -1) {
-        toast({ title: "Control Updated", description: `Control "${control.description}" updated.` });
-    } else {
-        toast({ title: "Control Added", description: `Control "${control.description}" added.` });
-    }
+    toast({ 
+        title: existingIndex > -1 ? "Control Updated" : "Control Added", 
+        description: `Control "${control.description}" ${existingIndex > -1 ? 'updated' : 'added'}.` 
+    });
     
     setIsControlModalOpen(false);
     setSelectedRiskForControl(null);
@@ -184,22 +193,24 @@ export default function GoalRisksPage() {
   };
 
   const handleDeleteRisk = (riskIdToDelete: string) => {
+    if (!goal) return;
     const riskToDelete = risks.find(r => r.id === riskIdToDelete);
+    if (!riskToDelete) return;
+
     const updatedRisksState = risks.filter(r => r.id !== riskIdToDelete);
-    
     setRisks(updatedRisksState);
-    updateRisksInStorage(updatedRisksState);
+    updateRisksInStorage(goal, updatedRisksState);
       
     if (typeof window !== 'undefined') {
-      localStorage.removeItem(`riskwise-controls-${riskIdToDelete}`);
+      const controlsKey = getControlsStorageKey(goal.uprId, goal.period, riskIdToDelete);
+      localStorage.removeItem(controlsKey);
     }
     setControls(currentControls => currentControls.filter(c => c.riskId !== riskIdToDelete));
-    if(riskToDelete) {
-      toast({ title: "Risk Deleted", description: `Risk "${riskToDelete.description}" deleted.`, variant: "destructive" });
-    }
+    toast({ title: "Risk Deleted", description: `Risk "${riskToDelete.description}" deleted.`, variant: "destructive" });
   };
 
   const handleDeleteControl = (controlIdToDelete: string) => {
+    if (!goal) return;
     const controlToDelete = controls.find(c => c.id === controlIdToDelete);
     if (!controlToDelete) return;
 
@@ -207,27 +218,28 @@ export default function GoalRisksPage() {
     const updatedRiskControlsList = controls
         .filter(c => c.riskId === riskIdOfControl && c.id !== controlIdToDelete);
     
-    updateControlsInStorage(riskIdOfControl, updatedRiskControlsList);
+    updateControlsInStorage(goal, riskIdOfControl, updatedRiskControlsList);
     const updatedOverallControls = controls.filter(c => c.id !== controlIdToDelete);
     setControls(updatedOverallControls);
 
     toast({ title: "Control Deleted", description: `Control "${controlToDelete.description}" deleted.`, variant: "destructive" });
   };
 
-  if (pageIsLoading) {
+
+  if (isLoading) {
     return (
-      <div className="flex flex-col items-center justify-center h-full py-10">
+      <div className="flex flex-col items-center justify-center h-screen">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
         <p className="text-xl text-muted-foreground">Loading goal data...</p>
       </div>
     );
   }
   
-  if (!goal && !pageIsLoading) { 
+  if (!goal) { 
     return (
-      <div className="flex flex-col items-center justify-center h-full py-10">
+      <div className="flex flex-col items-center justify-center h-screen">
         <ShieldAlert className="w-16 h-16 text-muted-foreground mb-4" />
-        <p className="text-xl text-muted-foreground">Goal not found.</p>
+        <p className="text-xl text-muted-foreground">Goal not found for UPR: {CURRENT_UPR_ID}, Period: {CURRENT_PERIOD}.</p>
         <Button onClick={() => router.push('/goals')} className="mt-4">
           <ArrowLeft className="mr-2 h-4 w-4" /> Back to Goals
         </Button>
@@ -235,24 +247,11 @@ export default function GoalRisksPage() {
     );
   }
 
-  if (!goal) { 
-    return (
-        <div className="flex flex-col items-center justify-center h-full py-10">
-         <ShieldAlert className="w-16 h-16 text-muted-foreground mb-4" />
-         <p className="text-xl text-muted-foreground">Goal not found or still loading.</p>
-         <Button onClick={() => router.push('/goals')} className="mt-4">
-            <ArrowLeft className="mr-2 h-4 w-4" /> Back to Goals
-         </Button>
-       </div>
-    );
-  }
-
-
   return (
     <div className="space-y-8">
       <PageHeader
-        title={`Risks for: ${goal.name}`}
-        description={goal.description}
+        title={`Risks for Goal: ${goal.name}`}
+        description={`${goal.description} (UPR: ${goal.uprId}, Period: ${goal.period})`}
         actions={
           <Button onClick={() => router.push('/goals')} variant="outline">
             <ArrowLeft className="mr-2 h-4 w-4" /> Back to Goals
@@ -292,7 +291,7 @@ export default function GoalRisksPage() {
             <ShieldAlert className="mx-auto h-12 w-12 text-muted-foreground" />
             <h3 className="mt-2 text-lg font-medium">No risks identified yet</h3>
             <p className="mt-1 text-sm text-muted-foreground">
-              Use the AI tool above to brainstorm risks or add them manually (feature to be added).
+              Use the AI tool above to brainstorm risks.
             </p>
           </div>
         ) : viewMode === 'card' ? (
@@ -302,14 +301,14 @@ export default function GoalRisksPage() {
                 key={risk.id}
                 risk={risk}
                 controls={controls.filter(c => c.riskId === risk.id)}
-                onAnalyze={handleOpenAnalysisModal}
-                onAddControl={(r) => handleOpenControlModal(r)}
-                onEditControl={(c) => {
-                    const parentRisk = risks.find(r => r.id === c.riskId);
-                    if (parentRisk) handleOpenControlModal(parentRisk, c);
+                onAnalyze={() => handleOpenAnalysisModal(risk)}
+                onAddControl={() => handleOpenControlModal(risk)}
+                onEditControl={(controlToEdit) => {
+                    const parentRisk = risks.find(r => r.id === controlToEdit.riskId);
+                    if (parentRisk) handleOpenControlModal(parentRisk, controlToEdit);
                 }}
-                onDeleteRisk={handleDeleteRisk}
-                onDeleteControl={handleDeleteControl}
+                onDeleteRisk={() => handleDeleteRisk(risk.id)}
+                onDeleteControl={(controlId) => handleDeleteControl(controlId)}
               />
             ))}
           </div>
@@ -383,20 +382,26 @@ export default function GoalRisksPage() {
         )}
       </div>
 
-      <RiskAnalysisModal
+      {selectedRiskForAnalysis && <RiskAnalysisModal
         risk={selectedRiskForAnalysis}
         isOpen={isAnalysisModalOpen}
         onOpenChange={setIsAnalysisModalOpen}
         onSave={handleSaveRiskAnalysis}
-      />
+      />}
 
-      <RiskControlModal
+      {selectedRiskForControl && <RiskControlModal
         risk={selectedRiskForControl}
         existingControl={selectedControlForEdit}
         isOpen={isControlModalOpen}
-        onOpenChange={setIsControlModalOpen}
+        onOpenChange={(isOpen) => {
+            setIsControlModalOpen(isOpen);
+            if (!isOpen) {
+                setSelectedRiskForControl(null);
+                setSelectedControlForEdit(null);
+            }
+        }}
         onSave={handleSaveControl}
-      />
+      />}
     </div>
   );
 }

@@ -29,14 +29,16 @@ const riskSchema = z.object({
 type RiskFormData = z.infer<typeof riskSchema>;
 
 interface AddEditRiskDialogProps {
-  goals: Goal[];
+  goals: Goal[]; // These should already be filtered for the current UPR/Period by the parent
   onRiskSave: (risk: Risk, isEditing: boolean) => void;
   existingRisk?: Risk | null;
   triggerButton?: React.ReactNode;
-  defaultGoalId?: string; // Can be used if triggering from a specific goal's context in future
+  defaultGoalId?: string;
+  currentUprId: string; // Passed to confirm context
+  currentPeriod: string; // Passed to confirm context
 }
 
-export function AddEditRiskDialog({ goals, onRiskSave, existingRisk, triggerButton, defaultGoalId }: AddEditRiskDialogProps) {
+export function AddEditRiskDialog({ goals, onRiskSave, existingRisk, triggerButton, defaultGoalId, currentUprId, currentPeriod }: AddEditRiskDialogProps) {
   const [open, setOpen] = useState(false);
   const isEditing = !!existingRisk;
 
@@ -67,16 +69,28 @@ export function AddEditRiskDialog({ goals, onRiskSave, existingRisk, triggerButt
       } else {
         reset({
           description: "",
-          goalId: defaultGoalId || (goals.length > 0 ? goals[0].id : ""), // Default to first goal or provided default
+          goalId: defaultGoalId || (goals.length > 0 ? goals[0].id : ""), 
         });
       }
     }
   }, [existingRisk, open, reset, defaultGoalId, goals]);
 
   const onSubmit: SubmitHandler<RiskFormData> = (data) => {
+    const parentGoal = goals.find(g => g.id === data.goalId);
+    if (!parentGoal) {
+      // This should ideally not happen if goals are correctly filtered
+      console.error("Selected parent goal not found or not in current context.");
+      return; 
+    }
+    // Double-check context, though parentGoal should already be from current context
+    if(parentGoal.uprId !== currentUprId || parentGoal.period !== currentPeriod) {
+        console.error("Attempting to save risk to a goal outside the current UPR/Period context.");
+        return;
+    }
+
     const riskData: Risk = {
       id: existingRisk?.id || `risk_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-      goalId: data.goalId,
+      goalId: data.goalId, // This goal inherently has the uprId and period
       description: data.description,
       likelihood: existingRisk?.likelihood || null,
       impact: existingRisk?.impact || null,
@@ -104,6 +118,7 @@ export function AddEditRiskDialog({ goals, onRiskSave, existingRisk, triggerButt
           <DialogTitle>{isEditing ? "Edit Risk" : "Add New Risk"}</DialogTitle>
           <DialogDescription>
             {isEditing ? "Update the details of this risk." : "Define a new risk and associate it with a goal."}
+            {` For UPR: ${currentUprId}, Period: ${currentPeriod}`}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)} className="grid gap-4 py-4">
@@ -122,7 +137,7 @@ export function AddEditRiskDialog({ goals, onRiskSave, existingRisk, triggerButt
                     <SelectItem key={goal.id} value={goal.id}>{goal.name}</SelectItem>
                   ))
                 ) : (
-                  <SelectItem value="no-goals" disabled>No goals available. Create a goal first.</SelectItem>
+                  <SelectItem value="no-goals" disabled>No goals available in this UPR/Period. Create a goal first.</SelectItem>
                 )}
               </SelectContent>
             </Select>

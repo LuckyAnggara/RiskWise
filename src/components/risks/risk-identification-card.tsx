@@ -13,7 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 interface RiskIdentificationCardProps {
-  goal: Goal;
+  goal: Goal; // Goal already contains uprId and period
   onRisksIdentified: (newRisks: Risk[]) => void;
 }
 
@@ -27,11 +27,12 @@ export function RiskIdentificationCard({ goal, onRisksIdentified }: RiskIdentifi
     setIsLoading(true);
     setError(null);
     try {
-      const result = await brainstormRisksAction({ goalDescription: goalDescriptionForAI });
+      // The goalDescription is the primary input for the AI; UPR/Period context is implicit via the goal.
+      const result = await brainstormRisksAction({ goalDescription: `${goalDescriptionForAI} (Context: UPR ${goal.uprId}, Period ${goal.period})` });
       if (result.success && result.data) {
         const newRisks: Risk[] = result.data.risks.map(desc => ({
           id: `risk_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-          goalId: goal.id,
+          goalId: goal.id, // This links it to the goal with its UPR and Period
           description: desc,
           likelihood: null,
           impact: null,
@@ -70,6 +71,7 @@ export function RiskIdentificationCard({ goal, onRisksIdentified }: RiskIdentifi
         <CardTitle>AI-Powered Risk Identification</CardTitle>
         <CardDescription>
           Use our AI assistant to brainstorm potential risks associated with your goal: <span className="font-semibold">{goal.name}</span>.
+          {` (UPR: ${goal.uprId}, Period: ${goal.period})`}
           You can refine the goal description below for better results.
         </CardDescription>
       </CardHeader>
