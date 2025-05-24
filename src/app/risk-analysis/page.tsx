@@ -6,10 +6,9 @@ import { useRouter } from 'next/navigation';
 import { PageHeader } from '@/components/ui/page-header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { RiskAnalysisModal } from '@/components/risks/risk-analysis-modal';
-import type { Goal, PotentialRisk, RiskCategory, LikelihoodImpactLevel } from '@/lib/types';
-import { RISK_CATEGORIES, LIKELIHOOD_IMPACT_LEVELS } from '@/lib/types';
-import { Loader2, Settings2, BarChart3, ListChecks, ChevronDown, ChevronUp, Search, Filter } from 'lucide-react';
+import type { Goal, PotentialRisk, RiskCause, RiskCategory, LikelihoodImpactLevel } from '@/lib/types';
+import { RISK_CATEGORIES } from '@/lib/types'; // Removed LIKELIHOOD_IMPACT_LEVELS as it's not directly used here for filtering
+import { Loader2, Settings2, Zap, ListChecks, ChevronDown, ChevronUp, Search, Filter } from 'lucide-react'; // Changed icon from BarChart3 to Zap for "Analisis Penyebab"
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -17,9 +16,12 @@ import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, DropdownMenuCheckboxItem, DropdownMenuLabel } from "@/components/ui/dropdown-menu";
 import { getCurrentUprId, getCurrentPeriod, initializeAppContext } from '@/lib/upr-period-context';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { ViewRiskCausesForAnalysisModal } from '@/components/risks/view-risk-causes-for-analysis-modal'; // Import the new modal
 
 const getGoalsStorageKey = (uprId: string, period: string) => `riskwise-upr${uprId}-period${period}-goals`;
 const getPotentialRisksStorageKey = (uprId: string, period: string, goalId: string) => `riskwise-upr${uprId}-period${period}-goal${goalId}-potentialRisks`;
+const getRiskCausesStorageKey = (uprId: string, period: string, potentialRiskId: string) => `riskwise-upr${uprId}-period${period}-potentialRisk${potentialRiskId}-causes`;
+
 
 const getRiskLevel = (likelihood: LikelihoodImpactLevel | null, impact: LikelihoodImpactLevel | null): string => {
   if (!likelihood || !impact) return 'N/A';
@@ -29,7 +31,7 @@ const getRiskLevel = (likelihood: LikelihoodImpactLevel | null, impact: Likeliho
   const likelihoodValue = L[likelihood];
   const impactValue = I[impact];
 
-  if (!likelihoodValue || !impactValue) return 'N/A'; // Should not happen if types are correct
+  if (!likelihoodValue || !impactValue) return 'N/A';
 
   const score = likelihoodValue * impactValue;
 
@@ -46,7 +48,7 @@ const getRiskLevelColor = (level: string) => {
     case 'sangat tinggi': return 'bg-red-600 hover:bg-red-700 text-white';
     case 'tinggi': return 'bg-orange-500 hover:bg-orange-600 text-white';
     case 'sedang': return 'bg-yellow-400 hover:bg-yellow-500 text-black dark:bg-yellow-500 dark:text-black';
-    case 'rendah': return 'bg-blue-500 hover:bg-blue-600 text-white'; // Changed from green to blue as per matrix
+    case 'rendah': return 'bg-blue-500 hover:bg-blue-600 text-white';
     case 'sangat rendah': return 'bg-green-500 hover:bg-green-600 text-white';
     default: return 'bg-gray-400 hover:bg-gray-500 text-white';
   }
@@ -58,15 +60,16 @@ export default function RiskAnalysisPage() {
   const [currentPeriod, setCurrentPeriod] = useState('');
   const [goals, setGoals] = useState<Goal[]>([]);
   const [allPotentialRisks, setAllPotentialRisks] = useState<PotentialRisk[]>([]);
+  const [allRiskCauses, setAllRiskCauses] = useState<RiskCause[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [expandedRiskId, setExpandedRiskId] = useState<string | null>(null);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategories, setSelectedCategories] = useState<RiskCategory[]>([]);
   const [selectedGoalIds, setSelectedGoalIds] = useState<string[]>([]);
-
-  const [selectedPotentialRiskForAnalysis, setSelectedPotentialRiskForAnalysis] = useState<PotentialRisk | null>(null);
-  const [isAnalysisModalOpen, setIsAnalysisModalOpen] = useState(false);
+  
+  const [selectedPotentialRiskForCauseAnalysis, setSelectedPotentialRiskForCauseAnalysis] = useState<PotentialRisk | null>(null);
+  const [isViewCausesModalOpen, setIsViewCausesModalOpen] = useState(false);
   
   const { toast } = useToast();
 
@@ -79,15 +82,26 @@ export default function RiskAnalysisPage() {
       setGoals(loadedGoals);
 
       let collectedPotentialRisks: PotentialRisk[] = [];
+      let collectedRiskCauses: RiskCause[] = [];
+
       loadedGoals.forEach(goal => {
         const potentialRisksStorageKey = getPotentialRisksStorageKey(goal.uprId, goal.period, goal.id);
         const storedPotentialRisksData = localStorage.getItem(potentialRisksStorageKey);
         if (storedPotentialRisksData) {
           const goalPotentialRisks: PotentialRisk[] = JSON.parse(storedPotentialRisksData);
           collectedPotentialRisks = [...collectedPotentialRisks, ...goalPotentialRisks];
+          
+          goalPotentialRisks.forEach(pRisk => {
+            const causesStorageKey = getRiskCausesStorageKey(goal.uprId, goal.period, pRisk.id);
+            const storedCausesData = localStorage.getItem(causesStorageKey);
+            if (storedCausesData) {
+              collectedRiskCauses = [...collectedRiskCauses, ...JSON.parse(storedCausesData)];
+            }
+          });
         }
       });
       setAllPotentialRisks(collectedPotentialRisks);
+      setAllRiskCauses(collectedRiskCauses);
       setIsLoading(false);
     }
   }, [currentUprId, currentPeriod]);
@@ -104,36 +118,29 @@ export default function RiskAnalysisPage() {
     if (currentUprId && currentPeriod) {
       loadData();
     }
-  }, [loadData, currentUprId, currentPeriod, router]);
+  }, [loadData, currentUprId, currentPeriod]); // Removed router as direct dependency, loadData re-fetches
 
-  const updatePotentialRisksInStorageForGoal = (uprId: string, period: string, goalId: string, updatedPotentialRisksForGoal: PotentialRisk[]) => {
-    if (typeof window !== 'undefined') {
-      const key = getPotentialRisksStorageKey(uprId, period, goalId);
-      localStorage.setItem(key, JSON.stringify(updatedPotentialRisksForGoal.sort((a,b) => a.description.localeCompare(b.description))));
-    }
-  };
-  
-  const handleOpenAnalysisModal = (pRiskToAnalyze: PotentialRisk) => {
-    setSelectedPotentialRiskForAnalysis(pRiskToAnalyze);
-    setIsAnalysisModalOpen(true);
+  const handleOpenViewCausesModal = (pRisk: PotentialRisk) => {
+    setSelectedPotentialRiskForCauseAnalysis(pRisk);
+    setIsViewCausesModalOpen(true);
   };
 
-  const handleSaveRiskAnalysis = (updatedPotentialRisk: PotentialRisk) => {
-    const parentGoal = goals.find(g => g.id === updatedPotentialRisk.goalId);
+  const handleRiskCauseUpdated = (updatedRiskCause: RiskCause) => {
+    if (!selectedPotentialRiskForCauseAnalysis) return;
+
+    const parentGoal = goals.find(g => g.id === selectedPotentialRiskForCauseAnalysis.goalId);
     if (!parentGoal) return;
 
-    setAllPotentialRisks(prevRisks => 
-        prevRisks.map(pr => pr.id === updatedPotentialRisk.id ? updatedPotentialRisk : pr)
+    // Update the specific cause in allRiskCauses state
+    const newAllRiskCauses = allRiskCauses.map(rc => 
+        rc.id === updatedRiskCause.id ? updatedRiskCause : rc
     );
-    
-    const goalPotentialRisks = allPotentialRisks
-        .map(pr => pr.id === updatedPotentialRisk.id ? updatedPotentialRisk : pr)
-        .filter(pr => pr.goalId === updatedPotentialRisk.goalId);
-    updatePotentialRisksInStorageForGoal(parentGoal.uprId, parentGoal.period, updatedPotentialRisk.goalId, goalPotentialRisks);
+    setAllRiskCauses(newAllRiskCauses);
 
-    toast({ title: "Analisis Risiko Disimpan", description: `Analisis disimpan untuk: "${updatedPotentialRisk.description}"`});
-    setIsAnalysisModalOpen(false);
-    setSelectedPotentialRiskForAnalysis(null);
+    // Update localStorage for this potential risk's causes
+    const causesForThisPotentialRisk = newAllRiskCauses.filter(rc => rc.potentialRiskId === updatedRiskCause.potentialRiskId);
+    const causesStorageKey = getRiskCausesStorageKey(parentGoal.uprId, parentGoal.period, updatedRiskCause.potentialRiskId);
+    localStorage.setItem(causesStorageKey, JSON.stringify(causesForThisPotentialRisk));
   };
 
   const toggleExpandRisk = (riskId: string) => {
@@ -201,7 +208,7 @@ export default function RiskAnalysisPage() {
     <div className="space-y-6">
       <PageHeader
         title={`Analisis Risiko`}
-        description={`Analisis probabilitas dan dampak untuk potensi risiko di UPR: ${currentUprId}, Periode: ${currentPeriod}.`}
+        description={`Analisis probabilitas dan dampak untuk penyebab potensi risiko di UPR: ${currentUprId}, Periode: ${currentPeriod}.`}
       />
 
       <div className="flex flex-col md:flex-row gap-2 mb-4">
@@ -292,14 +299,14 @@ export default function RiskAnalysisPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[40px]"></TableHead> 
-                  <TableHead className="w-[25%] min-w-[200px]">Deskripsi</TableHead>
+                  <TableHead className="w-[25%] min-w-[200px]">Deskripsi Potensi Risiko</TableHead>
                   <TableHead className="min-w-[120px]">Kategori</TableHead>
                   <TableHead className="min-w-[120px]">Pemilik</TableHead>
                   <TableHead className="min-w-[180px]">Sasaran Terkait</TableHead>
-                  <TableHead className="min-w-[120px]">Probabilitas</TableHead>
-                  <TableHead className="min-w-[120px]">Dampak</TableHead>
-                  <TableHead className="min-w-[120px]">Level Risiko</TableHead>
-                  <TableHead className="text-right w-[100px]">Aksi</TableHead>
+                  <TableHead className="min-w-[120px]">Probabilitas (Inheren)</TableHead>
+                  <TableHead className="min-w-[120px]">Dampak (Inheren)</TableHead>
+                  <TableHead className="min-w-[120px]">Level (Inheren)</TableHead>
+                  <TableHead className="text-right w-[150px]">Aksi</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -307,7 +314,7 @@ export default function RiskAnalysisPage() {
                   const associatedGoal = goals.find(g => g.id === pRisk.goalId);
                   const isExpanded = expandedRiskId === pRisk.id;
                   const associatedGoalName = associatedGoal?.name || 'N/A';
-                  const riskLevelValue = getRiskLevel(pRisk.likelihood, pRisk.impact);
+                  const inherentRiskLevel = getRiskLevel(pRisk.likelihood, pRisk.impact);
 
                   return (
                     <Fragment key={pRisk.id}>
@@ -338,13 +345,13 @@ export default function RiskAnalysisPage() {
                             </Badge>
                         </TableCell>
                         <TableCell>
-                            <Badge className={`${getRiskLevelColor(riskLevelValue)}`}>
-                                {riskLevelValue}
+                            <Badge className={`${getRiskLevelColor(inherentRiskLevel)}`}>
+                                {inherentRiskLevel}
                             </Badge>
                         </TableCell>
                         <TableCell className="text-right">
-                          <Button variant="outline" size="sm" onClick={() => handleOpenAnalysisModal(pRisk)}>
-                            <BarChart3 className="mr-2 h-4 w-4" /> Analisis
+                          <Button variant="outline" size="sm" onClick={() => handleOpenViewCausesModal(pRisk)}>
+                            <Zap className="mr-2 h-4 w-4" /> Analisis Penyebab
                           </Button>
                         </TableCell>
                       </TableRow>
@@ -352,7 +359,7 @@ export default function RiskAnalysisPage() {
                         <TableRow className="bg-muted/30 hover:bg-muted/40">
                           <TableCell colSpan={totalTableColumns} className="p-0">
                             <div className="p-3 space-y-1 text-sm">
-                              <h4 className="font-semibold text-foreground">Deskripsi Lengkap:</h4>
+                              <h4 className="font-semibold text-foreground">Deskripsi Lengkap Potensi Risiko:</h4>
                               <p className="text-muted-foreground whitespace-pre-wrap">{pRisk.description}</p>
                             </div>
                           </TableCell>
@@ -367,13 +374,20 @@ export default function RiskAnalysisPage() {
         </Card>
       )}
 
-      {selectedPotentialRiskForAnalysis && <RiskAnalysisModal
-        potentialRisk={selectedPotentialRiskForAnalysis}
-        isOpen={isAnalysisModalOpen}
-        onOpenChange={setIsAnalysisModalOpen}
-        onSave={handleSaveRiskAnalysis}
-      />}
+      {selectedPotentialRiskForCauseAnalysis && (
+        <ViewRiskCausesForAnalysisModal
+            potentialRisk={selectedPotentialRiskForCauseAnalysis}
+            riskCauses={allRiskCauses.filter(rc => rc.potentialRiskId === selectedPotentialRiskForCauseAnalysis.id)}
+            goalUprId={currentUprId} // Assuming potential risk is for current UPR/Period
+            goalPeriod={currentPeriod}
+            isOpen={isViewCausesModalOpen}
+            onOpenChange={(open) => {
+                setIsViewCausesModalOpen(open);
+                if(!open) setSelectedPotentialRiskForCauseAnalysis(null);
+            }}
+            onRiskCauseUpdated={handleRiskCauseUpdated}
+        />
+      )}
     </div>
   );
 }
-

@@ -37,10 +37,10 @@ export interface PotentialRisk {
   description: string;
   category: RiskCategory | null;
   owner: string | null; // Nama atau jabatan pemilik risiko
-  likelihood: LikelihoodImpactLevel | null;
-  impact: LikelihoodImpactLevel | null;
+  likelihood: LikelihoodImpactLevel | null; // Inherent likelihood of the potential risk
+  impact: LikelihoodImpactLevel | null; // Inherent impact of the potential risk
   identifiedAt: string; // ISO date string
-  analysisCompletedAt?: string; // ISO date string
+  analysisCompletedAt?: string; // ISO date string for the potential risk's inherent analysis
 }
 
 export interface RiskCause {
@@ -48,19 +48,23 @@ export interface RiskCause {
   potentialRiskId: string; // Links to PotentialRisk
   description: string;
   source: RiskSource;
+  keyRiskIndicator: string | null;
+  riskTolerance: string | null;
+  likelihood: LikelihoodImpactLevel | null; // Likelihood of this specific cause
+  impact: LikelihoodImpactLevel | null; // Impact if this specific cause occurs
   createdAt: string; // ISO date string
+  analysisUpdatedAt?: string; // ISO date string for when KRI/Tolerance/Likelihood/Impact of cause was last updated
 }
 
 export interface Control {
   id:string;
   potentialRiskId: string; // Links to PotentialRisk
   description: string;
-  effectiveness: 'Low' | 'Medium' | 'High' | null; // Tetap Inggris untuk kemudahan internal jika perlu, atau bisa juga dilokalisasi
-  status: 'Planned' | 'In Progress' | 'Implemented' | 'Ineffective'; // Sama, bisa dilokalisasi
+  effectiveness: 'Low' | 'Medium' | 'High' | null;
+  status: 'Planned' | 'In Progress' | 'Implemented' | 'Ineffective';
   createdAt: string; // ISO date string
   updatedAt?: string; // ISO date string
 }
 
 // Example: Combined Risk Level (can be calculated)
 export type RiskLevel = 'Sangat Rendah' | 'Rendah' | 'Sedang' | 'Tinggi' | 'Sangat Tinggi';
-
