@@ -34,6 +34,8 @@ const potentialRiskSchema = z.object({
 
 type PotentialRiskFormData = z.infer<typeof potentialRiskSchema>;
 
+const NO_CATEGORY_SENTINEL = "__NONE__"; 
+
 interface AddEditPotentialRiskDialogProps {
   goals: Goal[];
   onPotentialRiskSave: (potentialRisk: PotentialRisk, isNew: boolean) => void;
@@ -42,9 +44,9 @@ interface AddEditPotentialRiskDialogProps {
   defaultGoalId?: string;
   currentUprId: string;
   currentPeriod: string;
+  isOpen?: boolean; // For controlled mode
+  onOpenChange?: (open: boolean) => void; // For controlled mode
 }
-
-const NO_CATEGORY_SENTINEL = "__NONE__"; // Sentinel value for "No Category"
 
 export function AddEditPotentialRiskDialog({ 
   goals, 
@@ -53,10 +55,23 @@ export function AddEditPotentialRiskDialog({
   triggerButton, 
   defaultGoalId,
   currentUprId, 
-  currentPeriod 
+  currentPeriod,
+  isOpen: isOpenProp,
+  onOpenChange: onOpenChangeProp,
 }: AddEditPotentialRiskDialogProps) {
-  const [open, setOpen] = useState(false);
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
   const isEditing = !!existingPotentialRisk;
+
+  const isControlled = isOpenProp !== undefined && onOpenChangeProp !== undefined;
+  
+  const open = isControlled ? isOpenProp! : uncontrolledOpen;
+  const setOpenState = (newOpenState: boolean) => {
+    if (isControlled) {
+      onOpenChangeProp!(newOpenState);
+    } else {
+      setUncontrolledOpen(newOpenState);
+    }
+  };
 
   const {
     register,
@@ -64,7 +79,7 @@ export function AddEditPotentialRiskDialog({
     reset,
     setValue,
     watch,
-    control, // for Select component
+    // control, // for Select component if using react-hook-form's Controller
     formState: { errors, isSubmitting },
   } = useForm<PotentialRiskFormData>({
     resolver: zodResolver(potentialRiskSchema),
@@ -110,29 +125,34 @@ export function AddEditPotentialRiskDialog({
       id: existingPotentialRisk?.id || `prisk_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       goalId: data.goalId,
       description: data.description,
-      category: data.category, // This will be null if "_No Category_" was selected
-      owner: data.owner || null, // Ensure owner is null if empty string
+      category: data.category === NO_CATEGORY_SENTINEL ? null : data.category,
+      owner: data.owner || null,
       likelihood: existingPotentialRisk?.likelihood || null,
       impact: existingPotentialRisk?.impact || null,
       identifiedAt: existingPotentialRisk?.identifiedAt || new Date().toISOString(),
       analysisCompletedAt: existingPotentialRisk?.analysisCompletedAt,
     };
     onPotentialRiskSave(potentialRiskData, !isEditing);
-    setOpen(false);
+    setOpenState(false);
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        {triggerButton ? (
-          React.cloneElement(triggerButton as React.ReactElement, { onClick: () => setOpen(true) })
-        ) : (
-          <Button>
+    <Dialog open={open} onOpenChange={setOpenState}>
+      {triggerButton ? (
+        // If a specific triggerButton is provided, use it
+        <DialogTrigger asChild>
+          {React.cloneElement(triggerButton as React.ReactElement, { onClick: () => setOpenState(true) })}
+        </DialogTrigger>
+      ) : !isControlled ? (
+        // If not controlled and no specific trigger, render the default trigger
+        <DialogTrigger asChild>
+          <Button onClick={() => setOpenState(true)}>
             {isEditing ? <Edit className="mr-2 h-4 w-4" /> : <PlusCircle className="mr-2 h-4 w-4" />}
             {isEditing ? "Edit Potential Risk" : "Add New Potential Risk"}
           </Button>
-        )}
-      </DialogTrigger>
+        </DialogTrigger>
+      ) : null /* If controlled and no specific triggerButton, render no trigger here (parent handles it) */}
+      
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{isEditing ? "Edit Potential Risk" : "Add New Potential Risk"}</DialogTitle>
@@ -180,7 +200,7 @@ export function AddEditPotentialRiskDialog({
           <div className="space-y-1.5">
             <Label htmlFor="categoryPotentialRisk">Risk Category</Label>
             <Select
-              value={selectedCategory || ""} // If selectedCategory is null, Select value is "", showing placeholder
+              value={selectedCategory || NO_CATEGORY_SENTINEL} 
               onValueChange={(value) => {
                 if (value === NO_CATEGORY_SENTINEL) {
                   setValue("category", null, { shouldValidate: true });
@@ -214,8 +234,8 @@ export function AddEditPotentialRiskDialog({
           </div>
           
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button type="submit" disabled={isSubmitting || (goals.length === 0 && !isEditing) }>
+            <Button type="button" variant="outline" onClick={() => setOpenState(false)}>Cancel</Button>
+            <Button type="submit" disabled={isSubmitting || (goals.length === 0 && !isEditing && !defaultGoalId) }>
               {isSubmitting ? "Saving..." : (isEditing ? "Save Changes" : "Add Potential Risk")}
             </Button>
           </DialogFooter>
