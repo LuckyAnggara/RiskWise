@@ -81,6 +81,7 @@ export default function ManagePotentialRiskPage() {
     handleSubmit: handleSubmitRiskCause,
     reset: resetRiskCauseForm,
     setValue: setRiskCauseValue,
+    control: riskCauseControl, // Added control object for risk cause form
     formState: { errors: riskCauseErrors, isSubmitting: isAddingCause },
   } = useForm<RiskCauseFormData>({
     resolver: zodResolver(riskCauseFormSchema),
@@ -426,7 +427,7 @@ export default function ManagePotentialRiskPage() {
                   <Label htmlFor="causeSource">Source of Cause</Label>
                   <Controller
                     name="causeSource"
-                    control={riskCauseFormSchema} // Should be riskCauseControl
+                    control={riskCauseControl} 
                     defaultValue="Internal"
                     render={({ field }) => (
                         <Select
@@ -491,6 +492,3 @@ export default function ManagePotentialRiskPage() {
     </div>
   );
 }
-
-
-    
