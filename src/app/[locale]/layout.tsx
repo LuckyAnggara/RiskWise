@@ -1,10 +1,10 @@
 
 import {NextIntlClientProvider} from 'next-intl';
 import {getMessages} from 'next-intl/server';
-import {AppLayout} from '@/components/layout/app-layout';
+// import {AppLayout} from '@/components/layout/app-layout'; // Temporarily remove AppLayout
 import {notFound} from 'next/navigation';
 import { Geist, Geist_Mono } from 'next/font/google';
-import '../globals.css'; // Adjusted path for global styles
+import '../globals.css';
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -15,6 +15,19 @@ const geistMono = Geist_Mono({
   variable: '--font-geist-mono',
   subsets: ['latin'],
 });
+
+// A minimal client component for testing translations
+function TestTranslationComponent() {
+  "use client";
+  const t = useTranslations("SidebarNav"); // Use a known namespace from your en.json
+  try {
+    return <p style={{ border: '2px solid red', padding: '10px' }}>Translated Dashboard Label: '{t('dashboard')}'</p>;
+  } catch (e) {
+    console.error("Error in TestTranslationComponent:", e);
+    return <p style={{ border: '2px solid red', padding: '10px', color: 'red' }}>Error rendering test translation.</p>;
+  }
+}
+
 
 type Props = {
   children: React.ReactNode;
@@ -32,19 +45,14 @@ export default async function LocaleLayout({children, params: {locale}}: Props) 
   let messages;
   try {
     messages = await getMessages();
-    console.log(`[LocaleLayout] Messages received from getMessages() for locale ${locale}. Type: ${typeof messages}, Value:`, messages ? Object.keys(messages).length > 0 ? "{...}" : "{}" : messages);
-    // Explicitly check if messages is a non-null object.
-    if (typeof messages !== 'object' || messages === null) {
-      console.error(`[LocaleLayout] Critical: Messages for locale ${locale} resolved by getMessages() were not a valid object. Received:`, messages, ". Calling notFound().");
+    console.log(`[LocaleLayout] Messages received from getMessages() for locale ${locale}. Type: ${typeof messages}, Keys: ${messages ? Object.keys(messages).length : 'N/A'}`);
+    
+    if (typeof messages !== 'object' || messages === null || (locale === 'en' && Object.keys(messages).length === 0)) {
+      console.error(`[LocaleLayout] Critical: Messages for locale ${locale} were not a valid object or were empty. Received:`, messages, ". Calling notFound().");
       notFound(); 
     }
-     if (Object.keys(messages).length === 0 && locale !== 'id') { // Allow 'id' to be initially empty
-        console.warn(`[LocaleLayout] Messages for locale ${locale} is an empty object after getMessages(). This might lead to issues.`);
-        // Potentially call notFound() if empty messages are not allowed for a primary locale like 'en'
-        // For now, we let it pass to see provider behavior with {}
-     }
   } catch (error) {
-    console.error(`[LocaleLayout] Critical: Error fetching messages via getMessages() for locale ${locale}:`, error, ". Calling notFound().");
+    console.error(`[LocaleLayout] Critical: Error fetching messages for locale ${locale}:`, error);
     notFound();
   }
  
@@ -52,9 +60,12 @@ export default async function LocaleLayout({children, params: {locale}}: Props) 
     <html lang={locale} suppressHydrationWarning>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <NextIntlClientProvider locale={locale} messages={messages}>
-          <AppLayout>
-            {children}
-          </AppLayout>
+          <div style={{border: '2px dashed blue', padding: '20px'}}>
+            <h1>Minimal Locale Layout (Diagnostic)</h1>
+            <TestTranslationComponent />
+            <hr />
+            <main>{children}</main>
+          </div>
         </NextIntlClientProvider>
       </body>
     </html>

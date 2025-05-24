@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import NextLink from 'next/link'; // Using NextLink to avoid conflict if next-intl/Link was also aliased to Link
+import NextLink from 'next/link'; // Use standard Next.js Link, aliased
 import {
   SidebarProvider,
   Sidebar,
@@ -25,7 +25,7 @@ import { useTranslations, useLocale } from 'next-intl';
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const t = useTranslations('AppLayout');
-  const locale = useLocale();
+  const locale = useLocale(); // For constructing locale-prefixed paths
   const [currentUpr, setCurrentUpr] = useState('');
   const [currentPeriodDisplay, setCurrentPeriodDisplay] = useState('');
 
@@ -35,7 +35,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     setCurrentPeriodDisplay(context.period);
   }, []);
 
-  const homeHref = `/${locale}`;
+  // Construct locale-prefixed paths for next/link
+  const homeHref = `/${locale}`; 
   const settingsHref = `/${locale}/settings`;
 
   return (

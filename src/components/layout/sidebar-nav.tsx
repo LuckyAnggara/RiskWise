@@ -1,8 +1,8 @@
 
 "use client";
 
-import NextLink from 'next/link'; // Using NextLink to avoid conflict
-import { usePathname } from "next/navigation";
+import NextLink from 'next/link'; // Use standard Next.js Link, aliased
+import { usePathname } from "next/navigation"; 
 import { LayoutDashboard, Target, ListChecks, Cog } from "lucide-react"; 
 import { cn } from "@/lib/utils";
 import {
@@ -13,21 +13,19 @@ import {
   SidebarGroupLabel,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { useTranslations, useLocale } from 'next-intl';
+import { useTranslations, useLocale } from 'next-intl'; // useLocale for path construction
 
 interface NavItem {
   key: string; 
-  href: string; // Base href, without locale
+  href: string; 
   icon: React.ElementType;
 }
 
 export function SidebarNav() {
   const t = useTranslations('SidebarNav');
-  const pathname = usePathname(); // Full path with locale
-  const locale = useLocale();
+  const pathname = usePathname(); 
   const { openMobile, setOpenMobile } = useSidebar();
-
-  const cleanPathname = pathname.startsWith(`/${locale}`) ? pathname.substring(`/${locale}`.length) || '/' : pathname;
+  const locale = useLocale(); // For constructing locale-prefixed paths
 
   const navItems: NavItem[] = [
     { key: "dashboard", href: "/", icon: LayoutDashboard },
@@ -37,13 +35,23 @@ export function SidebarNav() {
   ];
   
   const isActive = (navHref: string) => {
-    if (navHref === "/") {
-      return cleanPathname === "/";
+    const localePrefixPattern = /^\/[a-z]{2}(\/|$)/;
+    let pathWithoutLocale = pathname.replace(localePrefixPattern, '/');
+    // Normalize pathWithoutLocale to always start with a single slash if it's not just "/"
+    if (pathWithoutLocale !== '/' && !pathWithoutLocale.startsWith('/')) {
+      pathWithoutLocale = `/${pathWithoutLocale}`;
+    } else if (pathWithoutLocale === '//') { // case where original pathname was just /en
+        pathWithoutLocale = '/';
     }
-    // Check if the current path starts with the nav item's href
-    // and is either an exact match or followed by a '/' (for sub-pages)
-    return cleanPathname.startsWith(navHref) && 
-           (cleanPathname.length === navHref.length || cleanPathname[navHref.length] === '/');
+
+
+    const normalizedNavHref = navHref; // Assuming navHref is like "/" or "/goals"
+
+    if (normalizedNavHref === "/") {
+      return pathWithoutLocale === "/" || pathWithoutLocale === ""; 
+    }
+    return pathWithoutLocale.startsWith(normalizedNavHref) && 
+           (pathWithoutLocale.length === normalizedNavHref.length || pathWithoutLocale[normalizedNavHref.length] === '/');
   };
 
   return (
@@ -51,13 +59,13 @@ export function SidebarNav() {
       <SidebarGroup>
         <SidebarGroupLabel>{t('menu')}</SidebarGroupLabel>
         {navItems.map((item) => {
-          // Construct the full href with locale for next/link
-          const fullHref = `/${locale}${item.href === "/" ? "" : item.href}`;
+          // Construct locale-prefixed href for next/link
+          const localizedHref = item.href === "/" ? `/${locale}` : `/${locale}${item.href}`;
           return (
             <SidebarMenuItem key={item.href}>
-              <NextLink href={fullHref} passHref legacyBehavior>
+              <NextLink href={localizedHref} passHref legacyBehavior>
                 <SidebarMenuButton
-                  as="a" // Ensure SidebarMenuButton renders as an 'a' tag due to legacyBehavior
+                  as="a"
                   isActive={isActive(item.href)}
                   tooltip={t(item.key)}
                   onClick={() => {
