@@ -20,6 +20,7 @@ import { useForm, type SubmitHandler } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { PlusCircle, Pencil } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 
 const goalSchema = z.object({
   name: z.string().min(3, "Goal name must be at least 3 characters long."),
@@ -32,11 +33,12 @@ interface AddGoalDialogProps {
   onGoalSave: (goal: Goal) => void;
   existingGoal?: Goal | null;
   triggerButton?: React.ReactNode;
-  currentUprId: string; // Now passed as prop
-  currentPeriod: string; // Now passed as prop
+  currentUprId: string;
+  currentPeriod: string;
 }
 
 export function AddGoalDialog({ onGoalSave, existingGoal, triggerButton, currentUprId, currentPeriod }: AddGoalDialogProps) {
+  const t = useTranslations('AddGoalDialog');
   const [open, setOpen] = useState(false);
   const {
     register,
@@ -52,7 +54,7 @@ export function AddGoalDialog({ onGoalSave, existingGoal, triggerButton, current
   });
 
   useEffect(() => {
-    if (open) { // Reset form when dialog opens or existingGoal changes while open
+    if (open) {
       if (existingGoal) {
         reset({
           name: existingGoal.name,
@@ -69,18 +71,17 @@ export function AddGoalDialog({ onGoalSave, existingGoal, triggerButton, current
       id: existingGoal?.id || `goal_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       ...data,
       createdAt: existingGoal?.createdAt || new Date().toISOString(),
-      uprId: currentUprId, // Use passed prop
-      period: currentPeriod, // Use passed prop
+      uprId: currentUprId,
+      period: currentPeriod,
     };
     onGoalSave(newGoal);
     setOpen(false);
-    // reset(); // Reset is handled by useEffect on 'open' state change now
   };
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => {
       setOpen(isOpen);
-      if (!isOpen) { // Ensure reset when dialog is closed externally too
+      if (!isOpen) {
         if (existingGoal) {
           reset({name: existingGoal.name, description: existingGoal.description});
         } else {
@@ -92,23 +93,23 @@ export function AddGoalDialog({ onGoalSave, existingGoal, triggerButton, current
         {triggerButton ? (
           React.cloneElement(triggerButton as React.ReactElement, { onClick: () => setOpen(true) })
         ) : (
-          <Button>
-            <PlusCircle className="mr-2 h-4 w-4" /> {existingGoal ? "Edit Goal" : "Add New Goal"}
+          <Button onClick={() => setOpen(true)}>
+            {existingGoal ? <Pencil className="mr-2 h-4 w-4" /> : <PlusCircle className="mr-2 h-4 w-4" />}
+             {existingGoal ? t('editTitle') : t('addTitle')}
           </Button>
         )}
       </DialogTrigger>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>{existingGoal ? "Edit Goal" : "Add New Goal"}</DialogTitle>
+          <DialogTitle>{existingGoal ? t('editTitle') : t('addTitle')}</DialogTitle>
           <DialogDescription>
-            {existingGoal ? "Update the details of your goal." : "Define a new goal to start managing its risks."}
-            {` For UPR: ${currentUprId}, Period: ${currentPeriod}`}
+            {existingGoal ? t('editDescription', {uprId: currentUprId, period: currentPeriod}) : t('addDescription', {uprId: currentUprId, period: currentPeriod})}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)} className="grid gap-4 py-4">
           <div className="grid grid-cols-4 items-center gap-4">
             <Label htmlFor="name" className="text-right">
-              Name
+              {t('nameLabel')}
             </Label>
             <div className="col-span-3">
               <Input
@@ -121,7 +122,7 @@ export function AddGoalDialog({ onGoalSave, existingGoal, triggerButton, current
           </div>
           <div className="grid grid-cols-4 items-center gap-4">
             <Label htmlFor="description" className="text-right">
-              Description
+              {t('descriptionLabel')}
             </Label>
             <div className="col-span-3">
               <Textarea
@@ -133,9 +134,9 @@ export function AddGoalDialog({ onGoalSave, existingGoal, triggerButton, current
             </div>
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+            <Button type="button" variant="outline" onClick={() => setOpen(false)}>{t('cancelButton')}</Button>
             <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? "Saving..." : "Save Goal"}
+              {isSubmitting ? t('savingButton') : t('saveButton')}
             </Button>
           </DialogFooter>
         </form>

@@ -5,11 +5,12 @@ import React, { useState, useEffect } from 'react';
 import { PageHeader } from '@/components/ui/page-header';
 import { GoalCard } from '@/components/goals/goal-card';
 import { AddGoalDialog } from '@/components/goals/add-goal-dialog';
-import type { Goal, PotentialRisk } from '@/lib/types'; // Added PotentialRisk
+import type { Goal, PotentialRisk } from '@/lib/types';
 import { PlusCircle, Target, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { getCurrentUprId, getCurrentPeriod, initializeAppContext } from '@/lib/upr-period-context';
+import { useTranslations } from 'next-intl';
 
 const INITIAL_GOALS_TEMPLATE: Omit<Goal, 'uprId' | 'period'>[] = [
   { id: 'g1', name: 'Launch New Product X', description: 'Successfully develop and launch Product X by Q4 to capture 5% market share within the first year.', createdAt: '2023-10-15T10:00:00Z' },
@@ -24,6 +25,7 @@ const getRiskCausesStorageKey = (uprId: string, period: string, potentialRiskId:
 
 
 export default function GoalsPage() {
+  const t = useTranslations('GoalsPage');
   const [goals, setGoals] = useState<Goal[]>([]);
   const [currentUprId, setCurrentUprId] = useState('');
   const [currentPeriod, setCurrentPeriod] = useState('');
@@ -69,10 +71,10 @@ export default function GoalsPage() {
       let updatedGoals;
       if (existingIndex > -1) {
         updatedGoals = prevGoals.map(g => g.id === goal.id ? goal : g);
-        toast({ title: "Goal Updated", description: `Goal "${goal.name}" has been successfully updated.` });
+        toast({ title: t('toastGoalUpdatedTitle'), description: t('toastGoalUpdatedDescription', { name: goal.name }) });
       } else {
         updatedGoals = [goal, ...prevGoals];
-        toast({ title: "Goal Added", description: `New goal "${goal.name}" has been successfully added.` });
+        toast({ title: t('toastGoalAddedTitle'), description: t('toastGoalAddedDescription', { name: goal.name }) });
       }
       updateLocalStorage(updatedGoals);
       return updatedGoals;
@@ -86,7 +88,7 @@ export default function GoalsPage() {
     setGoals(prevGoals => {
       const updatedGoals = prevGoals.filter(g => g.id !== goalId);
       updateLocalStorage(updatedGoals);
-      toast({ title: "Goal Deleted", description: `Goal "${goalToDelete.name}" has been deleted.`, variant: "destructive" });
+      toast({ title: t('toastGoalDeletedTitle'), description: t('toastGoalDeletedDescription', { name: goalToDelete.name }), variant: "destructive" });
       
       if (typeof window !== 'undefined') {
         const potentialRisksStorageKey = getPotentialRisksStorageKey(currentUprId, currentPeriod, goalId);
@@ -103,21 +105,31 @@ export default function GoalsPage() {
       return updatedGoals;
     });
   };
+  
+  // Add translations for toast messages to en.json and id.json
+  // Example for en.json:
+  // "toastGoalUpdatedTitle": "Goal Updated",
+  // "toastGoalUpdatedDescription": "Goal \"{name}\" has been successfully updated.",
+  // "toastGoalAddedTitle": "Goal Added",
+  // "toastGoalAddedDescription": "New goal \"{name}\" has been successfully added.",
+  // "toastGoalDeletedTitle": "Goal Deleted",
+  // "toastGoalDeletedDescription": "Goal \"{name}\" has been deleted."
 
   if (isLoading || !currentUprId || !currentPeriod) {
     return (
       <div className="flex flex-col items-center justify-center h-screen">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
-        <p className="text-xl text-muted-foreground">Loading goals data...</p>
+        <p className="text-xl text-muted-foreground">{t('loadingData')}</p>
       </div>
     );
   }
+ // Add "loadingData": "Loading goals data..." to en.json
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title={`Goals`}
-        description={`Define and manage your strategic objectives for UPR: ${currentUprId}, Period: ${currentPeriod}.`}
+        title={t('title')}
+        description={t('description', { uprId: currentUprId, period: currentPeriod })}
         actions={
           <AddGoalDialog 
             onGoalSave={handleGoalSave}
@@ -125,7 +137,7 @@ export default function GoalsPage() {
             currentPeriod={currentPeriod}
             triggerButton={
               <Button>
-                <PlusCircle className="mr-2 h-4 w-4" /> Add New Goal
+                <PlusCircle className="mr-2 h-4 w-4" /> {t('addNewGoal')}
               </Button>
             }
           />
@@ -135,9 +147,9 @@ export default function GoalsPage() {
       {goals.length === 0 ? (
         <div className="text-center py-10 border-2 border-dashed border-muted-foreground/30 rounded-lg">
           <Target className="mx-auto h-12 w-12 text-muted-foreground" />
-          <h3 className="mt-2 text-lg font-medium">No goals yet for this UPR/Period</h3>
+          <h3 className="mt-2 text-lg font-medium">{t('noGoalsYet')}</h3>
           <p className="mt-1 text-sm text-muted-foreground">
-            Get started by adding your first goal.
+            {t('getStartedAddingGoal')}
           </p>
           <div className="mt-6">
             <AddGoalDialog 
@@ -146,7 +158,7 @@ export default function GoalsPage() {
               currentPeriod={currentPeriod}
               triggerButton={
                 <Button>
-                  <PlusCircle className="mr-2 h-4 w-4" /> Add New Goal
+                  <PlusCircle className="mr-2 h-4 w-4" /> {t('addNewGoal')}
                 </Button>
               }
             />

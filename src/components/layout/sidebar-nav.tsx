@@ -19,40 +19,35 @@ interface NavItem {
   key: string; // For translation key
   href: string;
   icon: React.ElementType;
-  matchSegments?: number;
 }
 
 export function SidebarNav() {
   const t = useTranslations('SidebarNav');
-  const pathname = usePathname();
+  const pathname = usePathname(); // Returns full path e.g., /en/goals
   const { openMobile, setOpenMobile } = useSidebar();
 
-  // Remove locale from pathname for comparison
+  // Remove locale from pathname for comparison e.g., /en/goals -> /goals, or /en -> /
   const cleanPathname = pathname.replace(/^\/(en|id)/, '') || '/';
 
   const navItems: NavItem[] = [
-    { key: "dashboard", href: "/", icon: LayoutDashboard, matchSegments: 1 },
-    { key: "goals", href: "/goals", icon: Target, matchSegments: 1 },
-    { key: "allRisks", href: "/all-risks", icon: ListChecks, matchSegments: 1 },
-    { key: "settings", href: "/settings", icon: Cog, matchSegments: 1 },
+    { key: "dashboard", href: "/", icon: LayoutDashboard },
+    { key: "goals", href: "/goals", icon: Target },
+    { key: "allRisks", href: "/all-risks", icon: ListChecks },
+    { key: "settings", href: "/settings", icon: Cog },
   ];
   
-  const isActive = (href: string, matchSegments: number = 1) => {
-    // Special case for the root path
-    if (href === "/") return cleanPathname === "/";
-  
-    const pathSegments = cleanPathname.split("/").filter(Boolean);
-    const hrefSegments = href.split("/").filter(Boolean);
-    
-    if (pathSegments.length < matchSegments || hrefSegments.length < matchSegments) return false;
-    
-    // Ensure exact match for top-level items if matchSegments is 1
-    if (matchSegments === 1 && pathSegments.length > hrefSegments.length && href !== "/") return false;
-  
-    for (let i = 0; i < matchSegments; i++) {
-      if (pathSegments[i] !== hrefSegments[i]) return false;
+  const isActive = (navHref: string) => {
+    // For the root path, ensure it's an exact match after cleaning
+    if (navHref === "/") {
+      return cleanPathname === "/";
     }
-    return true;
+    // For other paths, check if the cleanPathname starts with the navHref
+    // and is either an exact match or followed by a '/'
+    // e.g., navHref = /all-risks, cleanPathname = /all-risks/manage/new -> true
+    // e.g., navHref = /all-risks, cleanPathname = /all-risks -> true
+    // e.g., navHref = /goals, cleanPathname = /all-risks -> false
+    return cleanPathname.startsWith(navHref) && 
+           (cleanPathname.length === navHref.length || cleanPathname[navHref.length] === '/');
   };
 
   return (
@@ -64,7 +59,7 @@ export function SidebarNav() {
             <Link href={item.href} passHref legacyBehavior>
               <SidebarMenuButton
                 asChild
-                isActive={isActive(item.href, item.matchSegments)}
+                isActive={isActive(item.href)}
                 tooltip={t(item.key)}
                 onClick={() => {
                   if (openMobile) setOpenMobile(false);
