@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, Fragment } from 'react';
 import { useRouter } from 'next/navigation';
 import { PageHeader } from '@/components/ui/page-header';
 import { Button } from '@/components/ui/button';
@@ -9,7 +9,7 @@ import { RiskAnalysisModal } from '@/components/risks/risk-analysis-modal';
 import { RiskControlModal } from '@/components/risks/risk-control-modal';
 import { ManageRiskCausesDialog } from '@/components/risks/manage-risk-causes-dialog';
 import type { Goal, PotentialRisk, Control, RiskCause, LikelihoodImpactLevel } from '@/lib/types';
-import { PlusCircle, Loader2, Settings2, BarChart3, Trash2, Edit, ListChecks, Zap } from 'lucide-react';
+import { PlusCircle, Loader2, Settings2, BarChart3, Trash2, Edit, ListChecks, Zap, ChevronDown, ChevronUp } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -56,6 +56,7 @@ export default function AllRisksPage() {
   const [allControls, setAllControls] = useState<Control[]>([]);
   const [allRiskCauses, setAllRiskCauses] = useState<RiskCause[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [expandedRiskId, setExpandedRiskId] = useState<string | null>(null);
 
   const [selectedPotentialRiskForAnalysis, setSelectedPotentialRiskForAnalysis] = useState<PotentialRisk | null>(null);
   const [isAnalysisModalOpen, setIsAnalysisModalOpen] = useState(false);
@@ -255,6 +256,10 @@ export default function AllRisksPage() {
     setAllRiskCauses([...remainingCauses, ...updatedCauses]);
   };
 
+  const toggleExpandRisk = (riskId: string) => {
+    setExpandedRiskId(currentId => (currentId === riskId ? null : riskId));
+  };
+
 
   if (isLoading || !currentUprId || !currentPeriod) {
     return (
@@ -266,6 +271,7 @@ export default function AllRisksPage() {
   }
 
   const relevantGoals = goals.filter(g => g.uprId === currentUprId && g.period === currentPeriod);
+  const totalTableColumns = 11; // 1 for expand + 10 data columns
 
   return (
     <div className="space-y-6">
@@ -294,6 +300,7 @@ export default function AllRisksPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-[40px]"></TableHead> {/* Kolom untuk tombol expand */}
                   <TableHead className="w-[25%]">Deskripsi</TableHead>
                   <TableHead>Kategori</TableHead>
                   <TableHead>Pemilik</TableHead>
@@ -303,7 +310,7 @@ export default function AllRisksPage() {
                   <TableHead>Level</TableHead>
                   <TableHead>Penyebab</TableHead>
                   <TableHead>Kontrol</TableHead>
-                  <TableHead className="text-right w-[120px]">Aksi</TableHead>
+                  <TableHead className="text-right w-[100px]">Aksi</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -312,63 +319,82 @@ export default function AllRisksPage() {
                   const riskControlsList = allControls.filter(c => c.potentialRiskId === pRisk.id);
                   const riskCausesList = allRiskCauses.filter(rc => rc.potentialRiskId === pRisk.id);
                   const associatedGoal = goals.find(g => g.id === pRisk.goalId);
+                  const isExpanded = expandedRiskId === pRisk.id;
+
                   return (
-                    <TableRow key={pRisk.id}>
-                      <TableCell className="font-medium max-w-[200px] truncate" title={pRisk.description}>
-                          {pRisk.description}
-                      </TableCell>
-                       <TableCell className="text-xs max-w-[100px] truncate" title={pRisk.category || ''}>
-                        <Badge variant={pRisk.category ? "secondary" : "outline"}>{pRisk.category || 'N/A'}</Badge>
-                      </TableCell>
-                      <TableCell className="text-xs max-w-[100px] truncate" title={pRisk.owner || ''}>{pRisk.owner || 'N/A'}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground max-w-[150px] truncate" title={associatedGoal?.name}>
-                        {associatedGoal?.name || 'N/A'}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={pRisk.likelihood ? "secondary" : "outline"}>
-                          {pRisk.likelihood || 'N/A'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={pRisk.impact ? "secondary" : "outline"}>
-                          {pRisk.impact || 'N/A'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge className={`${getRiskLevelColor(riskLevelValue)} text-white`}>
-                          {riskLevelValue}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>{riskCausesList.length}</TableCell>
-                      <TableCell>{riskControlsList.length}</TableCell>
-                      <TableCell className="text-right">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon">
-                              <Settings2 className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => handleOpenEditPotentialRiskPage(pRisk.id)}>
-                              <Edit className="mr-2 h-4 w-4" /> Edit Detail & Penyebab
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleOpenManageCausesModal(pRisk)}>
-                              <Zap className="mr-2 h-4 w-4" /> Kelola Penyebab (Cepat)
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleOpenAnalysisModal(pRisk)}>
-                              <BarChart3 className="mr-2 h-4 w-4" /> Analisis Level
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleOpenControlModal(pRisk)}>
-                              <PlusCircle className="mr-2 h-4 w-4" /> Kelola Kontrol
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem onClick={() => handleDeletePotentialRisk(pRisk.id)} className="text-destructive focus:text-destructive focus:bg-destructive/10">
-                              <Trash2 className="mr-2 h-4 w-4" /> Hapus Potensi Risiko
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
+                    <Fragment key={pRisk.id}>
+                      <TableRow>
+                        <TableCell>
+                          <Button variant="ghost" size="icon" onClick={() => toggleExpandRisk(pRisk.id)} aria-label={isExpanded ? "Sembunyikan deskripsi" : "Tampilkan deskripsi"}>
+                            {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                          </Button>
+                        </TableCell>
+                        <TableCell className="font-medium max-w-[200px] truncate" title={pRisk.description}>
+                            {pRisk.description}
+                        </TableCell>
+                        <TableCell className="text-xs max-w-[100px] truncate" title={pRisk.category || ''}>
+                          <Badge variant={pRisk.category ? "secondary" : "outline"}>{pRisk.category || 'N/A'}</Badge>
+                        </TableCell>
+                        <TableCell className="text-xs max-w-[100px] truncate" title={pRisk.owner || ''}>{pRisk.owner || 'N/A'}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground max-w-[150px] truncate" title={associatedGoal?.name}>
+                          {associatedGoal?.name || 'N/A'}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={pRisk.likelihood ? "secondary" : "outline"}>
+                            {pRisk.likelihood || 'N/A'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={pRisk.impact ? "secondary" : "outline"}>
+                            {pRisk.impact || 'N/A'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge className={`${getRiskLevelColor(riskLevelValue)} text-white`}>
+                            {riskLevelValue}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>{riskCausesList.length}</TableCell>
+                        <TableCell>{riskControlsList.length}</TableCell>
+                        <TableCell className="text-right">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon">
+                                <Settings2 className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => handleOpenEditPotentialRiskPage(pRisk.id)}>
+                                <Edit className="mr-2 h-4 w-4" /> Edit Detail & Penyebab
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleOpenManageCausesModal(pRisk)}>
+                                <Zap className="mr-2 h-4 w-4" /> Kelola Penyebab (Cepat)
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleOpenAnalysisModal(pRisk)}>
+                                <BarChart3 className="mr-2 h-4 w-4" /> Analisis Level
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleOpenControlModal(pRisk)}>
+                                <PlusCircle className="mr-2 h-4 w-4" /> Kelola Kontrol
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onClick={() => handleDeletePotentialRisk(pRisk.id)} className="text-destructive focus:text-destructive focus:bg-destructive/10">
+                                <Trash2 className="mr-2 h-4 w-4" /> Hapus Potensi Risiko
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
+                      {isExpanded && (
+                        <TableRow className="bg-muted/30 hover:bg-muted/40">
+                          <TableCell colSpan={totalTableColumns} className="p-0"> {/* No padding for the cell itself */}
+                            <div className="p-3 space-y-1 text-sm">
+                              <h4 className="font-semibold text-foreground">Deskripsi Lengkap:</h4>
+                              <p className="text-muted-foreground whitespace-pre-wrap">{pRisk.description}</p>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </Fragment>
                   );
                 })}
               </TableBody>
@@ -415,3 +441,5 @@ export default function AllRisksPage() {
     </div>
   );
 }
+
+    
