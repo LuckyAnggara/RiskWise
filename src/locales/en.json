@@ -1,0 +1,17 @@
+{
+  "SidebarNav": {
+    "menu": "Menu",
+    "dashboard": "Dashboard",
+    "goals": "Goals",
+    "allRisks": "All Risks",
+    "settings": "Settings"
+  },
+  "AppLayout": {
+    "myAccount": "My Account",
+    "profile": "Profile",
+    "settings": "Settings",
+    "logout": "Log out",
+    "uprLabel": "UPR",
+    "periodLabel": "Period"
+  }
+}

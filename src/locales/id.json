@@ -1,0 +1,17 @@
+{
+  "SidebarNav": {
+    "menu": "Menu",
+    "dashboard": "Dasbor",
+    "goals": "Sasaran",
+    "allRisks": "Semua Risiko",
+    "settings": "Pengaturan"
+  },
+  "AppLayout": {
+    "myAccount": "Akun Saya",
+    "profile": "Profil",
+    "settings": "Pengaturan",
+    "logout": "Keluar",
+    "uprLabel": "UPR",
+    "periodLabel": "Periode"
+  }
+}

@@ -18,21 +18,21 @@ import { SidebarNav } from "./sidebar-nav";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { LogOut, User, Settings } from "lucide-react";
+import { LogOut, User, Settings as SettingsIcon } from "lucide-react"; // Renamed Settings to SettingsIcon
 import { Toaster } from "@/components/ui/toaster";
 import { getCurrentUprId, getCurrentPeriod, initializeAppContext } from '@/lib/upr-period-context';
+import { useTranslations, useLocale } from 'next-intl';
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
-  const [pageTitle, setPageTitle] = React.useState("Dashboard"); // This would ideally come from a context or route
+  const t = useTranslations('AppLayout');
+  const locale = useLocale();
   const [currentUpr, setCurrentUpr] = useState('');
   const [currentPeriodDisplay, setCurrentPeriodDisplay] = useState('');
 
   useEffect(() => {
-    // Initialize context on client mount
     const context = initializeAppContext();
     setCurrentUpr(context.uprId);
     setCurrentPeriodDisplay(context.period);
-    // Example: if (pathname.startsWith('/goals')) setPageTitle("Goals");
   }, []);
 
 
@@ -40,7 +40,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     <SidebarProvider defaultOpen>
       <Sidebar variant="sidebar" collapsible="icon" side="left">
         <SidebarHeader className="p-4">
-          <Link href="/" className="flex items-center gap-2 group-data-[collapsible=icon]:justify-center">
+          <Link href={`/${locale}/`} className="flex items-center gap-2 group-data-[collapsible=icon]:justify-center">
             <AppLogo className="h-8 w-8 text-primary" />
             <span className="font-semibold text-lg text-primary group-data-[collapsible=icon]:hidden">
               RiskWise
@@ -62,10 +62,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b bg-background/80 px-4 backdrop-blur md:px-6">
           <div className="flex items-center gap-2">
             <SidebarTrigger className="md:hidden" />
-            {/* <h1 className="text-xl font-semibold">{pageTitle}</h1> */}
             {currentUpr && currentPeriodDisplay && (
               <div className="text-sm text-muted-foreground">
-                <span className="font-semibold">UPR:</span> {currentUpr} | <span className="font-semibold">Period:</span> {currentPeriodDisplay}
+                <span className="font-semibold">{t('uprLabel')}:</span> {currentUpr} | <span className="font-semibold">{t('periodLabel')}:</span> {currentPeriodDisplay}
               </div>
             )}
           </div>
@@ -79,22 +78,22 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuLabel>My Account</DropdownMenuLabel>
+              <DropdownMenuLabel>{t('myAccount')}</DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem>
                 <User className="mr-2 h-4 w-4" />
-                <span>Profile</span>
+                <span>{t('profile')}</span>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
-                <Link href="/settings">
-                  <Settings className="mr-2 h-4 w-4" />
-                  <span>Settings</span>
+                <Link href={`/${locale}/settings`}>
+                  <SettingsIcon className="mr-2 h-4 w-4" />
+                  <span>{t('settings')}</span>
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => alert('Logout functionality to be implemented.')}>
                 <LogOut className="mr-2 h-4 w-4" />
-                <span>Log out</span>
+                <span>{t('logout')}</span>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
