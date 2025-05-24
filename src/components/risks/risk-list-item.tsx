@@ -1,4 +1,3 @@
-
 "use client";
 
 import type { PotentialRisk, Control, RiskCause, LikelihoodImpactLevel } from '@/lib/types';
@@ -98,24 +97,39 @@ export function RiskListItem({
           </DropdownMenu>
         </div>
         <CardDescription>
-          Teridentifikasi: {new Date(potentialRisk.identifiedAt).toLocaleDateString()} <br />
-          Kategori: <Badge variant="outline" className="text-xs">{potentialRisk.category || 'N/A'}</Badge> | 
-          Pemilik: <Badge variant="outline" className="text-xs">{potentialRisk.owner || 'N/A'}</Badge>
+          <div className="text-xs text-muted-foreground space-y-1 mt-1">
+            <div>
+              <strong>Teridentifikasi:</strong> {new Date(potentialRisk.identifiedAt).toLocaleDateString('id-ID', { year: 'numeric', month: 'short', day: 'numeric' })}
+            </div>
+            <div className="flex flex-wrap gap-x-2 items-center">
+              <div>
+                <strong>Kategori:</strong> <Badge variant="secondary" className="text-xs font-normal">{potentialRisk.category || 'N/A'}</Badge>
+              </div>
+              <span className="text-muted-foreground/50">|</span>
+              <div>
+                <strong>Pemilik:</strong> <Badge variant="secondary" className="text-xs font-normal">{potentialRisk.owner || 'N/A'}</Badge>
+              </div>
+            </div>
+          </div>
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="flex items-center space-x-4">
+      <CardContent className="space-y-3">
+        <div className="grid grid-cols-3 gap-2 text-center border p-2 rounded-md">
           <div>
-            <span className="text-sm font-medium">Probabilitas: </span>
-            <Badge variant={potentialRisk.likelihood ? "secondary" : "outline"}>{potentialRisk.likelihood || 'Belum diatur'}</Badge>
+            <span className="text-xs font-medium text-muted-foreground block">Probabilitas</span>
+            <Badge variant={potentialRisk.likelihood ? "outline" : "ghost"} className="text-xs mt-1">
+              {potentialRisk.likelihood || 'Belum diatur'}
+            </Badge>
           </div>
           <div>
-            <span className="text-sm font-medium">Dampak: </span>
-            <Badge variant={potentialRisk.impact ? "secondary" : "outline"}>{potentialRisk.impact || 'Belum diatur'}</Badge>
+            <span className="text-xs font-medium text-muted-foreground block">Dampak</span>
+            <Badge variant={potentialRisk.impact ? "outline" : "ghost"} className="text-xs mt-1">
+              {potentialRisk.impact || 'Belum diatur'}
+            </Badge>
           </div>
           <div>
-            <span className="text-sm font-medium">Level: </span>
-             <Badge className={`${getRiskLevelColor(riskLevel)} text-white`}>
+            <span className="text-xs font-medium text-muted-foreground block">Level Risiko</span>
+             <Badge className={`${getRiskLevelColor(riskLevel)} text-white text-xs mt-1`}>
                 {riskLevel}
              </Badge>
           </div>
@@ -124,57 +138,61 @@ export function RiskListItem({
         {riskCauses.length > 0 && (
           <div>
             <h4 className="text-sm font-semibold mb-1 flex items-center">
-              <ListChecks className="h-4 w-4 mr-1 text-muted-foreground" />
+              <ListChecks className="h-4 w-4 mr-2 text-primary" />
               Potensi Penyebab ({riskCauses.length}):
             </h4>
-            <ul className="list-disc list-inside space-y-1 pl-4">
+            <div className="pl-1 space-y-1 max-h-28 overflow-y-auto scroll-smooth border-l-2 border-border ml-2">
               {riskCauses.slice(0, 3).map(cause => (
-                <li key={cause.id} className="text-sm text-muted-foreground">
-                  {cause.description} <Badge variant="outline" className="ml-1 text-xs">{cause.source}</Badge>
-                </li>
+                <div key={cause.id} className="text-sm text-muted-foreground p-1.5 rounded hover:bg-muted/40 ml-2">
+                  <span className="font-medium">{cause.description}</span>
+                  <Badge variant="outline" className="ml-2 text-xs font-normal">{cause.source}</Badge>
+                </div>
               ))}
-              {riskCauses.length > 3 && <li className="text-xs text-muted-foreground">...dan {riskCauses.length - 3} lainnya.</li>}
-            </ul>
-             <Button variant="link" size="sm" className="p-0 h-auto mt-1" onClick={() => onManageCauses(potentialRisk)}>
+              {riskCauses.length > 3 && <div className="text-xs text-muted-foreground pl-3 pt-1">...dan {riskCauses.length - 3} lainnya.</div>}
+            </div>
+             <Button variant="link" size="sm" className="p-0 h-auto mt-1.5 text-primary" onClick={() => onManageCauses(potentialRisk)}>
                 Lihat/Kelola Semua Penyebab
             </Button>
           </div>
         )}
         {riskCauses.length === 0 && (
-             <Button variant="outline" size="sm" onClick={() => onManageCauses(potentialRisk)}>
-                <Zap className="mr-2 h-4 w-4" /> Tambah/Kelola Penyebab
+             <Button variant="outline" size="sm" onClick={() => onManageCauses(potentialRisk)} className="w-full">
+                <Zap className="mr-2 h-4 w-4" /> Tambah & Kelola Penyebab
             </Button>
         )}
         
         {controls.length > 0 && (
           <div className="mt-3">
             <h4 className="text-sm font-semibold mb-1 flex items-center">
-                <ShieldCheck className="h-4 w-4 mr-1 text-muted-foreground" />
+                <ShieldCheck className="h-4 w-4 mr-2 text-primary" />
                 Kontrol ({controls.length}):
             </h4>
-            <ul className="list-disc list-inside space-y-1 pl-4">
+            <div className="pl-1 space-y-1 max-h-28 overflow-y-auto scroll-smooth border-l-2 border-border ml-2">
               {controls.map(control => (
-                <li key={control.id} className="text-sm text-muted-foreground flex justify-between items-center group">
-                  <span>
-                    {control.description} <Badge variant="outline" className="ml-1 text-xs">{control.status}</Badge>
-                  </span>
-                  <div className="opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Button variant="ghost" size="icon-sm" onClick={() => onEditControl(control)} aria-label="Edit kontrol">
-                      <Edit className="h-3 w-3" />
-                    </Button>
-                     <Button variant="ghost" size="icon-sm" onClick={() => onDeleteControl(control.id)} aria-label="Hapus kontrol">
-                      <Trash2 className="h-3 w-3 text-destructive" />
-                    </Button>
+                <div key={control.id} className="text-sm text-muted-foreground p-1.5 rounded hover:bg-muted/40 group ml-2">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <span className="font-medium">{control.description}</span>
+                      <Badge variant="outline" className="ml-2 text-xs font-normal">{control.status}</Badge>
+                    </div>
+                    <div className="opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                      <Button variant="ghost" size="icon-sm" onClick={() => onEditControl(control)} aria-label="Edit kontrol">
+                        <Edit className="h-3.5 w-3.5" />
+                      </Button>
+                       <Button variant="ghost" size="icon-sm" onClick={() => onDeleteControl(control.id)} aria-label="Hapus kontrol">
+                        <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                      </Button>
+                    </div>
                   </div>
-                </li>
+                </div>
               ))}
-            </ul>
+            </div>
           </div>
         )}
       </CardContent>
       <CardFooter>
         {controls.length === 0 && (
-            <Button variant="outline" size="sm" onClick={() => onAddControl(potentialRisk)}>
+            <Button variant="outline" size="sm" onClick={() => onAddControl(potentialRisk)} className="w-full">
                 <PlusCircle className="mr-2 h-4 w-4" /> Tambah Tindakan Kontrol
             </Button>
         )}
