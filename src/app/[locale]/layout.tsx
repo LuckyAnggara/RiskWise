@@ -30,22 +30,24 @@ export default async function LocaleLayout({children, params: {locale}}: Props) 
   let messages;
   try {
     messages = await getMessages();
+    // Explicitly check if messages is a non-null object.
+    // If messages are still not a valid object here, something is fundamentally wrong
+    // with the message-loading pipeline or getMessages itself.
+    if (typeof messages !== 'object' || messages === null) {
+      // console.error(`[LocaleLayout] Critical: Messages for locale ${locale} resolved by getMessages() were not a valid object. Received:`, messages);
+      notFound(); 
+    }
   } catch (error) {
-    // This might happen if i18n.ts itself throws an error before returning messages
-    console.error(`[LocaleLayout] Error fetching messages for locale ${locale}:`, error);
+    // This might happen if i18n.ts throws an error that isn't caught,
+    // or if getMessages() itself throws.
+    // console.error(`[LocaleLayout] Critical: Error fetching messages via getMessages() for locale ${locale}:`, error);
     notFound();
-  }
-
-  // Ensure messages is an object, even if empty, for NextIntlClientProvider
-  const messagesForProvider = (typeof messages === 'object' && messages !== null) ? messages : {};
-  if (typeof messages !== 'object' || messages === null) {
-    console.warn(`[LocaleLayout] Messages for locale ${locale} were not a valid object. Using empty object for provider.`);
   }
  
   return (
     <html lang={locale} suppressHydrationWarning>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        <NextIntlClientProvider locale={locale} messages={messagesForProvider}>
+        <NextIntlClientProvider locale={locale} messages={messages}>
           <AppLayout>
             {children}
           </AppLayout>
@@ -55,11 +57,3 @@ export default async function LocaleLayout({children, params: {locale}}: Props) 
   );
 }
 
-// Optional: If you want locale-specific metadata, you can generate it here too.
-// export async function generateMetadata({params: {locale}}: Props) {
-//   const messages = await getMessages();
-//   // Example: const t = createTranslator({locale, messages});
-//   return {
-//     title: "My App - " + locale, // Example
-//   };
-// }
