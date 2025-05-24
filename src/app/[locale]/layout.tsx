@@ -1,5 +1,5 @@
 
-import {NextIntlClientProvider} from 'next-intl';
+import {NextIntlClientProvider, useTranslations} from 'next-intl'; // Added useTranslations
 import {getMessages} from 'next-intl/server';
 // import {AppLayout} from '@/components/layout/app-layout'; // Temporarily remove AppLayout
 import {notFound} from 'next/navigation';
@@ -47,8 +47,10 @@ export default async function LocaleLayout({children, params: {locale}}: Props) 
     messages = await getMessages();
     console.log(`[LocaleLayout] Messages received from getMessages() for locale ${locale}. Type: ${typeof messages}, Keys: ${messages ? Object.keys(messages).length : 'N/A'}`);
     
+    // Stricter check: messages must be a non-null object. 
+    // For 'en', it should also not be empty if en.json is expected to have content.
     if (typeof messages !== 'object' || messages === null || (locale === 'en' && Object.keys(messages).length === 0)) {
-      console.error(`[LocaleLayout] Critical: Messages for locale ${locale} were not a valid object or were empty. Received:`, messages, ". Calling notFound().");
+      console.error(`[LocaleLayout] Critical: Messages for locale ${locale} were not a valid object or were empty (for 'en'). Received:`, messages, ". Calling notFound().");
       notFound(); 
     }
   } catch (error) {
@@ -60,14 +62,16 @@ export default async function LocaleLayout({children, params: {locale}}: Props) 
     <html lang={locale} suppressHydrationWarning>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <NextIntlClientProvider locale={locale} messages={messages}>
+          {/* Minimal content for diagnostics */}
           <div style={{border: '2px dashed blue', padding: '20px'}}>
             <h1>Minimal Locale Layout (Diagnostic)</h1>
             <TestTranslationComponent />
             <hr />
-            <main>{children}</main>
+            <main>{children}</main> {/* Temporarily keep children to see if page content itself breaks */}
           </div>
         </NextIntlClientProvider>
       </body>
     </html>
   );
 }
+
