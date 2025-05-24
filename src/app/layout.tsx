@@ -1,20 +1,10 @@
 import type { Metadata } from 'next';
-import { Geist, Geist_Mono } from 'next/font/google';
-import './globals.css';
-// Removed AppLayout import as it will be in [locale]/layout.tsx
 
-const geistSans = Geist({
-  variable: '--font-geist-sans',
-  subsets: ['latin'],
-});
-
-const geistMono = Geist_Mono({
-  variable: '--font-geist-mono',
-  subsets: ['latin'],
-});
+// Global styles and fonts will be handled by the locale-specific layout
+// ./globals.css is imported in src/app/[locale]/layout.tsx
 
 export const metadata: Metadata = {
-  title: 'RiskWise - Risk Management',
+  title: 'RiskWise - Risk Management', // This can remain global or be made locale-specific
   description: 'Comprehensive risk management application.',
 };
 
@@ -23,11 +13,7 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  return (
-    <html lang="en" suppressHydrationWarning>
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        {children}
-      </body>
-    </html>
-  );
+  // The root layout now simply returns children.
+  // The <html> and <body> tags will be in [locale]/layout.tsx
+  return <>{children}</>;
 }
