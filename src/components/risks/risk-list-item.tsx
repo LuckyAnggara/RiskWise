@@ -1,3 +1,4 @@
+
 "use client";
 
 import type { PotentialRisk, Control, RiskCause, LikelihoodImpactLevel } from '@/lib/types';
@@ -50,6 +51,32 @@ const getRiskLevelColor = (level: string) => {
   }
 };
 
+const getControlStatusColorClasses = (status: Control['status']) => {
+  switch (status) {
+    case 'Implemented':
+      return "bg-green-100 text-green-800 border-green-300 dark:bg-green-900/50 dark:text-green-300 dark:border-green-700";
+    case 'In Progress':
+      return "bg-yellow-100 text-yellow-800 border-yellow-300 dark:bg-yellow-900/50 dark:text-yellow-300 dark:border-yellow-700";
+    case 'Planned':
+      return "bg-slate-100 text-slate-800 border-slate-300 dark:bg-slate-700/50 dark:text-slate-300 dark:border-slate-600";
+    case 'Ineffective':
+      return "bg-red-100 text-red-800 border-red-300 dark:bg-red-900/50 dark:text-red-300 dark:border-red-700";
+    default:
+      return "border-transparent bg-secondary text-secondary-foreground";
+  }
+};
+
+const getCauseSourceColorClasses = (source: RiskCause['source']) => {
+  switch (source) {
+    case 'Internal':
+      return "bg-sky-100 text-sky-800 border-sky-300 dark:bg-sky-900/50 dark:text-sky-300 dark:border-sky-700";
+    case 'Eksternal':
+      return "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/50 dark:text-amber-300 dark:border-amber-700";
+    default:
+      return "border-transparent bg-secondary text-secondary-foreground";
+  }
+};
+
 
 export function RiskListItem({ 
   potentialRisk, 
@@ -72,7 +99,7 @@ export function RiskListItem({
           <CardTitle className="text-lg">{potentialRisk.description}</CardTitle>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon">
+              <Button variant="ghost" size="icon" aria-label="Opsi risiko">
                 <Settings2 className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
@@ -117,13 +144,13 @@ export function RiskListItem({
         <div className="grid grid-cols-3 gap-2 text-center border p-2 rounded-md">
           <div>
             <span className="text-xs font-medium text-muted-foreground block">Probabilitas</span>
-            <Badge variant={potentialRisk.likelihood ? "outline" : "ghost"} className="text-xs mt-1">
+            <Badge variant={potentialRisk.likelihood ? "outline" : "outline"} className={`text-xs mt-1 ${!potentialRisk.likelihood ? "text-muted-foreground" : ""}`}>
               {potentialRisk.likelihood || 'Belum diatur'}
             </Badge>
           </div>
           <div>
             <span className="text-xs font-medium text-muted-foreground block">Dampak</span>
-            <Badge variant={potentialRisk.impact ? "outline" : "ghost"} className="text-xs mt-1">
+            <Badge variant={potentialRisk.impact ? "outline" : "outline"} className={`text-xs mt-1 ${!potentialRisk.impact ? "text-muted-foreground" : ""}`}>
               {potentialRisk.impact || 'Belum diatur'}
             </Badge>
           </div>
@@ -141,16 +168,16 @@ export function RiskListItem({
               <ListChecks className="h-4 w-4 mr-2 text-primary" />
               Potensi Penyebab ({riskCauses.length}):
             </h4>
-            <div className="pl-1 space-y-1 max-h-28 overflow-y-auto scroll-smooth border-l-2 border-border ml-2">
+            <div className="pl-1 space-y-1 max-h-24 overflow-y-auto scroll-smooth border-l-2 border-border ml-2">
               {riskCauses.slice(0, 3).map(cause => (
                 <div key={cause.id} className="text-sm text-muted-foreground p-1.5 rounded hover:bg-muted/40 ml-2">
                   <span className="font-medium">{cause.description}</span>
-                  <Badge variant="outline" className="ml-2 text-xs font-normal">{cause.source}</Badge>
+                  <Badge className={`ml-2 text-xs font-normal ${getCauseSourceColorClasses(cause.source)}`}>{cause.source}</Badge>
                 </div>
               ))}
               {riskCauses.length > 3 && <div className="text-xs text-muted-foreground pl-3 pt-1">...dan {riskCauses.length - 3} lainnya.</div>}
             </div>
-             <Button variant="link" size="sm" className="p-0 h-auto mt-1.5 text-primary" onClick={() => onManageCauses(potentialRisk)}>
+             <Button variant="link" size="sm" className="p-0 h-auto mt-1.5 text-primary hover:underline" onClick={() => onManageCauses(potentialRisk)}>
                 Lihat/Kelola Semua Penyebab
             </Button>
           </div>
@@ -167,13 +194,13 @@ export function RiskListItem({
                 <ShieldCheck className="h-4 w-4 mr-2 text-primary" />
                 Kontrol ({controls.length}):
             </h4>
-            <div className="pl-1 space-y-1 max-h-28 overflow-y-auto scroll-smooth border-l-2 border-border ml-2">
+            <div className="pl-1 space-y-1 max-h-24 overflow-y-auto scroll-smooth border-l-2 border-border ml-2">
               {controls.map(control => (
                 <div key={control.id} className="text-sm text-muted-foreground p-1.5 rounded hover:bg-muted/40 group ml-2">
                   <div className="flex justify-between items-center">
                     <div>
                       <span className="font-medium">{control.description}</span>
-                      <Badge variant="outline" className="ml-2 text-xs font-normal">{control.status}</Badge>
+                      <Badge className={`ml-2 text-xs font-normal ${getControlStatusColorClasses(control.status)}`}>{control.status}</Badge>
                     </div>
                     <div className="opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
                       <Button variant="ghost" size="icon-sm" onClick={() => onEditControl(control)} aria-label="Edit kontrol">
