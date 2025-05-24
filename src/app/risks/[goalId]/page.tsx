@@ -11,7 +11,7 @@ import { RiskAnalysisModal } from '@/components/risks/risk-analysis-modal';
 import { RiskControlModal } from '@/components/risks/risk-control-modal';
 import { ManageRiskCausesDialog } from '@/components/risks/manage-risk-causes-dialog'; // Import new dialog
 import type { Goal, PotentialRisk, Control, RiskCause, LikelihoodImpactLevel } from '@/lib/types';
-import { ArrowLeft, ShieldAlert, Loader2, LayoutGrid, List, Settings2, BarChart3, PlusCircle, Trash2, Zap } from 'lucide-react';
+import { ArrowLeft, ShieldAlert, Loader2, LayoutGrid, List, Settings2, BarChart3, PlusCircle, Trash2, Zap, Edit } from 'lucide-react'; // Added Edit
 import { useToast } from '@/hooks/use-toast';
 import { Separator } from '@/components/ui/separator';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -91,7 +91,7 @@ export default function GoalRisksPage() {
         const potentialRisksStorageKey = getPotentialRisksStorageKey(currentGoal.uprId, currentGoal.period, goalId);
         const storedPotentialRisksData = localStorage.getItem(potentialRisksStorageKey);
         const currentPotentialRisks: PotentialRisk[] = storedPotentialRisksData ? JSON.parse(storedPotentialRisksData) : [];
-        setPotentialRisks(currentPotentialRisks);
+        setPotentialRisks(currentPotentialRisks.sort((a,b) => a.description.localeCompare(b.description)));
 
         let allRiskControls: Control[] = [];
         let allRiskCausesForGoal: RiskCause[] = [];
@@ -139,7 +139,7 @@ export default function GoalRisksPage() {
         setIsLoading(false);
         setGoal(null);
     }
-  }, [loadData, currentUprId, currentPeriod, goalId]);
+  }, [loadData, currentUprId, currentPeriod, goalId, router]); // Added router
 
   const updatePotentialRisksInStorage = (goalForPotentialRisks: Goal, updatedPRisks: PotentialRisk[]) => {
     if (typeof window !== 'undefined' && goalForPotentialRisks) {
@@ -162,7 +162,7 @@ export default function GoalRisksPage() {
     updatePotentialRisksInStorage(goal, updatedPotentialRisksState);
     toast({
         title: "Potential Risks Identified!",
-        description: `${newPotentialRisks.length} potential risks brainstormed for "${goal.name}".`
+        description: `${newPotentialRisks.length} potential risks brainstormed for "${goal.name}". You can now edit their details and add causes.`
     });
   };
   
@@ -173,7 +173,7 @@ export default function GoalRisksPage() {
 
   const handleSaveRiskAnalysis = (updatedPotentialRisk: PotentialRisk) => {
     if (!goal) return;
-    const newPotentialRisksState = potentialRisks.map(pr => pr.id === updatedPotentialRisk.id ? updatedPotentialRisk : pr);
+    const newPotentialRisksState = potentialRisks.map(pr => pr.id === updatedPotentialRisk.id ? updatedPotentialRisk : pr).sort((a,b) => a.description.localeCompare(b.description));
     setPotentialRisks(newPotentialRisksState);
     updatePotentialRisksInStorage(goal, newPotentialRisksState);
     toast({ title: "Potential Risk Analyzed", description: `Analysis saved for: "${updatedPotentialRisk.description}"`});
@@ -218,7 +218,7 @@ export default function GoalRisksPage() {
     const pRiskToDelete = potentialRisks.find(pr => pr.id === pRiskIdToDelete);
     if (!pRiskToDelete) return;
 
-    const updatedPotentialRisksState = potentialRisks.filter(pr => pr.id !== pRiskIdToDelete);
+    const updatedPotentialRisksState = potentialRisks.filter(pr => pr.id !== pRiskIdToDelete).sort((a,b) => a.description.localeCompare(b.description));
     setPotentialRisks(updatedPotentialRisksState);
     updatePotentialRisksInStorage(goal, updatedPotentialRisksState);
       
@@ -253,8 +253,6 @@ export default function GoalRisksPage() {
   };
 
   const handleCausesUpdate = (potentialRiskId: string, updatedCauses: RiskCause[]) => {
-    // This function will be called by ManageRiskCausesDialog
-    // It needs to update the riskCauses state for this specific goal's risks
     const otherCauses = riskCauses.filter(rc => rc.potentialRiskId !== potentialRiskId);
     setRiskCauses([...otherCauses, ...updatedCauses]);
   };
@@ -344,7 +342,8 @@ export default function GoalRisksPage() {
                 }}
                 onDeletePotentialRisk={() => handleDeletePotentialRisk(pRisk.id)}
                 onDeleteControl={(controlId) => handleDeleteControl(controlId)}
-                onManageCauses={() => handleOpenManageCausesModal(pRisk)}
+                onManageCauses={() => handleOpenManageCausesModal(pRisk)} // Can keep this for quick access from card view
+                onEditDetails={() => router.push(`/all-risks/manage/${pRisk.id}`)} // New prop
               />
             ))}
           </div>
@@ -402,17 +401,11 @@ export default function GoalRisksPage() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                               <DropdownMenuItem onClick={() => {
-                                /* For editing description, category, owner - need AddEditPotentialRiskDialog */
-                                /* This page doesn't have AddEditPotentialRiskDialog instance directly */
-                                /* Suggest navigating to AllRisksPage or implementing it here too */
-                                router.push(`/all-risks?edit=${pRisk.id}&goalId=${goal.id}`);
-                                toast({title: "Edit Action", description: "To edit full details, please go to 'All Potential Risks' page or implement edit here."})
-                              }}>
-                                <Edit className="mr-2 h-4 w-4" /> Edit Details (via All Risks)
+                               <DropdownMenuItem onClick={() => router.push(`/all-risks/manage/${pRisk.id}`)}>
+                                <Edit className="mr-2 h-4 w-4" /> Edit Details & Causes
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => handleOpenManageCausesModal(pRisk)}>
-                                <Zap className="mr-2 h-4 w-4" /> Manage Causes
+                                <Zap className="mr-2 h-4 w-4" /> Manage Causes (Quick)
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => handleOpenAnalysisModal(pRisk)}>
                                 <BarChart3 className="mr-2 h-4 w-4" /> Analyze Level
@@ -475,3 +468,5 @@ export default function GoalRisksPage() {
     </div>
   );
 }
+
+    

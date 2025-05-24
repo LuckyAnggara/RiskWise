@@ -2,11 +2,12 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation'; // Import useRouter
 import { PageHeader } from '@/components/ui/page-header';
 import { Button } from '@/components/ui/button';
 import { RiskAnalysisModal } from '@/components/risks/risk-analysis-modal';
 import { RiskControlModal } from '@/components/risks/risk-control-modal';
-import { AddEditPotentialRiskDialog } from '@/components/risks/add-edit-potential-risk-dialog';
+// import { AddEditPotentialRiskDialog } from '@/components/risks/add-edit-potential-risk-dialog'; // No longer used for primary add/edit
 import { ManageRiskCausesDialog } from '@/components/risks/manage-risk-causes-dialog';
 import type { Goal, PotentialRisk, Control, RiskCause, LikelihoodImpactLevel } from '@/lib/types';
 import { PlusCircle, Loader2, Settings2, BarChart3, Trash2, Edit, ListChecks, Zap } from 'lucide-react';
@@ -48,6 +49,7 @@ const getRiskLevelColor = (level: string) => {
 };
 
 export default function AllRisksPage() {
+  const router = useRouter(); // Initialize router
   const [currentUprId, setCurrentUprId] = useState('');
   const [currentPeriod, setCurrentPeriod] = useState('');
   const [goals, setGoals] = useState<Goal[]>([]);
@@ -63,8 +65,9 @@ export default function AllRisksPage() {
   const [selectedControlForEdit, setSelectedControlForEdit] = useState<Control | null>(null);
   const [isControlModalOpen, setIsControlModalOpen] = useState(false);
 
-  const [potentialRiskToEdit, setPotentialRiskToEdit] = useState<PotentialRisk | null>(null);
-  const [isAddEditPotentialRiskModalOpen, setIsAddEditPotentialRiskModalOpen] = useState(false);
+  // PotentialRiskToEdit and isAddEditPotentialRiskModalOpen are no longer needed here for main add/edit
+  // const [potentialRiskToEdit, setPotentialRiskToEdit] = useState<PotentialRisk | null>(null);
+  // const [isAddEditPotentialRiskModalOpen, setIsAddEditPotentialRiskModalOpen] = useState(false);
 
   const [selectedPotentialRiskForCauses, setSelectedPotentialRiskForCauses] = useState<PotentialRisk | null>(null);
   const [isManageCausesModalOpen, setIsManageCausesModalOpen] = useState(false);
@@ -119,10 +122,12 @@ export default function AllRisksPage() {
   }, []);
 
   useEffect(() => {
+    // This effect now listens to changes in router to potentially refresh data
+    // if navigation from edit page occurs. A more robust solution might involve global state.
     if (currentUprId && currentPeriod) {
       loadData();
     }
-  }, [loadData, currentUprId, currentPeriod]);
+  }, [loadData, currentUprId, currentPeriod, router]); // Added router as dependency
 
   const updatePotentialRisksInStorageForGoal = (uprId: string, period: string, goalId: string, updatedPotentialRisksForGoal: PotentialRisk[]) => {
     if (typeof window !== 'undefined') {
@@ -137,43 +142,17 @@ export default function AllRisksPage() {
         localStorage.setItem(key, JSON.stringify(updatedControlsForPotentialRisk));
      }
   };
-
-  const handlePotentialRiskSave = (potentialRisk: PotentialRisk, isNew: boolean) => {
-    const parentGoal = goals.find(g => g.id === potentialRisk.goalId);
-    if (!parentGoal) {
-        toast({ title: "Error", description: "Parent goal not found for the potential risk.", variant: "destructive"});
-        return;
-    }
-    if (parentGoal.uprId !== currentUprId || parentGoal.period !== currentPeriod) {
-        toast({ title: "Context Mismatch", description: "Cannot save potential risk for a goal outside the current UPR/Period context.", variant: "destructive" });
-        return;
-    }
-    
-    let newAllPotentialRisksState;
-    const goalSpecificPotentialRisks = allPotentialRisks.filter(pr => pr.goalId === potentialRisk.goalId && pr.id !== potentialRisk.id);
-    
-    if (!isNew) { 
-      newAllPotentialRisksState = allPotentialRisks.map(pr => pr.id === potentialRisk.id ? potentialRisk : pr);
-      updatePotentialRisksInStorageForGoal(parentGoal.uprId, parentGoal.period, potentialRisk.goalId, [...goalSpecificPotentialRisks, potentialRisk].sort((a,b) => a.description.localeCompare(b.description)));
-      toast({ title: "Potential Risk Updated", description: `Potential risk "${potentialRisk.description}" has been updated.` });
-    } else { 
-      newAllPotentialRisksState = [...allPotentialRisks, potentialRisk];
-      updatePotentialRisksInStorageForGoal(parentGoal.uprId, parentGoal.period, potentialRisk.goalId, [...goalSpecificPotentialRisks, potentialRisk].sort((a,b) => a.description.localeCompare(b.description)));
-      toast({ title: "Potential Risk Added", description: `New potential risk "${potentialRisk.description}" added.` });
-    }
-    setAllPotentialRisks(newAllPotentialRisksState.sort((a,b) => a.description.localeCompare(b.description)));
-    setIsAddEditPotentialRiskModalOpen(false);
-    setPotentialRiskToEdit(null);
-  };
   
-  const handleOpenEditPotentialRiskModal = (pRisk: PotentialRisk) => {
-    setPotentialRiskToEdit(pRisk);
-    setIsAddEditPotentialRiskModalOpen(true);
+  const handleOpenAddPotentialRiskPage = () => {
+    if (goals.filter(g => g.uprId === currentUprId && g.period === currentPeriod).length === 0) {
+        toast({ title: "Cannot Add Risk", description: "Please create at least one goal for the current UPR/Period before adding a potential risk.", variant: "destructive"});
+        return;
+    }
+    router.push('/all-risks/manage/new');
   };
 
-  const handleOpenAddPotentialRiskModal = () => {
-    setPotentialRiskToEdit(null); 
-    setIsAddEditPotentialRiskModalOpen(true);
+  const handleOpenEditPotentialRiskPage = (pRiskId: string) => {
+    router.push(`/all-risks/manage/${pRiskId}`);
   };
   
   const handleOpenAnalysisModal = (pRiskToAnalyze: PotentialRisk) => {
@@ -186,10 +165,10 @@ export default function AllRisksPage() {
     if (!parentGoal) return;
 
     const newPotentialRisksState = allPotentialRisks.map(pr => pr.id === updatedPotentialRisk.id ? updatedPotentialRisk : pr);
-    setAllPotentialRisks(newPotentialRisksState);
+    setAllPotentialRisks(newPotentialRisksState.sort((a,b) => a.description.localeCompare(b.description)));
     
     const goalPotentialRisks = newPotentialRisksState.filter(pr => pr.goalId === updatedPotentialRisk.goalId);
-    updatePotentialRisksInStorageForGoal(parentGoal.uprId, parentGoal.period, updatedPotentialRisk.goalId, goalPotentialRisks);
+    updatePotentialRisksInStorageForGoal(parentGoal.uprId, parentGoal.period, updatedPotentialRisk.goalId, goalPotentialRisks.sort((a,b)=>a.description.localeCompare(b.description)));
 
     toast({ title: "Potential Risk Analyzed", description: `Analysis saved for: "${updatedPotentialRisk.description}"`});
     setIsAnalysisModalOpen(false);
@@ -236,10 +215,10 @@ export default function AllRisksPage() {
     if (!parentGoal) return;
 
     const updatedPotentialRisksState = allPotentialRisks.filter(pr => pr.id !== pRiskIdToDelete);
-    setAllPotentialRisks(updatedPotentialRisksState);
+    setAllPotentialRisks(updatedPotentialRisksState.sort((a,b) => a.description.localeCompare(b.description)));
 
     const goalPotentialRisks = updatedPotentialRisksState.filter(pr => pr.goalId === pRiskToDelete.goalId);
-    updatePotentialRisksInStorageForGoal(parentGoal.uprId, parentGoal.period, pRiskToDelete.goalId, goalPotentialRisks);
+    updatePotentialRisksInStorageForGoal(parentGoal.uprId, parentGoal.period, pRiskToDelete.goalId, goalPotentialRisks.sort((a,b)=>a.description.localeCompare(b.description)));
       
     if (typeof window !== 'undefined') {
       localStorage.removeItem(getControlsStorageKey(parentGoal.uprId, parentGoal.period, pRiskIdToDelete));
@@ -278,7 +257,7 @@ export default function AllRisksPage() {
   const handleCausesUpdate = (potentialRiskId: string, updatedCauses: RiskCause[]) => {
     const remainingCauses = allRiskCauses.filter(rc => rc.potentialRiskId !== potentialRiskId);
     setAllRiskCauses([...remainingCauses, ...updatedCauses]);
-    // Parent already updated localStorage, this just syncs the main state
+    // Parent (ManageRiskCausesDialog or new page) already updated localStorage, this just syncs the main state
   };
 
 
@@ -299,7 +278,7 @@ export default function AllRisksPage() {
         title={`All Potential Risks`}
         description={`Manage all identified potential risks across all goals for UPR: ${currentUprId}, Period: ${currentPeriod}.`}
         actions={
-          <Button onClick={handleOpenAddPotentialRiskModal} disabled={relevantGoals.length === 0}>
+          <Button onClick={handleOpenAddPotentialRiskPage} disabled={relevantGoals.length === 0}>
             <PlusCircle className="mr-2 h-4 w-4" /> Add New Potential Risk
             {relevantGoals.length === 0 && <span className="ml-2 text-xs">(Create a goal first)</span>}
           </Button>
@@ -375,11 +354,11 @@ export default function AllRisksPage() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => handleOpenEditPotentialRiskModal(pRisk)}>
-                              <Edit className="mr-2 h-4 w-4" /> Edit Details
+                            <DropdownMenuItem onClick={() => handleOpenEditPotentialRiskPage(pRisk.id)}>
+                              <Edit className="mr-2 h-4 w-4" /> Edit Details & Causes
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => handleOpenManageCausesModal(pRisk)}>
-                              <Zap className="mr-2 h-4 w-4" /> Manage Causes
+                              <Zap className="mr-2 h-4 w-4" /> Manage Causes (Quick)
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => handleOpenAnalysisModal(pRisk)}>
                               <BarChart3 className="mr-2 h-4 w-4" /> Analyze Level
@@ -403,7 +382,8 @@ export default function AllRisksPage() {
         </Card>
       )}
 
-      {isAddEditPotentialRiskModalOpen && <AddEditPotentialRiskDialog
+      {/* AddEditPotentialRiskDialog is no longer used here for primary add/edit */}
+      {/* {isAddEditPotentialRiskModalOpen && <AddEditPotentialRiskDialog
         goals={relevantGoals} 
         isOpen={isAddEditPotentialRiskModalOpen}
         onOpenChange={setIsAddEditPotentialRiskModalOpen}
@@ -411,7 +391,7 @@ export default function AllRisksPage() {
         existingPotentialRisk={potentialRiskToEdit}
         currentUprId={currentUprId} 
         currentPeriod={currentPeriod}
-      />}
+      />} */}
 
       {selectedPotentialRiskForAnalysis && <RiskAnalysisModal
         potentialRisk={selectedPotentialRiskForAnalysis}
@@ -451,3 +431,5 @@ export default function AllRisksPage() {
     </div>
   );
 }
+
+    

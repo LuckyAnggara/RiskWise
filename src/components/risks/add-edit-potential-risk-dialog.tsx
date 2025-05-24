@@ -23,6 +23,12 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { PlusCircle, Edit } from 'lucide-react';
 
+// This component is being deprecated in favor of the new page-based management
+// at /all-risks/manage/[potentialRiskId]
+// It's kept for now to avoid breaking imports if any, but its functionality
+// for primary add/edit of PotentialRisk is moved.
+// It might be repurposed for a very quick add scenario if needed later.
+
 const potentialRiskSchema = z.object({
   description: z.string().min(10, "Potential risk description must be at least 10 characters long."),
   goalId: z.string().min(1, "A goal must be selected."),
@@ -44,8 +50,8 @@ interface AddEditPotentialRiskDialogProps {
   defaultGoalId?: string;
   currentUprId: string;
   currentPeriod: string;
-  isOpen?: boolean; // For controlled mode
-  onOpenChange?: (open: boolean) => void; // For controlled mode
+  isOpen?: boolean; 
+  onOpenChange?: (open: boolean) => void; 
 }
 
 export function AddEditPotentialRiskDialog({ 
@@ -73,13 +79,16 @@ export function AddEditPotentialRiskDialog({
     }
   };
 
+   useEffect(() => {
+    console.warn("AddEditPotentialRiskDialog is being deprecated for primary Potential Risk CRUD. Use the /all-risks/manage page instead.");
+  }, []);
+
   const {
     register,
     handleSubmit,
     reset,
     setValue,
     watch,
-    // control, // for Select component if using react-hook-form's Controller
     formState: { errors, isSubmitting },
   } = useForm<PotentialRiskFormData>({
     resolver: zodResolver(potentialRiskSchema),
@@ -139,37 +148,36 @@ export function AddEditPotentialRiskDialog({
   return (
     <Dialog open={open} onOpenChange={setOpenState}>
       {triggerButton ? (
-        // If a specific triggerButton is provided, use it
         <DialogTrigger asChild>
           {React.cloneElement(triggerButton as React.ReactElement, { onClick: () => setOpenState(true) })}
         </DialogTrigger>
       ) : !isControlled ? (
-        // If not controlled and no specific trigger, render the default trigger
         <DialogTrigger asChild>
-          <Button onClick={() => setOpenState(true)}>
+          <Button onClick={() => setOpenState(true)} variant="outline" size="sm" className="text-muted-foreground">
             {isEditing ? <Edit className="mr-2 h-4 w-4" /> : <PlusCircle className="mr-2 h-4 w-4" />}
-            {isEditing ? "Edit Potential Risk" : "Add New Potential Risk"}
+            {isEditing ? "Edit (Dialog - Deprecated)" : "Add (Dialog - Deprecated)"}
           </Button>
         </DialogTrigger>
-      ) : null /* If controlled and no specific triggerButton, render no trigger here (parent handles it) */}
+      ) : null }
       
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>{isEditing ? "Edit Potential Risk" : "Add New Potential Risk"}</DialogTitle>
+          <DialogTitle>{isEditing ? "Edit Potential Risk (Dialog - Deprecated)" : "Add New Potential Risk (Dialog - Deprecated)"}</DialogTitle>
           <DialogDescription>
-            {isEditing ? "Update the details of this potential risk." : "Define a new potential risk and associate it with a goal."}
+            This dialog is being phased out. Please use the dedicated management page.
             {` For UPR: ${currentUprId}, Period: ${currentPeriod}`}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)} className="grid gap-4 py-4">
+          {/* Form content largely remains the same, but usage context changes */}
           <div className="space-y-1.5">
-            <Label htmlFor="goalIdPotentialRisk">Associated Goal</Label>
+            <Label htmlFor="goalIdPotentialRiskDialog">Associated Goal</Label>
             <Select
               value={selectedGoalId}
               onValueChange={(value) => setValue("goalId", value, { shouldValidate: true })}
               disabled={goals.length === 0}
             >
-              <SelectTrigger id="goalIdPotentialRisk" className={errors.goalId ? "border-destructive" : ""}>
+              <SelectTrigger id="goalIdPotentialRiskDialog" className={errors.goalId ? "border-destructive" : ""}>
                 <SelectValue placeholder="Select a goal" />
               </SelectTrigger>
               <SelectContent>
@@ -186,9 +194,9 @@ export function AddEditPotentialRiskDialog({
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="descriptionPotentialRisk">Potential Risk Description</Label>
+            <Label htmlFor="descriptionPotentialRiskDialog">Potential Risk Description</Label>
             <Textarea
-              id="descriptionPotentialRisk"
+              id="descriptionPotentialRiskDialog"
               {...register("description")}
               className={errors.description ? "border-destructive" : ""}
               rows={3}
@@ -198,7 +206,7 @@ export function AddEditPotentialRiskDialog({
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="categoryPotentialRisk">Risk Category</Label>
+            <Label htmlFor="categoryPotentialRiskDialog">Risk Category</Label>
             <Select
               value={selectedCategory || NO_CATEGORY_SENTINEL} 
               onValueChange={(value) => {
@@ -209,7 +217,7 @@ export function AddEditPotentialRiskDialog({
                 }
               }}
             >
-              <SelectTrigger id="categoryPotentialRisk" className={errors.category ? "border-destructive" : ""}>
+              <SelectTrigger id="categoryPotentialRiskDialog" className={errors.category ? "border-destructive" : ""}>
                 <SelectValue placeholder="Select category (optional)" />
               </SelectTrigger>
               <SelectContent>
@@ -223,9 +231,9 @@ export function AddEditPotentialRiskDialog({
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="ownerPotentialRisk">Risk Owner (Optional)</Label>
+            <Label htmlFor="ownerPotentialRiskDialog">Risk Owner (Optional)</Label>
             <Input
-              id="ownerPotentialRisk"
+              id="ownerPotentialRiskDialog"
               {...register("owner")}
               placeholder="e.g., Head of Operations, IT Department"
               className={errors.owner ? "border-destructive" : ""}
@@ -244,3 +252,5 @@ export function AddEditPotentialRiskDialog({
     </Dialog>
   );
 }
+
+    

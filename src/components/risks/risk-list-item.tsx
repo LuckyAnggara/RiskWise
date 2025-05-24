@@ -23,7 +23,8 @@ interface RiskListItemProps {
   onEditControl: (control: Control) => void;
   onDeletePotentialRisk: (potentialRiskId: string) => void;
   onDeleteControl: (controlId: string) => void;
-  onManageCauses: (potentialRisk: PotentialRisk) => void; // New prop
+  onManageCauses: (potentialRisk: PotentialRisk) => void; 
+  onEditDetails: (potentialRiskId: string) => void; // New prop for navigating to edit page
 }
 
 const getRiskLevel = (likelihood: LikelihoodImpactLevel | null, impact: LikelihoodImpactLevel | null): string => {
@@ -60,7 +61,8 @@ export function RiskListItem({
   onEditControl, 
   onDeletePotentialRisk, 
   onDeleteControl,
-  onManageCauses 
+  onManageCauses,
+  onEditDetails
 }: RiskListItemProps) {
   const riskLevel = getRiskLevel(potentialRisk.likelihood, potentialRisk.impact);
 
@@ -76,12 +78,11 @@ export function RiskListItem({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-               {/* Edit details might require AddEditPotentialRiskDialog, often handled on a dedicated page or different modal */}
-              <DropdownMenuItem disabled> 
-                <Edit className="mr-2 h-4 w-4" /> Edit Details (N/A here)
+              <DropdownMenuItem onClick={() => onEditDetails(potentialRisk.id)}> 
+                <Edit className="mr-2 h-4 w-4" /> Edit Details & Causes
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => onManageCauses(potentialRisk)}>
-                <Zap className="mr-2 h-4 w-4" /> Manage Causes
+                <Zap className="mr-2 h-4 w-4" /> Manage Causes (Quick)
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => onAnalyze(potentialRisk)}>
                 <BarChart3 className="mr-2 h-4 w-4" /> Analyze Level
@@ -181,3 +182,5 @@ export function RiskListItem({
     </Card>
   );
 }
+
+    
