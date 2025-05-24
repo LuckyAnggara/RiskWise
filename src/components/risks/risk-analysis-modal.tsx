@@ -16,7 +16,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import type { PotentialRisk, LikelihoodImpactLevel } from '@/lib/types';
 import { LIKELIHOOD_IMPACT_LEVELS } from '@/lib/types';
 import { Info } from 'lucide-react';
-import { LikelihoodCriteriaModal } from './likelihood-criteria-modal'; // Import the new modal
+import { LikelihoodCriteriaModal } from './likelihood-criteria-modal';
+import { ImpactCriteriaModal } from './impact-criteria-modal'; // Import the new ImpactCriteriaModal
 
 interface RiskAnalysisModalProps {
   potentialRisk: PotentialRisk | null;
@@ -28,13 +29,15 @@ interface RiskAnalysisModalProps {
 export function RiskAnalysisModal({ potentialRisk, isOpen, onOpenChange, onSave }: RiskAnalysisModalProps) {
   const [likelihood, setLikelihood] = useState<LikelihoodImpactLevel | null>(null);
   const [impact, setImpact] = useState<LikelihoodImpactLevel | null>(null);
-  const [isCriteriaModalOpen, setIsCriteriaModalOpen] = useState(false); // State for criteria modal
+  const [isLikelihoodCriteriaModalOpen, setIsLikelihoodCriteriaModalOpen] = useState(false);
+  const [isImpactCriteriaModalOpen, setIsImpactCriteriaModalOpen] = useState(false); // State for impact criteria modal
 
   useEffect(() => {
     if (potentialRisk && isOpen) {
       setLikelihood(potentialRisk.likelihood);
       setImpact(potentialRisk.impact);
     } else if (!isOpen) {
+      // Reset state when modal closes
       setLikelihood(null);
       setImpact(null);
     }
@@ -65,12 +68,19 @@ export function RiskAnalysisModal({ potentialRisk, isOpen, onOpenChange, onSave 
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-4 items-center gap-4">
+            <div className="grid grid-cols-4 items-center gap-x-2 gap-y-1"> {/* Adjusted gap for tighter layout */}
               <div className="col-span-1 text-right flex justify-end items-center">
-                <Label htmlFor="likelihood" className="mr-1">
+                <Label htmlFor="likelihood" className="mr-1 whitespace-nowrap">
                   Probabilitas
                 </Label>
-                <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-primary" onClick={() => setIsCriteriaModalOpen(true)} aria-label="Lihat Kriteria Kemungkinan">
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className="h-6 w-6 text-muted-foreground hover:text-primary" 
+                  onClick={() => setIsLikelihoodCriteriaModalOpen(true)} 
+                  aria-label="Lihat Kriteria Kemungkinan"
+                  type="button"
+                >
                   <Info className="h-4 w-4" />
                 </Button>
               </div>
@@ -83,15 +93,27 @@ export function RiskAnalysisModal({ potentialRisk, isOpen, onOpenChange, onSave 
                 </SelectTrigger>
                 <SelectContent>
                   {LIKELIHOOD_IMPACT_LEVELS.map(level => (
-                    <SelectItem key={level} value={level}>{level}</SelectItem>
+                    <SelectItem key={`lh-${level}`} value={level}>{level}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="impact" className="text-right col-span-1">
-                Dampak
-              </Label>
+            <div className="grid grid-cols-4 items-center gap-x-2 gap-y-1"> {/* Adjusted gap for tighter layout */}
+              <div className="col-span-1 text-right flex justify-end items-center">
+                <Label htmlFor="impact" className="mr-1 whitespace-nowrap">
+                  Dampak
+                </Label>
+                 <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className="h-6 w-6 text-muted-foreground hover:text-primary" 
+                  onClick={() => setIsImpactCriteriaModalOpen(true)} 
+                  aria-label="Lihat Kriteria Dampak"
+                  type="button"
+                >
+                  <Info className="h-4 w-4" />
+                </Button>
+              </div>
               <Select
                 value={impact || ""}
                 onValueChange={(value) => setImpact(value as LikelihoodImpactLevel)}
@@ -101,7 +123,7 @@ export function RiskAnalysisModal({ potentialRisk, isOpen, onOpenChange, onSave 
                 </SelectTrigger>
                 <SelectContent>
                   {LIKELIHOOD_IMPACT_LEVELS.map(level => (
-                    <SelectItem key={level} value={level}>{level}</SelectItem>
+                    <SelectItem key={`im-${level}`} value={level}>{level}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -115,8 +137,12 @@ export function RiskAnalysisModal({ potentialRisk, isOpen, onOpenChange, onSave 
       </Dialog>
 
       <LikelihoodCriteriaModal 
-        isOpen={isCriteriaModalOpen} 
-        onOpenChange={setIsCriteriaModalOpen} 
+        isOpen={isLikelihoodCriteriaModalOpen} 
+        onOpenChange={setIsLikelihoodCriteriaModalOpen} 
+      />
+      <ImpactCriteriaModal 
+        isOpen={isImpactCriteriaModalOpen}
+        onOpenChange={setIsImpactCriteriaModalOpen}
       />
     </>
   );
