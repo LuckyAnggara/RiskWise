@@ -1,9 +1,9 @@
 
 "use client";
 
-import Link from "next/link";
+import {Link} from 'next-intl/link'; // Changed import
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Target, ListChecks, Cog } from "lucide-react"; // Added Cog for Settings
+import { LayoutDashboard, Target, ListChecks, Cog } from "lucide-react"; 
 import { cn } from "@/lib/utils";
 import {
   SidebarMenu,
@@ -16,17 +16,16 @@ import {
 import { useTranslations } from 'next-intl';
 
 interface NavItem {
-  key: string; // For translation key
+  key: string; 
   href: string;
   icon: React.ElementType;
 }
 
 export function SidebarNav() {
   const t = useTranslations('SidebarNav');
-  const pathname = usePathname(); // Returns full path e.g., /en/goals
+  const pathname = usePathname(); 
   const { openMobile, setOpenMobile } = useSidebar();
 
-  // Remove locale from pathname for comparison e.g., /en/goals -> /goals, or /en -> /
   const cleanPathname = pathname.replace(/^\/(en|id)/, '') || '/';
 
   const navItems: NavItem[] = [
@@ -37,15 +36,9 @@ export function SidebarNav() {
   ];
   
   const isActive = (navHref: string) => {
-    // For the root path, ensure it's an exact match after cleaning
     if (navHref === "/") {
       return cleanPathname === "/";
     }
-    // For other paths, check if the cleanPathname starts with the navHref
-    // and is either an exact match or followed by a '/'
-    // e.g., navHref = /all-risks, cleanPathname = /all-risks/manage/new -> true
-    // e.g., navHref = /all-risks, cleanPathname = /all-risks -> true
-    // e.g., navHref = /goals, cleanPathname = /all-risks -> false
     return cleanPathname.startsWith(navHref) && 
            (cleanPathname.length === navHref.length || cleanPathname[navHref.length] === '/');
   };
@@ -56,7 +49,7 @@ export function SidebarNav() {
         <SidebarGroupLabel>{t('menu')}</SidebarGroupLabel>
         {navItems.map((item) => (
           <SidebarMenuItem key={item.href}>
-            <Link href={item.href} passHref legacyBehavior>
+            <Link href={item.href}> {/* Removed legacyBehavior and passHref */}
               <SidebarMenuButton
                 asChild
                 isActive={isActive(item.href)}
@@ -77,3 +70,4 @@ export function SidebarNav() {
     </SidebarMenu>
   );
 }
+
