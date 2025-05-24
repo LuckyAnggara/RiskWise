@@ -13,13 +13,13 @@ import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 interface RiskIdentificationCardProps {
-  goal: Goal; // Goal already contains uprId and period
+  goal: Goal;
   onPotentialRisksIdentified: (newPotentialRisks: PotentialRisk[]) => void;
 }
 
 export function RiskIdentificationCard({ goal, onPotentialRisksIdentified }: RiskIdentificationCardProps) {
   const [goalDescriptionForAI, setGoalDescriptionForAI] = useState(
-    `${goal.description} (Context for this goal: UPR ${goal.uprId}, Period ${goal.period})`
+    `${goal.description} (Konteks untuk sasaran ini: UPR ${goal.uprId}, Periode ${goal.period})`
   );
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -43,19 +43,20 @@ export function RiskIdentificationCard({ goal, onPotentialRisksIdentified }: Ris
         }));
         onPotentialRisksIdentified(newPotentialRisks);
       } else {
-        setError(result.error || "An unknown error occurred during AI brainstorming.");
+        const errorMessage = result.error || "Terjadi kesalahan tidak diketahui saat brainstorming AI.";
+        setError(errorMessage);
         toast({
-          title: "AI Brainstorming Error",
-          description: result.error || "Failed to brainstorm potential risks using AI.",
+          title: "Kesalahan Brainstorming AI",
+          description: errorMessage,
           variant: "destructive",
         });
       }
     } catch (err) {
-      console.error("Brainstorming error:", err);
-      const errorMessage = err instanceof Error ? err.message : "An unexpected error occurred.";
+      console.error("Kesalahan brainstorming:", err);
+      const errorMessage = err instanceof Error ? err.message : "Terjadi kesalahan tak terduga.";
       setError(errorMessage);
       toast({
-        title: "Error",
+        title: "Kesalahan",
         description: errorMessage,
         variant: "destructive",
       });
@@ -67,30 +68,30 @@ export function RiskIdentificationCard({ goal, onPotentialRisksIdentified }: Ris
   return (
     <Card>
       <CardHeader>
-        <CardTitle>AI-Powered Potential Risk Identification</CardTitle>
+        <CardTitle>Identifikasi Potensi Risiko dengan AI</CardTitle>
         <CardDescription>
-          Use AI to brainstorm potential risks for goal: <span className="font-semibold">{goal.name}</span>.
-          Refine the description below for better AI results.
+          Gunakan AI untuk brainstorming potensi risiko untuk sasaran: <span className="font-semibold">{goal.name}</span>.
+          Sempurnakan deskripsi di bawah ini untuk hasil AI yang lebih baik.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div>
-          <Label htmlFor="goalDescriptionAI">Goal Context for AI</Label>
+          <Label htmlFor="goalDescriptionAI">Konteks Sasaran untuk AI</Label>
           <Textarea
             id="goalDescriptionAI"
             value={goalDescriptionForAI}
             onChange={(e) => setGoalDescriptionForAI(e.target.value)}
-            placeholder="E.g., Successfully launch a new mobile application for iOS and Android platforms by Q3, targeting 10,000 active users within 6 months."
+            placeholder="Contoh: Berhasil meluncurkan aplikasi seluler baru untuk platform iOS dan Android pada Q3, menargetkan 10.000 pengguna aktif dalam 6 bulan."
             rows={4}
             disabled={isLoading}
           />
           <p className="text-xs text-muted-foreground mt-1">
-            Provide a clear, detailed description including the UPR ({goal.uprId}) and Period ({goal.period}) context for the AI.
+            Berikan deskripsi yang jelas dan rinci termasuk konteks UPR ({goal.uprId}) dan Periode ({goal.period}) untuk AI.
           </p>
         </div>
         {error && (
           <Alert variant="destructive">
-            <AlertTitle>Brainstorming Failed</AlertTitle>
+            <AlertTitle>Brainstorming Gagal</AlertTitle>
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}
@@ -102,7 +103,7 @@ export function RiskIdentificationCard({ goal, onPotentialRisksIdentified }: Ris
           ) : (
             <Wand2 className="mr-2 h-4 w-4" />
           )}
-          Brainstorm Potential Risks
+          Brainstorm Potensi Risiko
         </Button>
       </CardFooter>
     </Card>

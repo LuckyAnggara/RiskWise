@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { AlertCircle, ShieldCheck, Target, TrendingUp, Activity, Loader2 } from 'lucide-react';
-import type { PotentialRisk, Goal, Control, LikelihoodImpactLevel } from '@/lib/types'; // Updated to PotentialRisk
+import type { PotentialRisk, Goal, Control, LikelihoodImpactLevel } from '@/lib/types';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { ChartConfig, ChartContainer, ChartTooltipContent } from "@/components/ui/chart";
 import { getCurrentUprId, getCurrentPeriod, initializeAppContext } from '@/lib/upr-period-context';
@@ -16,23 +16,22 @@ const getGoalsStorageKey = (uprId: string, period: string) => `riskwise-upr${upr
 const getPotentialRisksStorageKey = (uprId: string, period: string, goalId: string) => `riskwise-upr${uprId}-period${period}-goal${goalId}-potentialRisks`;
 const getControlsStorageKey = (uprId: string, period: string, potentialRiskId: string) => `riskwise-upr${uprId}-period${period}-potentialRisk${potentialRiskId}-controls`;
 
-// Mock data templates - will be filtered/tagged with current UPR/Period if localStorage is empty
 const MOCK_GOALS_TEMPLATE: Omit<Goal, 'uprId' | 'period'>[] = [
-  { id: 'g1', name: 'Launch New Product (Mock)', description: 'Successfully launch by Q4', createdAt: new Date().toISOString() },
-  { id: 'g2', name: 'Expand Market Share (Mock)', description: 'Increase market share by 5%', createdAt: new Date().toISOString() },
+  { id: 'g1', name: 'Luncurkan Produk Baru (Mock)', description: 'Berhasil diluncurkan pada Q4', createdAt: new Date().toISOString() },
+  { id: 'g2', name: 'Perluas Pangsa Pasar (Mock)', description: 'Tingkatkan pangsa pasar sebesar 5%', createdAt: new Date().toISOString() },
 ];
 
 const MOCK_POTENTIAL_RISKS_TEMPLATE: Omit<PotentialRisk, 'goalId'>[] = [ 
-  { id: 'pr1', description: 'Supply chain disruption (Mock)', category: 'Operasional', owner: 'Head of Supply', likelihood: 'High', impact: 'Very High', identifiedAt: new Date().toISOString() },
-  { id: 'pr2', description: 'Competitor launches similar product (Mock)', category: 'Strategis', owner: 'Product Team', likelihood: 'Medium', impact: 'High', identifiedAt: new Date().toISOString() },
-  { id: 'pr3', description: 'Regulatory changes (Mock)', category: 'Kepatuhan', owner: 'Legal Dept', likelihood: 'Low', impact: 'Medium', identifiedAt: new Date().toISOString() },
-  { id: 'pr4', description: 'Key team member departure (Mock)', category: 'Sumber Daya Manusia', owner: 'HR Manager', likelihood: 'Medium', impact: 'High', identifiedAt: new Date().toISOString()},
-  { id: 'pr5', description: 'Economic downturn affecting demand (Mock)', category: 'Keuangan', owner: 'CFO', likelihood: 'High', impact: 'High', identifiedAt: new Date().toISOString()},
+  { id: 'pr1', description: 'Gangguan rantai pasok (Mock)', category: 'Operasional', owner: 'Kepala Rantai Pasok', likelihood: 'High', impact: 'Very High', identifiedAt: new Date().toISOString() },
+  { id: 'pr2', description: 'Pesaing meluncurkan produk serupa (Mock)', category: 'Strategis', owner: 'Tim Produk', likelihood: 'Medium', impact: 'High', identifiedAt: new Date().toISOString() },
+  { id: 'pr3', description: 'Perubahan regulasi (Mock)', category: 'Kepatuhan', owner: 'Departemen Legal', likelihood: 'Low', impact: 'Medium', identifiedAt: new Date().toISOString() },
+  { id: 'pr4', description: 'Kepergian anggota tim kunci (Mock)', category: 'Sumber Daya Manusia', owner: 'Manajer SDM', likelihood: 'Medium', impact: 'High', identifiedAt: new Date().toISOString()},
+  { id: 'pr5', description: 'Penurunan ekonomi mempengaruhi permintaan (Mock)', category: 'Keuangan', owner: 'CFO', likelihood: 'High', impact: 'High', identifiedAt: new Date().toISOString()},
 ];
 
 const MOCK_CONTROLS_TEMPLATE: Omit<Control, 'potentialRiskId'>[] = [ 
-  { id: 'c1', description: 'Diversify suppliers (Mock)', effectiveness: 'Medium', status: 'In Progress', createdAt: new Date().toISOString() },
-  { id: 'c2', description: 'Accelerate marketing campaign (Mock)', effectiveness: 'High', status: 'Implemented', createdAt: new Date().toISOString() },
+  { id: 'c1', description: 'Diversifikasi pemasok (Mock)', effectiveness: 'Medium', status: 'In Progress', createdAt: new Date().toISOString() },
+  { id: 'c2', description: 'Percepat kampanye pemasaran (Mock)', effectiveness: 'High', status: 'Implemented', createdAt: new Date().toISOString() },
 ];
 
 
@@ -42,16 +41,16 @@ const getRiskLevel = (likelihood: LikelihoodImpactLevel | null, impact: Likeliho
   const I = { 'Very Low': 1, 'Low': 2, 'Medium': 3, 'High': 4, 'Very High': 5 };
   const score = L[likelihood] * I[impact];
 
-  if (score >= 15) return 'Critical'; 
-  if (score >= 10) return 'High';
-  if (score >= 5) return 'Medium';
-  if (score >=3) return 'Low';
-  return 'Very Low';
+  if (score >= 15) return 'Kritis'; 
+  if (score >= 10) return 'Tinggi';
+  if (score >= 5) return 'Sedang';
+  if (score >=3) return 'Rendah';
+  return 'Sangat Rendah';
 };
 
 const chartConfig = {
   count: {
-    label: "Potential Risks", // Updated label
+    label: "Potensi Risiko",
     color: "hsl(var(--chart-1))",
   },
 } satisfies ChartConfig;
@@ -60,7 +59,7 @@ export default function DashboardPage() {
   const [currentUprId, setCurrentUprId] = useState('');
   const [currentPeriod, setCurrentPeriod] = useState('');
   const [goals, setGoals] = useState<Goal[]>([]);
-  const [potentialRisks, setPotentialRisks] = useState<PotentialRisk[]>([]); // Updated to PotentialRisk
+  const [potentialRisks, setPotentialRisks] = useState<PotentialRisk[]>([]);
   const [controls, setControls] = useState<Control[]>([]);
   const [riskLevelChartData, setRiskLevelChartData] = useState<{name: string; count: number}[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -87,41 +86,41 @@ export default function DashboardPage() {
       }
       setGoals(loadedGoals);
       
-      let allPRisks: PotentialRisk[] = []; // Updated variable name
+      let allPRisks: PotentialRisk[] = [];
       let allControls: Control[] = [];
 
       loadedGoals.forEach((goal, goalIndex) => {
-        const pRisksStorageKey = getPotentialRisksStorageKey(goal.uprId, goal.period, goal.id); // Updated key
+        const pRisksStorageKey = getPotentialRisksStorageKey(goal.uprId, goal.period, goal.id);
         let goalPRisksData = localStorage.getItem(pRisksStorageKey);
-        let goalPRisks: PotentialRisk[] = []; // Updated variable name
+        let goalPRisks: PotentialRisk[] = [];
 
         if (goalPRisksData) {
           goalPRisks = JSON.parse(goalPRisksData);
-        } else if (MOCK_POTENTIAL_RISKS_TEMPLATE.length > 0 && goalIndex < MOCK_POTENTIAL_RISKS_TEMPLATE.length) { // Updated mock template
+        } else if (MOCK_POTENTIAL_RISKS_TEMPLATE.length > 0 && goalIndex < MOCK_POTENTIAL_RISKS_TEMPLATE.length) {
             goalPRisks = [ { ...MOCK_POTENTIAL_RISKS_TEMPLATE[goalIndex % MOCK_POTENTIAL_RISKS_TEMPLATE.length], goalId: goal.id, id: `mpr-${goal.id}-${goalIndex}` } ];
             localStorage.setItem(pRisksStorageKey, JSON.stringify(goalPRisks));
         }
         
         allPRisks = [...allPRisks, ...goalPRisks];
 
-        goalPRisks.forEach((pRisk, pRiskIndex) => { // Updated loop variable
-          const controlsStorageKey = getControlsStorageKey(goal.uprId, goal.period, pRisk.id); // Updated key
+        goalPRisks.forEach((pRisk, pRiskIndex) => {
+          const controlsStorageKey = getControlsStorageKey(goal.uprId, goal.period, pRisk.id);
           let pRiskControlsData = localStorage.getItem(controlsStorageKey);
           let pRiskControls: Control[] = [];
 
           if (pRiskControlsData) {
             pRiskControls = JSON.parse(pRiskControlsData);
           } else if (MOCK_CONTROLS_TEMPLATE.length > 0 && pRiskIndex < MOCK_CONTROLS_TEMPLATE.length) {
-            pRiskControls = [ { ...MOCK_CONTROLS_TEMPLATE[pRiskIndex % MOCK_CONTROLS_TEMPLATE.length], potentialRiskId: pRisk.id, id: `mc-${pRisk.id}-${pRiskIndex}` } ]; // Updated potentialRiskId
+            pRiskControls = [ { ...MOCK_CONTROLS_TEMPLATE[pRiskIndex % MOCK_CONTROLS_TEMPLATE.length], potentialRiskId: pRisk.id, id: `mc-${pRisk.id}-${pRiskIndex}` } ];
             localStorage.setItem(controlsStorageKey, JSON.stringify(pRiskControls));
           }
           allControls = [...allControls, ...pRiskControls];
         });
       });
-      setPotentialRisks(allPRisks); // Updated state setter
+      setPotentialRisks(allPRisks);
       setControls(allControls);
 
-      const chartData = allPRisks.reduce((acc, pRisk) => { // Updated reduce variable
+      const chartData = allPRisks.reduce((acc, pRisk) => {
         const level = getRiskLevel(pRisk.likelihood, pRisk.impact);
         const existing = acc.find(item => item.name === level);
         if (existing) {
@@ -131,79 +130,79 @@ export default function DashboardPage() {
         }
         return acc;
       }, [] as { name: string; count: number }[]).sort((a,b) => {
-        const order = ['Very Low', 'Low', 'Medium', 'High', 'Critical', 'N/A'];
+        const order = ['Sangat Rendah', 'Rendah', 'Sedang', 'Tinggi', 'Kritis', 'N/A'];
         return order.indexOf(a.name) - order.indexOf(b.name);
       });
       setRiskLevelChartData(chartData);
       setIsLoading(false);
     }
   }, []);
-
+  
   if (isLoading || !currentUprId || !currentPeriod) {
     return (
       <div className="flex flex-col items-center justify-center h-screen">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
-        <p className="text-xl text-muted-foreground">Loading dashboard data...</p>
+        <p className="text-xl text-muted-foreground">Memuat data dasbor...</p>
       </div>
     );
   }
 
-  const highPriorityPotentialRisks = potentialRisks // Updated variable name
+  const highPriorityPotentialRisks = potentialRisks
     .filter(pRisk => {
         const level = getRiskLevel(pRisk.likelihood, pRisk.impact);
-        return level === 'Critical' || level === 'High';
+        return level === 'Kritis' || level === 'Tinggi';
     })
     .slice(0, 5);
   
-  const totalPotentialRisks = potentialRisks.length; // Updated variable name
-  const criticalPotentialRisksCount = potentialRisks.filter(pr => getRiskLevel(pr.likelihood, pr.impact) === 'Critical').length; // Updated filter variable
-  const controlsImplemented = controls.filter(c => c.status === 'Implemented').length;
+  const totalPotentialRisksCount = potentialRisks.length;
+  const criticalPotentialRisksNum = potentialRisks.filter(pr => getRiskLevel(pr.likelihood, pr.impact) === 'Kritis').length;
+  const controlsImplementedCount = controls.filter(c => c.status === 'Implemented').length;
 
   return (
     <div className="space-y-6">
-      <PageHeader title={`Risk Dashboard`} description={`Overview of your current risk landscape for UPR: ${currentUprId}, Period: ${currentPeriod}.`} />
+      <PageHeader title="Dasbor Risiko" description={`Ringkasan lanskap risiko Anda saat ini untuk UPR: ${currentUprId}, Periode: ${currentPeriod}.`} />
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Goals</CardTitle>
+            <CardTitle className="text-sm font-medium">Total Sasaran</CardTitle>
             <Target className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{goals.length}</div>
-            <p className="text-xs text-muted-foreground">Tracked objectives for this UPR/Period</p>
+            <p className="text-xs text-muted-foreground">Sasaran yang dilacak untuk UPR/Periode ini</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Potential Risks</CardTitle> 
+            <CardTitle className="text-sm font-medium">Total Potensi Risiko</CardTitle> 
             <AlertCircle className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{totalPotentialRisks}</div>
-            <p className="text-xs text-muted-foreground">{criticalPotentialRisksCount} critical potential risks</p>
+            <div className="text-2xl font-bold">{totalPotentialRisksCount}</div>
+            <p className="text-xs text-muted-foreground">{criticalPotentialRisksNum} potensi risiko kritis</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Controls Implemented</CardTitle>
+            <CardTitle className="text-sm font-medium">Kontrol Diterapkan</CardTitle>
             <ShieldCheck className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{controlsImplemented}</div>
-            <p className="text-xs text-muted-foreground">Out of {controls.length} total controls</p>
+            <div className="text-2xl font-bold">{controlsImplementedCount}</div>
+            <p className="text-xs text-muted-foreground">Dari {controls.length} total kontrol</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Overall Risk Trend</CardTitle>
+            <CardTitle className="text-sm font-medium">Tren Risiko Keseluruhan</CardTitle>
             <Activity className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold flex items-center">
-              Stable <TrendingUp className="ml-2 h-5 w-5 text-green-500" />
+              Stabil <TrendingUp className="ml-2 h-5 w-5 text-green-500" />
             </div>
-            <p className="text-xs text-muted-foreground">Based on last 30 days (mocked)</p>
+            <p className="text-xs text-muted-foreground">Berdasarkan 30 hari terakhir (data tiruan)</p>
           </CardContent>
         </Card>
       </div>
@@ -211,8 +210,8 @@ export default function DashboardPage() {
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Potential Risk Distribution by Level</CardTitle>
-            <CardDescription>Number of potential risks in each calculated level for this UPR/Period.</CardDescription>
+            <CardTitle>Distribusi Potensi Risiko berdasarkan Level</CardTitle>
+            <CardDescription>Jumlah potensi risiko di setiap level yang dihitung untuk UPR/Periode ini.</CardDescription>
           </CardHeader>
           <CardContent>
             {riskLevelChartData.length > 0 ? (
@@ -229,30 +228,30 @@ export default function DashboardPage() {
               </ResponsiveContainer>
             </ChartContainer>
             ) : (
-              <p className="text-muted-foreground text-center py-10">No potential risk data available for chart.</p>
+              <p className="text-muted-foreground text-center py-10">Tidak ada data potensi risiko yang tersedia untuk grafik.</p>
             )}
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle>High Priority Potential Risks</CardTitle>
-            <CardDescription>Top 5 critical or high-level potential risks requiring attention for this UPR/Period.</CardDescription>
+            <CardTitle>Potensi Risiko Prioritas Tinggi</CardTitle>
+            <CardDescription>5 potensi risiko teratas level kritis atau tinggi yang memerlukan perhatian untuk UPR/Periode ini.</CardDescription>
           </CardHeader>
           <CardContent>
             {highPriorityPotentialRisks.length > 0 ? (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Description</TableHead>
-                    <TableHead>Category</TableHead>
-                    <TableHead>Owner</TableHead>
+                    <TableHead>Deskripsi</TableHead>
+                    <TableHead>Kategori</TableHead>
+                    <TableHead>Pemilik</TableHead>
                     <TableHead>Level</TableHead>
-                    <TableHead>Goal</TableHead>
+                    <TableHead>Sasaran</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {highPriorityPotentialRisks.map((pRisk) => { // Updated loop variable
+                  {highPriorityPotentialRisks.map((pRisk) => {
                     const goal = goals.find(g => g.id === pRisk.goalId);
                     const level = getRiskLevel(pRisk.likelihood, pRisk.impact);
                     return (
@@ -264,15 +263,15 @@ export default function DashboardPage() {
                         <TableCell className="text-xs max-w-[100px] truncate" title={pRisk.owner || ''}>{pRisk.owner || 'N/A'}</TableCell>
                         <TableCell>
                           <Badge variant={
-                            level === 'Critical' ? 'destructive' :
-                            level === 'High' ? 'destructive' : // Consider a different color for High if Destructive is too strong
-                            level === 'Medium' ? 'secondary' : 
+                            level === 'Kritis' ? 'destructive' :
+                            level === 'Tinggi' ? 'destructive' : 
+                            level === 'Sedang' ? 'secondary' : 
                             'outline'
                           }
-                          className={level === 'Medium' ? 'bg-yellow-500 text-black dark:bg-yellow-400 dark:text-black' : 
-                                     level === 'Very Low' ? 'bg-sky-500 text-white dark:bg-sky-600' :
-                                     level === 'Low' ? 'bg-green-500 text-white dark:bg-green-600' : 
-                                     (level === 'High' ? 'bg-orange-500 text-white dark:bg-orange-600' : '')} // Custom for High if not destructive
+                          className={level === 'Sedang' ? 'bg-yellow-500 text-black dark:bg-yellow-400 dark:text-black' : 
+                                     level === 'Sangat Rendah' ? 'bg-sky-500 text-white dark:bg-sky-600' :
+                                     level === 'Rendah' ? 'bg-green-500 text-white dark:bg-green-600' : 
+                                     (level === 'Tinggi' ? 'bg-orange-500 text-white dark:bg-orange-600' : '')}
                           >
                             {level}
                           </Badge>
@@ -284,7 +283,7 @@ export default function DashboardPage() {
                 </TableBody>
               </Table>
             ) : (
-              <p className="text-muted-foreground text-center py-10">No high priority potential risks identified.</p>
+              <p className="text-muted-foreground text-center py-10">Tidak ada potensi risiko prioritas tinggi yang teridentifikasi.</p>
             )}
           </CardContent>
         </Card>

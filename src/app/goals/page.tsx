@@ -5,16 +5,16 @@ import React, { useState, useEffect } from 'react';
 import { PageHeader } from '@/components/ui/page-header';
 import { GoalCard } from '@/components/goals/goal-card';
 import { AddGoalDialog } from '@/components/goals/add-goal-dialog';
-import type { Goal, PotentialRisk } from '@/lib/types'; // Added PotentialRisk
+import type { Goal, PotentialRisk } from '@/lib/types';
 import { PlusCircle, Target, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { getCurrentUprId, getCurrentPeriod, initializeAppContext } from '@/lib/upr-period-context';
 
 const INITIAL_GOALS_TEMPLATE: Omit<Goal, 'uprId' | 'period'>[] = [
-  { id: 'g1', name: 'Launch New Product X', description: 'Successfully develop and launch Product X by Q4 to capture 5% market share within the first year.', createdAt: '2023-10-15T10:00:00Z' },
-  { id: 'g2', name: 'Improve Customer Satisfaction', description: 'Increase overall customer satisfaction (CSAT) score from 80% to 90% by end of year through improved support and product usability.', createdAt: '2023-11-01T14:30:00Z' },
-  { id: 'g3', name: 'Expand to New Market', description: 'Establish a market presence in at least 3 key new regions by mid-next year, achieving initial sales targets.', createdAt: '2024-01-20T09:15:00Z' },
+  { id: 'g1', name: 'Luncurkan Produk X Baru', description: 'Berhasil mengembangkan dan meluncurkan Produk X pada Q4 untuk meraih 5% pangsa pasar dalam tahun pertama.', createdAt: '2023-10-15T10:00:00Z' },
+  { id: 'g2', name: 'Tingkatkan Kepuasan Pelanggan', description: 'Naikkan skor kepuasan pelanggan (CSAT) dari 80% menjadi 90% pada akhir tahun melalui peningkatan dukungan dan kegunaan produk.', createdAt: '2023-11-01T14:30:00Z' },
+  { id: 'g3', name: 'Ekspansi ke Pasar Baru', description: 'Membangun kehadiran pasar di setidaknya 3 wilayah baru utama pada pertengahan tahun depan, mencapai target penjualan awal.', createdAt: '2024-01-20T09:15:00Z' },
 ];
 
 const getGoalsStorageKey = (uprId: string, period: string) => `riskwise-upr${uprId}-period${period}-goals`;
@@ -69,10 +69,10 @@ export default function GoalsPage() {
       let updatedGoals;
       if (existingIndex > -1) {
         updatedGoals = prevGoals.map(g => g.id === goal.id ? goal : g);
-        toast({ title: "Goal Updated", description: `Goal "${goal.name}" has been successfully updated.` });
+        toast({ title: "Sasaran Diperbarui", description: `Sasaran "${goal.name}" telah berhasil diperbarui.` });
       } else {
         updatedGoals = [goal, ...prevGoals];
-        toast({ title: "Goal Added", description: `New goal "${goal.name}" has been successfully added.` });
+        toast({ title: "Sasaran Ditambahkan", description: `Sasaran baru "${goal.name}" telah berhasil ditambahkan.` });
       }
       updateLocalStorage(updatedGoals);
       return updatedGoals;
@@ -86,7 +86,7 @@ export default function GoalsPage() {
     setGoals(prevGoals => {
       const updatedGoals = prevGoals.filter(g => g.id !== goalId);
       updateLocalStorage(updatedGoals);
-      toast({ title: "Goal Deleted", description: `Goal "${goalToDelete.name}" has been deleted.`, variant: "destructive" });
+      toast({ title: "Sasaran Dihapus", description: `Sasaran "${goalToDelete.name}" telah dihapus.`, variant: "destructive" });
       
       if (typeof window !== 'undefined') {
         const potentialRisksStorageKey = getPotentialRisksStorageKey(currentUprId, currentPeriod, goalId);
@@ -103,12 +103,12 @@ export default function GoalsPage() {
       return updatedGoals;
     });
   };
-
+  
   if (isLoading || !currentUprId || !currentPeriod) {
     return (
       <div className="flex flex-col items-center justify-center h-screen">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
-        <p className="text-xl text-muted-foreground">Loading goals data...</p>
+        <p className="text-xl text-muted-foreground">Memuat data sasaran...</p>
       </div>
     );
   }
@@ -116,8 +116,8 @@ export default function GoalsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title={`Goals`}
-        description={`Define and manage your strategic objectives for UPR: ${currentUprId}, Period: ${currentPeriod}.`}
+        title="Sasaran"
+        description={`Definisikan dan kelola tujuan strategis Anda untuk UPR: ${currentUprId}, Periode: ${currentPeriod}.`}
         actions={
           <AddGoalDialog 
             onGoalSave={handleGoalSave}
@@ -125,7 +125,7 @@ export default function GoalsPage() {
             currentPeriod={currentPeriod}
             triggerButton={
               <Button>
-                <PlusCircle className="mr-2 h-4 w-4" /> Add New Goal
+                <PlusCircle className="mr-2 h-4 w-4" /> Tambah Sasaran Baru
               </Button>
             }
           />
@@ -135,9 +135,9 @@ export default function GoalsPage() {
       {goals.length === 0 ? (
         <div className="text-center py-10 border-2 border-dashed border-muted-foreground/30 rounded-lg">
           <Target className="mx-auto h-12 w-12 text-muted-foreground" />
-          <h3 className="mt-2 text-lg font-medium">No goals yet for this UPR/Period</h3>
+          <h3 className="mt-2 text-lg font-medium">Belum ada sasaran untuk UPR/Periode ini</h3>
           <p className="mt-1 text-sm text-muted-foreground">
-            Get started by adding your first goal.
+            Mulailah dengan menambahkan sasaran pertama Anda.
           </p>
           <div className="mt-6">
             <AddGoalDialog 
@@ -146,7 +146,7 @@ export default function GoalsPage() {
               currentPeriod={currentPeriod}
               triggerButton={
                 <Button>
-                  <PlusCircle className="mr-2 h-4 w-4" /> Add New Goal
+                  <PlusCircle className="mr-2 h-4 w-4" /> Tambah Sasaran Baru
                 </Button>
               }
             />
@@ -160,7 +160,6 @@ export default function GoalsPage() {
               goal={goal} 
               onEditGoal={handleGoalSave} 
               onDeleteGoal={handleGoalDelete}
-              // Potential risk count can be fetched or passed if needed, simplified for now
             />
           ))}
         </div>

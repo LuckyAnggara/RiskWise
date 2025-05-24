@@ -6,8 +6,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Button } from "@/components/ui/button";
 import { Target, ShieldAlert, Edit, Trash2 } from 'lucide-react';
 import type { Goal } from '@/lib/types';
-import { AddGoalDialog } from './add-goal-dialog'; // For editing
-import { useTranslations } from 'next-intl'; // Import useTranslations
+import { AddGoalDialog } from './add-goal-dialog';
 
 interface GoalCardProps {
   goal: Goal;
@@ -17,8 +16,6 @@ interface GoalCardProps {
 }
 
 export function GoalCard({ goal, riskCount = 0, onEditGoal, onDeleteGoal }: GoalCardProps) {
-  const t = useTranslations('GoalsPage'); // Using GoalsPage namespace for now, can be more specific
-
   return (
     <Card className="flex flex-col">
       <CardHeader>
@@ -28,15 +25,15 @@ export function GoalCard({ goal, riskCount = 0, onEditGoal, onDeleteGoal }: Goal
              <AddGoalDialog 
                 existingGoal={goal} 
                 onGoalSave={onEditGoal}
-                currentUprId={goal.uprId} // Pass UPR ID
-                currentPeriod={goal.period} // Pass Period
+                currentUprId={goal.uprId}
+                currentPeriod={goal.period}
                 triggerButton={
-                  <Button variant="ghost" size="icon" aria-label={t('editGoalAriaLabel', { name: goal.name })}>
+                  <Button variant="ghost" size="icon" aria-label={`Edit sasaran ${goal.name}`}>
                     <Edit className="h-4 w-4" />
                   </Button>
                 }
               />
-            <Button variant="ghost" size="icon" aria-label={t('deleteGoalAriaLabel', { name: goal.name })} onClick={() => onDeleteGoal(goal.id)}>
+            <Button variant="ghost" size="icon" aria-label={`Hapus sasaran ${goal.name}`} onClick={() => onDeleteGoal(goal.id)}>
               <Trash2 className="h-4 w-4 text-destructive" />
             </Button>
           </div>
@@ -46,17 +43,17 @@ export function GoalCard({ goal, riskCount = 0, onEditGoal, onDeleteGoal }: Goal
       </CardHeader>
       <CardContent className="flex-grow">
         <p className="text-sm text-muted-foreground">
-          {t('goalCardCreated', { date: new Date(goal.createdAt).toLocaleDateString() })}
+          Dibuat: {new Date(goal.createdAt).toLocaleDateString()}
         </p>
       </CardContent>
       <CardFooter className="flex justify-between items-center">
         <div className="text-sm text-muted-foreground">
-          {t(riskCount === 1 ? 'goalCardRisks' : 'goalCardRisks_plural', { count: riskCount })}
+          {riskCount} {riskCount === 1 ? 'Risiko' : 'Risiko'}
         </div>
         <Link href={`/risks/${goal.id}`} passHref>
           <Button variant="outline" size="sm">
             <ShieldAlert className="mr-2 h-4 w-4" />
-            {t('goalCardViewRisks')}
+            Lihat Risiko
           </Button>
         </Link>
       </CardFooter>

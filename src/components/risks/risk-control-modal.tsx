@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -20,15 +20,15 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 
 const controlSchema = z.object({
-  description: z.string().min(5, "Control description must be at least 5 characters."),
-  effectiveness: z.enum(['Low', 'Medium', 'High']),
-  status: z.enum(['Planned', 'In Progress', 'Implemented', 'Ineffective']),
+  description: z.string().min(5, "Deskripsi kontrol minimal 5 karakter."),
+  effectiveness: z.enum(['Low', 'Medium', 'High'], { message: "Efektivitas harus dipilih."}),
+  status: z.enum(['Planned', 'In Progress', 'Implemented', 'Ineffective'], { message: "Status harus dipilih."}),
 });
 
 type ControlFormData = z.infer<typeof controlSchema>;
 
 interface RiskControlModalProps {
-  potentialRisk: PotentialRisk | null; // Changed from Risk to PotentialRisk
+  potentialRisk: PotentialRisk | null;
   existingControl?: Control | null;
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
@@ -45,9 +45,9 @@ export function RiskControlModal({ potentialRisk, existingControl, isOpen, onOpe
   } = useForm<ControlFormData>({
     resolver: zodResolver(controlSchema),
     defaultValues: {
-      description: existingControl?.description || "",
-      effectiveness: existingControl?.effectiveness || 'Medium',
-      status: existingControl?.status || 'Planned',
+      description: "",
+      effectiveness: 'Medium',
+      status: 'Planned',
     },
   });
 
@@ -70,7 +70,7 @@ export function RiskControlModal({ potentialRisk, existingControl, isOpen, onOpe
 
     const newControl: Control = {
       id: existingControl?.id || `ctrl_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-      potentialRiskId: potentialRisk.id, // Updated to potentialRiskId
+      potentialRiskId: potentialRisk.id,
       description: data.description,
       effectiveness: data.effectiveness as 'Low' | 'Medium' | 'High',
       status: data.status as 'Planned' | 'In Progress' | 'Implemented' | 'Ineffective',
@@ -87,14 +87,14 @@ export function RiskControlModal({ potentialRisk, existingControl, isOpen, onOpe
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>{existingControl ? "Edit Control" : "Add New Control"}</DialogTitle>
+          <DialogTitle>{existingControl ? "Edit Kontrol" : "Tambah Kontrol Baru"}</DialogTitle>
           <DialogDescription>
-            Define a control measure for the potential risk: <span className="font-semibold">{potentialRisk.description}</span>.
+            Definisikan tindakan kontrol untuk potensi risiko: <span className="font-semibold">{potentialRisk.description}</span>.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)} className="grid gap-4 py-4">
           <div className="space-y-1">
-            <Label htmlFor="controlDescription">Description</Label>
+            <Label htmlFor="controlDescription">Deskripsi</Label>
             <Textarea
               id="controlDescription"
               {...register("description")}
@@ -104,18 +104,18 @@ export function RiskControlModal({ potentialRisk, existingControl, isOpen, onOpe
           </div>
 
           <div className="space-y-1">
-            <Label htmlFor="effectiveness">Effectiveness</Label>
+            <Label htmlFor="effectiveness">Efektivitas</Label>
             <Select
               defaultValue={existingControl?.effectiveness || "Medium"}
               onValueChange={(value) => setValue("effectiveness", value as 'Low'|'Medium'|'High')}
             >
               <SelectTrigger id="effectiveness" className={errors.effectiveness ? "border-destructive" : ""}>
-                <SelectValue placeholder="Select effectiveness" />
+                <SelectValue placeholder="Pilih efektivitas" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="Low">Low</SelectItem>
-                <SelectItem value="Medium">Medium</SelectItem>
-                <SelectItem value="High">High</SelectItem>
+                <SelectItem value="Low">Rendah</SelectItem>
+                <SelectItem value="Medium">Sedang</SelectItem>
+                <SelectItem value="High">Tinggi</SelectItem>
               </SelectContent>
             </Select>
             {errors.effectiveness && <p className="text-xs text-destructive mt-1">{errors.effectiveness.message}</p>}
@@ -128,22 +128,22 @@ export function RiskControlModal({ potentialRisk, existingControl, isOpen, onOpe
               onValueChange={(value) => setValue("status", value as 'Planned' | 'In Progress' | 'Implemented' | 'Ineffective')}
             >
               <SelectTrigger id="status" className={errors.status ? "border-destructive" : ""}>
-                <SelectValue placeholder="Select status" />
+                <SelectValue placeholder="Pilih status" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="Planned">Planned</SelectItem>
-                <SelectItem value="In Progress">In Progress</SelectItem>
-                <SelectItem value="Implemented">Implemented</SelectItem>
-                <SelectItem value="Ineffective">Ineffective</SelectItem>
+                <SelectItem value="Planned">Direncanakan</SelectItem>
+                <SelectItem value="In Progress">Sedang Berjalan</SelectItem>
+                <SelectItem value="Implemented">Diterapkan</SelectItem>
+                <SelectItem value="Ineffective">Tidak Efektif</SelectItem>
               </SelectContent>
             </Select>
             {errors.status && <p className="text-xs text-destructive mt-1">{errors.status.message}</p>}
           </div>
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Batal</Button>
             <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? "Saving..." : (existingControl ? "Save Changes" : "Add Control")}
+              {isSubmitting ? "Menyimpan..." : (existingControl ? "Simpan Perubahan" : "Tambah Kontrol")}
             </Button>
           </DialogFooter>
         </form>

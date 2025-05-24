@@ -23,17 +23,11 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { PlusCircle, Edit } from 'lucide-react';
 
-// This component is being deprecated in favor of the new page-based management
-// at /all-risks/manage/[potentialRiskId]
-// It's kept for now to avoid breaking imports if any, but its functionality
-// for primary add/edit of PotentialRisk is moved.
-// It might be repurposed for a very quick add scenario if needed later.
-
 const potentialRiskSchema = z.object({
-  description: z.string().min(10, "Potential risk description must be at least 10 characters long."),
-  goalId: z.string().min(1, "A goal must be selected."),
+  description: z.string().min(10, "Deskripsi potensi risiko minimal 10 karakter."),
+  goalId: z.string().min(1, "Sasaran harus dipilih."),
   category: z.custom<RiskCategory>().nullable().refine(val => val === null || RISK_CATEGORIES.includes(val), {
-    message: "Invalid risk category.",
+    message: "Kategori risiko tidak valid.",
   }),
   owner: z.string().nullable(),
 });
@@ -80,7 +74,7 @@ export function AddEditPotentialRiskDialog({
   };
 
    useEffect(() => {
-    console.warn("AddEditPotentialRiskDialog is being deprecated for primary Potential Risk CRUD. Use the /all-risks/manage page instead.");
+    console.warn("AddEditPotentialRiskDialog sudah tidak digunakan untuk CRUD utama Potensi Risiko. Gunakan halaman /all-risks/manage.");
   }, []);
 
   const {
@@ -126,7 +120,7 @@ export function AddEditPotentialRiskDialog({
   const onSubmit: SubmitHandler<PotentialRiskFormData> = (data) => {
     const parentGoal = goals.find(g => g.id === data.goalId);
     if (!parentGoal || parentGoal.uprId !== currentUprId || parentGoal.period !== currentPeriod) {
-      console.error("Selected parent goal not found or not in current UPR/Period context.");
+      console.error("Sasaran induk yang dipilih tidak ditemukan atau tidak dalam konteks UPR/Periode saat ini.");
       return; 
     }
 
@@ -155,30 +149,29 @@ export function AddEditPotentialRiskDialog({
         <DialogTrigger asChild>
           <Button onClick={() => setOpenState(true)} variant="outline" size="sm" className="text-muted-foreground">
             {isEditing ? <Edit className="mr-2 h-4 w-4" /> : <PlusCircle className="mr-2 h-4 w-4" />}
-            {isEditing ? "Edit (Dialog - Deprecated)" : "Add (Dialog - Deprecated)"}
+            {isEditing ? "Edit (Dialog - Deprecated)" : "Tambah (Dialog - Deprecated)"}
           </Button>
         </DialogTrigger>
       ) : null }
       
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>{isEditing ? "Edit Potential Risk (Dialog - Deprecated)" : "Add New Potential Risk (Dialog - Deprecated)"}</DialogTitle>
+          <DialogTitle>{isEditing ? "Edit Potensi Risiko (Dialog - Deprecated)" : "Tambah Potensi Risiko Baru (Dialog - Deprecated)"}</DialogTitle>
           <DialogDescription>
-            This dialog is being phased out. Please use the dedicated management page.
-            {` For UPR: ${currentUprId}, Period: ${currentPeriod}`}
+            Dialog ini dalam proses penggantian. Harap gunakan halaman manajemen khusus.
+            {` Untuk UPR: ${currentUprId}, Periode: ${currentPeriod}`}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)} className="grid gap-4 py-4">
-          {/* Form content largely remains the same, but usage context changes */}
           <div className="space-y-1.5">
-            <Label htmlFor="goalIdPotentialRiskDialog">Associated Goal</Label>
+            <Label htmlFor="goalIdPotentialRiskDialog">Sasaran Terkait</Label>
             <Select
               value={selectedGoalId}
               onValueChange={(value) => setValue("goalId", value, { shouldValidate: true })}
               disabled={goals.length === 0}
             >
               <SelectTrigger id="goalIdPotentialRiskDialog" className={errors.goalId ? "border-destructive" : ""}>
-                <SelectValue placeholder="Select a goal" />
+                <SelectValue placeholder="Pilih sasaran" />
               </SelectTrigger>
               <SelectContent>
                 {goals.length > 0 ? (
@@ -186,7 +179,7 @@ export function AddEditPotentialRiskDialog({
                     <SelectItem key={goal.id} value={goal.id}>{goal.name}</SelectItem>
                   ))
                 ) : (
-                  <SelectItem value="no-goals" disabled>No goals in this UPR/Period.</SelectItem>
+                  <SelectItem value="no-goals" disabled>Tidak ada sasaran di UPR/Periode ini.</SelectItem>
                 )}
               </SelectContent>
             </Select>
@@ -194,19 +187,19 @@ export function AddEditPotentialRiskDialog({
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="descriptionPotentialRiskDialog">Potential Risk Description</Label>
+            <Label htmlFor="descriptionPotentialRiskDialog">Deskripsi Potensi Risiko</Label>
             <Textarea
               id="descriptionPotentialRiskDialog"
               {...register("description")}
               className={errors.description ? "border-destructive" : ""}
               rows={3}
-              placeholder="Describe the potential risk..."
+              placeholder="Jelaskan potensi risiko..."
             />
             {errors.description && <p className="text-xs text-destructive mt-1">{errors.description.message}</p>}
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="categoryPotentialRiskDialog">Risk Category</Label>
+            <Label htmlFor="categoryPotentialRiskDialog">Kategori Risiko</Label>
             <Select
               value={selectedCategory || NO_CATEGORY_SENTINEL} 
               onValueChange={(value) => {
@@ -218,10 +211,10 @@ export function AddEditPotentialRiskDialog({
               }}
             >
               <SelectTrigger id="categoryPotentialRiskDialog" className={errors.category ? "border-destructive" : ""}>
-                <SelectValue placeholder="Select category (optional)" />
+                <SelectValue placeholder="Pilih kategori (opsional)" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={NO_CATEGORY_SENTINEL}>_No Category_</SelectItem>
+                <SelectItem value={NO_CATEGORY_SENTINEL}>_Tanpa Kategori_</SelectItem>
                 {RISK_CATEGORIES.map(cat => (
                   <SelectItem key={cat} value={cat}>{cat}</SelectItem>
                 ))}
@@ -231,20 +224,20 @@ export function AddEditPotentialRiskDialog({
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="ownerPotentialRiskDialog">Risk Owner (Optional)</Label>
+            <Label htmlFor="ownerPotentialRiskDialog">Pemilik Risiko (Opsional)</Label>
             <Input
               id="ownerPotentialRiskDialog"
               {...register("owner")}
-              placeholder="e.g., Head of Operations, IT Department"
+              placeholder="Contoh: Kepala Operasional, Departemen TI"
               className={errors.owner ? "border-destructive" : ""}
             />
             {errors.owner && <p className="text-xs text-destructive mt-1">{errors.owner.message}</p>}
           </div>
           
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setOpenState(false)}>Cancel</Button>
+            <Button type="button" variant="outline" onClick={() => setOpenState(false)}>Batal</Button>
             <Button type="submit" disabled={isSubmitting || (goals.length === 0 && !isEditing && !defaultGoalId) }>
-              {isSubmitting ? "Saving..." : (isEditing ? "Save Changes" : "Add Potential Risk")}
+              {isSubmitting ? "Menyimpan..." : (isEditing ? "Simpan Perubahan" : "Tambah Potensi Risiko")}
             </Button>
           </DialogFooter>
         </form>
@@ -252,5 +245,3 @@ export function AddEditPotentialRiskDialog({
     </Dialog>
   );
 }
-
-    

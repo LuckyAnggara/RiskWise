@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import NextLink from 'next/link'; // Use standard Next.js Link, aliased
+import Link from 'next/link'; 
 import {
   SidebarProvider,
   Sidebar,
@@ -21,11 +21,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { LogOut, User, Settings as SettingsIcon } from "lucide-react";
 import { Toaster } from "@/components/ui/toaster";
 import { getCurrentUprId, getCurrentPeriod, initializeAppContext } from '@/lib/upr-period-context';
-import { useTranslations, useLocale } from 'next-intl';
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
-  const t = useTranslations('AppLayout');
-  const locale = useLocale(); // For constructing locale-prefixed paths
   const [currentUpr, setCurrentUpr] = useState('');
   const [currentPeriodDisplay, setCurrentPeriodDisplay] = useState('');
 
@@ -35,20 +32,16 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     setCurrentPeriodDisplay(context.period);
   }, []);
 
-  // Construct locale-prefixed paths for next/link
-  const homeHref = `/${locale}`; 
-  const settingsHref = `/${locale}/settings`;
-
   return (
     <SidebarProvider defaultOpen>
       <Sidebar variant="sidebar" collapsible="icon" side="left">
         <SidebarHeader className="p-4">
-          <NextLink href={homeHref} className="flex items-center gap-2 group-data-[collapsible=icon]:justify-center">
+          <Link href="/" className="flex items-center gap-2 group-data-[collapsible=icon]:justify-center">
             <AppLogo className="h-8 w-8 text-primary" />
             <span className="font-semibold text-lg text-primary group-data-[collapsible=icon]:hidden">
               RiskWise
             </span>
-          </NextLink>
+          </Link>
         </SidebarHeader>
         <Separator className="group-data-[collapsible=icon]:hidden" />
         <SidebarContent>
@@ -67,7 +60,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             <SidebarTrigger className="md:hidden" />
             {currentUpr && currentPeriodDisplay && (
               <div className="text-sm text-muted-foreground">
-                <span className="font-semibold">{t('uprLabel')}:</span> {currentUpr} | <span className="font-semibold">{t('periodLabel')}:</span> {currentPeriodDisplay}
+                <span className="font-semibold">UPR:</span> {currentUpr} | <span className="font-semibold">Periode:</span> {currentPeriodDisplay}
               </div>
             )}
           </div>
@@ -81,22 +74,22 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuLabel>{t('myAccount')}</DropdownMenuLabel>
+              <DropdownMenuLabel>Akun Saya</DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem>
                 <User className="mr-2 h-4 w-4" />
-                <span>{t('profile')}</span>
+                <span>Profil</span>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
-                <NextLink href={settingsHref}>
+                <Link href="/settings">
                   <SettingsIcon className="mr-2 h-4 w-4" />
-                  <span>{t('settings')}</span>
-                </NextLink>
+                  <span>Pengaturan</span>
+                </Link>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => alert('Logout functionality to be implemented.')}>
+              <DropdownMenuItem onClick={() => alert('Fungsi logout akan diimplementasikan.')}>
                 <LogOut className="mr-2 h-4 w-4" />
-                <span>{t('logout')}</span>
+                <span>Keluar</span>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

@@ -9,9 +9,9 @@ import { RiskIdentificationCard } from '@/components/risks/risk-identification-c
 import { RiskListItem } from '@/components/risks/risk-list-item';
 import { RiskAnalysisModal } from '@/components/risks/risk-analysis-modal';
 import { RiskControlModal } from '@/components/risks/risk-control-modal';
-import { ManageRiskCausesDialog } from '@/components/risks/manage-risk-causes-dialog'; // Import new dialog
+import { ManageRiskCausesDialog } from '@/components/risks/manage-risk-causes-dialog';
 import type { Goal, PotentialRisk, Control, RiskCause, LikelihoodImpactLevel } from '@/lib/types';
-import { ArrowLeft, ShieldAlert, Loader2, LayoutGrid, List, Settings2, BarChart3, PlusCircle, Trash2, Zap, Edit } from 'lucide-react'; // Added Edit
+import { ArrowLeft, ShieldAlert, Loader2, LayoutGrid, List, Settings2, BarChart3, PlusCircle, Trash2, Zap, Edit } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Separator } from '@/components/ui/separator';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -32,20 +32,20 @@ const getRiskLevel = (likelihood: LikelihoodImpactLevel | null, impact: Likeliho
   const I = { 'Very Low': 1, 'Low': 2, 'Medium': 3, 'High': 4, 'Very High': 5 };
   const score = L[likelihood] * I[impact];
 
-  if (score >= 20) return 'Critical';
-  if (score >= 12) return 'High';
-  if (score >= 6) return 'Medium';
-  if (score >= 3) return 'Low';
-  return 'Very Low';
+  if (score >= 20) return 'Kritis';
+  if (score >= 12) return 'Tinggi';
+  if (score >= 6) return 'Sedang';
+  if (score >= 3) return 'Rendah';
+  return 'Sangat Rendah';
 };
 
 const getRiskLevelColor = (level: string) => {
   switch (level.toLowerCase()) {
-    case 'critical': return 'bg-red-600 hover:bg-red-700';
-    case 'high': return 'bg-orange-500 hover:bg-orange-600';
-    case 'medium': return 'bg-yellow-400 hover:bg-yellow-500 text-black dark:bg-yellow-500 dark:text-black';
-    case 'low': return 'bg-green-500 hover:bg-green-600';
-    case 'very low': return 'bg-sky-500 hover:bg-sky-600';
+    case 'kritis': return 'bg-red-600 hover:bg-red-700';
+    case 'tinggi': return 'bg-orange-500 hover:bg-orange-600';
+    case 'sedang': return 'bg-yellow-400 hover:bg-yellow-500 text-black dark:bg-yellow-500 dark:text-black';
+    case 'rendah': return 'bg-green-500 hover:bg-green-600';
+    case 'sangat rendah': return 'bg-sky-500 hover:bg-sky-600';
     default: return 'bg-gray-400 hover:bg-gray-500 text-white';
   }
 };
@@ -61,7 +61,7 @@ export default function GoalRisksPage() {
   const [goal, setGoal] = useState<Goal | null>(null);
   const [potentialRisks, setPotentialRisks] = useState<PotentialRisk[]>([]);
   const [controls, setControls] = useState<Control[]>([]);
-  const [riskCauses, setRiskCauses] = useState<RiskCause[]>([]); // State for risk causes
+  const [riskCauses, setRiskCauses] = useState<RiskCause[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [viewMode, setViewMode] = useState<'card' | 'table'>('card');
   
@@ -72,7 +72,7 @@ export default function GoalRisksPage() {
   const [selectedControlForEdit, setSelectedControlForEdit] = useState<Control | null>(null);
   const [isControlModalOpen, setIsControlModalOpen] = useState(false);
 
-  const [selectedPotentialRiskForCauses, setSelectedPotentialRiskForCauses] = useState<PotentialRisk | null>(null); // For managing causes
+  const [selectedPotentialRiskForCauses, setSelectedPotentialRiskForCauses] = useState<PotentialRisk | null>(null);
   const [isManageCausesModalOpen, setIsManageCausesModalOpen] = useState(false);
 
   const { toast } = useToast();
@@ -139,7 +139,7 @@ export default function GoalRisksPage() {
         setIsLoading(false);
         setGoal(null);
     }
-  }, [loadData, currentUprId, currentPeriod, goalId, router]); // Added router
+  }, [loadData, currentUprId, currentPeriod, goalId, router]);
 
   const updatePotentialRisksInStorage = (goalForPotentialRisks: Goal, updatedPRisks: PotentialRisk[]) => {
     if (typeof window !== 'undefined' && goalForPotentialRisks) {
@@ -161,8 +161,8 @@ export default function GoalRisksPage() {
     setPotentialRisks(updatedPotentialRisksState);
     updatePotentialRisksInStorage(goal, updatedPotentialRisksState);
     toast({
-        title: "Potential Risks Identified!",
-        description: `${newPotentialRisks.length} potential risks brainstormed for "${goal.name}". You can now edit their details and add causes.`
+        title: "Potensi Risiko Teridentifikasi!",
+        description: `${newPotentialRisks.length} potensi risiko telah di-brainstorm untuk "${goal.name}". Anda sekarang dapat mengedit detailnya dan menambahkan penyebab.`
     });
   };
   
@@ -176,7 +176,7 @@ export default function GoalRisksPage() {
     const newPotentialRisksState = potentialRisks.map(pr => pr.id === updatedPotentialRisk.id ? updatedPotentialRisk : pr).sort((a,b) => a.description.localeCompare(b.description));
     setPotentialRisks(newPotentialRisksState);
     updatePotentialRisksInStorage(goal, newPotentialRisksState);
-    toast({ title: "Potential Risk Analyzed", description: `Analysis saved for: "${updatedPotentialRisk.description}"`});
+    toast({ title: "Potensi Risiko Dianalisis", description: `Analisis disimpan untuk: "${updatedPotentialRisk.description}"`});
     setIsAnalysisModalOpen(false);
     setSelectedPotentialRiskForAnalysis(null);
   };
@@ -192,11 +192,14 @@ export default function GoalRisksPage() {
     const pRiskSpecificControls = controls.filter(c => c.potentialRiskId === control.potentialRiskId);
     const existingIndex = pRiskSpecificControls.findIndex(c => c.id === control.id);
     let updatedPRiskControlsList: Control[];
+    let actionText = "";
 
     if (existingIndex > -1) {
       updatedPRiskControlsList = pRiskSpecificControls.map(c => c.id === control.id ? control : c);
+      actionText = "diperbarui";
     } else {
       updatedPRiskControlsList = [...pRiskSpecificControls, control];
+      actionText = "ditambahkan";
     }
     
     updateControlsInStorage(goal, control.potentialRiskId, updatedPRiskControlsList);
@@ -204,8 +207,8 @@ export default function GoalRisksPage() {
     setControls(updatedOverallControls);
     
     toast({ 
-        title: existingIndex > -1 ? "Control Updated" : "Control Added", 
-        description: `Control "${control.description}" ${existingIndex > -1 ? 'updated' : 'added'}.` 
+        title: existingIndex > -1 ? "Kontrol Diperbarui" : "Kontrol Ditambahkan", 
+        description: `Kontrol "${control.description}" ${actionText}.` 
     });
     
     setIsControlModalOpen(false);
@@ -228,7 +231,7 @@ export default function GoalRisksPage() {
     }
     setControls(currentControls => currentControls.filter(c => c.potentialRiskId !== pRiskIdToDelete));
     setRiskCauses(currentCauses => currentCauses.filter(rc => rc.potentialRiskId !== pRiskIdToDelete));
-    toast({ title: "Potential Risk Deleted", description: `Potential risk "${pRiskToDelete.description}" deleted.`, variant: "destructive" });
+    toast({ title: "Potensi Risiko Dihapus", description: `Potensi risiko "${pRiskToDelete.description}" dihapus.`, variant: "destructive" });
   };
 
   const handleDeleteControl = (controlIdToDelete: string) => {
@@ -244,7 +247,7 @@ export default function GoalRisksPage() {
     const updatedOverallControls = controls.filter(c => c.id !== controlIdToDelete);
     setControls(updatedOverallControls);
 
-    toast({ title: "Control Deleted", description: `Control "${controlToDelete.description}" deleted.`, variant: "destructive" });
+    toast({ title: "Kontrol Dihapus", description: `Kontrol "${controlToDelete.description}" dihapus.`, variant: "destructive" });
   };
 
   const handleOpenManageCausesModal = (pRisk: PotentialRisk) => {
@@ -258,35 +261,37 @@ export default function GoalRisksPage() {
   };
 
 
-  if (isLoading || !currentUprId || !currentPeriod) {
+  if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center h-screen">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
-        <p className="text-xl text-muted-foreground">Loading goal and potential risk data...</p>
+        <p className="text-xl text-muted-foreground">Memuat data sasaran dan potensi risiko...</p>
       </div>
     );
   }
   
-  if (!goal) { 
+  if (!goal && !isLoading) { 
     return (
       <div className="flex flex-col items-center justify-center h-screen">
         <ShieldAlert className="w-16 h-16 text-muted-foreground mb-4" />
-        <p className="text-xl text-muted-foreground">Goal not found for UPR: {currentUprId}, Period: {currentPeriod}.</p>
+        <p className="text-xl text-muted-foreground">Sasaran tidak ditemukan untuk UPR: {currentUprId}, Periode: {currentPeriod}.</p>
         <Button onClick={() => router.push('/goals')} className="mt-4">
-          <ArrowLeft className="mr-2 h-4 w-4" /> Back to Goals
+          <ArrowLeft className="mr-2 h-4 w-4" /> Kembali ke Sasaran
         </Button>
       </div>
     );
   }
+  
+  if (!goal) return null;
 
   return (
     <div className="space-y-8">
       <PageHeader
-        title={`Potential Risks for Goal: ${goal.name}`}
+        title={`Potensi Risiko untuk Sasaran: ${goal.name}`}
         description={`${goal.description}`}
         actions={
           <Button onClick={() => router.push('/goals')} variant="outline">
-            <ArrowLeft className="mr-2 h-4 w-4" /> Back to Goals
+            <ArrowLeft className="mr-2 h-4 w-4" /> Kembali ke Sasaran
           </Button>
         }
       />
@@ -297,13 +302,13 @@ export default function GoalRisksPage() {
 
       <div>
         <div className="flex items-center justify-between mb-4">
-            <h2 className="text-2xl font-semibold">Identified Potential Risks ({potentialRisks.length})</h2>
+            <h2 className="text-2xl font-semibold">Potensi Risiko Teridentifikasi ({potentialRisks.length})</h2>
             <div className="flex items-center space-x-2">
                 <Button 
                     variant={viewMode === 'card' ? 'default' : 'outline'} 
                     size="icon" 
                     onClick={() => setViewMode('card')}
-                    aria-label="Card View"
+                    aria-label="Tampilan Kartu"
                 >
                     <LayoutGrid className="h-4 w-4" />
                 </Button>
@@ -311,7 +316,7 @@ export default function GoalRisksPage() {
                     variant={viewMode === 'table' ? 'default' : 'outline'} 
                     size="icon" 
                     onClick={() => setViewMode('table')}
-                    aria-label="Table View"
+                    aria-label="Tampilan Tabel"
                 >
                     <List className="h-4 w-4" />
                 </Button>
@@ -321,9 +326,9 @@ export default function GoalRisksPage() {
         {potentialRisks.length === 0 ? (
           <div className="text-center py-10 border-2 border-dashed border-muted-foreground/30 rounded-lg">
             <ShieldAlert className="mx-auto h-12 w-12 text-muted-foreground" />
-            <h3 className="mt-2 text-lg font-medium">No potential risks identified yet</h3>
+            <h3 className="mt-2 text-lg font-medium">Belum ada potensi risiko yang teridentifikasi</h3>
             <p className="mt-1 text-sm text-muted-foreground">
-              Use the AI tool above to brainstorm potential risks for this goal.
+              Gunakan alat AI di atas untuk brainstorming potensi risiko untuk sasaran ini.
             </p>
           </div>
         ) : viewMode === 'card' ? (
@@ -342,8 +347,8 @@ export default function GoalRisksPage() {
                 }}
                 onDeletePotentialRisk={() => handleDeletePotentialRisk(pRisk.id)}
                 onDeleteControl={(controlId) => handleDeleteControl(controlId)}
-                onManageCauses={() => handleOpenManageCausesModal(pRisk)} // Can keep this for quick access from card view
-                onEditDetails={() => router.push(`/all-risks/manage/${pRisk.id}`)} // New prop
+                onManageCauses={() => handleOpenManageCausesModal(pRisk)}
+                onEditDetails={() => router.push(`/all-risks/manage/${pRisk.id}`)}
               />
             ))}
           </div>
@@ -353,15 +358,15 @@ export default function GoalRisksPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[30%]">Description</TableHead>
-                    <TableHead>Category</TableHead>
-                    <TableHead>Owner</TableHead>
-                    <TableHead>Likelihood</TableHead>
-                    <TableHead>Impact</TableHead>
+                    <TableHead className="w-[30%]">Deskripsi</TableHead>
+                    <TableHead>Kategori</TableHead>
+                    <TableHead>Pemilik</TableHead>
+                    <TableHead>Probabilitas</TableHead>
+                    <TableHead>Dampak</TableHead>
                     <TableHead>Level</TableHead>
-                    <TableHead>Causes</TableHead>
-                    <TableHead>Controls</TableHead>
-                    <TableHead className="text-right w-[100px]">Actions</TableHead>
+                    <TableHead>Penyebab</TableHead>
+                    <TableHead>Kontrol</TableHead>
+                    <TableHead className="text-right w-[100px]">Aksi</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -402,20 +407,20 @@ export default function GoalRisksPage() {
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
                                <DropdownMenuItem onClick={() => router.push(`/all-risks/manage/${pRisk.id}`)}>
-                                <Edit className="mr-2 h-4 w-4" /> Edit Details & Causes
+                                <Edit className="mr-2 h-4 w-4" /> Edit Detail & Penyebab
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => handleOpenManageCausesModal(pRisk)}>
-                                <Zap className="mr-2 h-4 w-4" /> Manage Causes (Quick)
+                                <Zap className="mr-2 h-4 w-4" /> Kelola Penyebab (Cepat)
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => handleOpenAnalysisModal(pRisk)}>
-                                <BarChart3 className="mr-2 h-4 w-4" /> Analyze Level
+                                <BarChart3 className="mr-2 h-4 w-4" /> Analisis Level
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => handleOpenControlModal(pRisk)}>
-                                <PlusCircle className="mr-2 h-4 w-4" /> Add Control
+                                <PlusCircle className="mr-2 h-4 w-4" /> Tambah Kontrol
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem onClick={() => handleDeletePotentialRisk(pRisk.id)} className="text-destructive focus:text-destructive focus:bg-destructive/10">
-                                <Trash2 className="mr-2 h-4 w-4" /> Delete Potential Risk
+                                <Trash2 className="mr-2 h-4 w-4" /> Hapus Potensi Risiko
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
@@ -468,5 +473,3 @@ export default function GoalRisksPage() {
     </div>
   );
 }
-
-    

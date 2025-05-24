@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -28,11 +28,14 @@ export function RiskAnalysisModal({ potentialRisk, isOpen, onOpenChange, onSave 
   const [impact, setImpact] = useState<LikelihoodImpactLevel | null>(null);
 
   useEffect(() => {
-    if (potentialRisk) {
+    if (potentialRisk && isOpen) {
       setLikelihood(potentialRisk.likelihood);
       setImpact(potentialRisk.impact);
+    } else if (!isOpen) {
+      setLikelihood(null);
+      setImpact(null);
     }
-  }, [potentialRisk]);
+  }, [potentialRisk, isOpen]);
 
   const handleSave = () => {
     if (potentialRisk) {
@@ -52,22 +55,22 @@ export function RiskAnalysisModal({ potentialRisk, isOpen, onOpenChange, onSave 
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>Analyze Potential Risk</DialogTitle>
+          <DialogTitle>Analisis Potensi Risiko</DialogTitle>
           <DialogDescription>
-            Assess the likelihood and impact for the potential risk: <span className="font-semibold">{potentialRisk.description}</span>
+            Nilai probabilitas dan dampak untuk potensi risiko: <span className="font-semibold">{potentialRisk.description}</span>
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-4">
           <div className="grid grid-cols-4 items-center gap-4">
             <Label htmlFor="likelihood" className="text-right">
-              Likelihood
+              Probabilitas
             </Label>
             <Select
               value={likelihood || ""}
               onValueChange={(value) => setLikelihood(value as LikelihoodImpactLevel)}
             >
               <SelectTrigger className="col-span-3" id="likelihood">
-                <SelectValue placeholder="Select likelihood" />
+                <SelectValue placeholder="Pilih probabilitas" />
               </SelectTrigger>
               <SelectContent>
                 {LIKELIHOOD_IMPACT_LEVELS.map(level => (
@@ -78,14 +81,14 @@ export function RiskAnalysisModal({ potentialRisk, isOpen, onOpenChange, onSave 
           </div>
           <div className="grid grid-cols-4 items-center gap-4">
             <Label htmlFor="impact" className="text-right">
-              Impact
+              Dampak
             </Label>
             <Select
               value={impact || ""}
               onValueChange={(value) => setImpact(value as LikelihoodImpactLevel)}
             >
               <SelectTrigger className="col-span-3" id="impact">
-                <SelectValue placeholder="Select impact" />
+                <SelectValue placeholder="Pilih dampak" />
               </SelectTrigger>
               <SelectContent>
                 {LIKELIHOOD_IMPACT_LEVELS.map(level => (
@@ -96,8 +99,8 @@ export function RiskAnalysisModal({ potentialRisk, isOpen, onOpenChange, onSave 
           </div>
         </div>
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button type="button" onClick={handleSave}>Save Analysis</Button>
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Batal</Button>
+          <Button type="button" onClick={handleSave}>Simpan Analisis</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

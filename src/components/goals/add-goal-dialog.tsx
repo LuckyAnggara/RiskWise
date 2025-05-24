@@ -20,11 +20,10 @@ import { useForm, type SubmitHandler } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { PlusCircle, Pencil } from 'lucide-react';
-import { useTranslations } from 'next-intl';
 
 const goalSchema = z.object({
-  name: z.string().min(3, "Goal name must be at least 3 characters long."),
-  description: z.string().min(10, "Description must be at least 10 characters long."),
+  name: z.string().min(3, "Nama sasaran minimal 3 karakter."),
+  description: z.string().min(10, "Deskripsi minimal 10 karakter."),
 });
 
 type GoalFormData = z.infer<typeof goalSchema>;
@@ -38,7 +37,6 @@ interface AddGoalDialogProps {
 }
 
 export function AddGoalDialog({ onGoalSave, existingGoal, triggerButton, currentUprId, currentPeriod }: AddGoalDialogProps) {
-  const t = useTranslations('AddGoalDialog');
   const [open, setOpen] = useState(false);
   const {
     register,
@@ -95,21 +93,21 @@ export function AddGoalDialog({ onGoalSave, existingGoal, triggerButton, current
         ) : (
           <Button onClick={() => setOpen(true)}>
             {existingGoal ? <Pencil className="mr-2 h-4 w-4" /> : <PlusCircle className="mr-2 h-4 w-4" />}
-             {existingGoal ? t('editTitle') : t('addTitle')}
+             {existingGoal ? "Edit Sasaran" : "Tambah Sasaran Baru"}
           </Button>
         )}
       </DialogTrigger>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>{existingGoal ? t('editTitle') : t('addTitle')}</DialogTitle>
+          <DialogTitle>{existingGoal ? "Edit Sasaran" : "Tambah Sasaran Baru"}</DialogTitle>
           <DialogDescription>
-            {existingGoal ? t('editDescription', {uprId: currentUprId, period: currentPeriod}) : t('addDescription', {uprId: currentUprId, period: currentPeriod})}
+            {existingGoal ? `Perbarui detail sasaran Anda. Untuk UPR: ${currentUprId}, Periode: ${currentPeriod}` : `Definisikan sasaran baru untuk mulai mengelola risikonya. Untuk UPR: ${currentUprId}, Periode: ${currentPeriod}`}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)} className="grid gap-4 py-4">
           <div className="grid grid-cols-4 items-center gap-4">
             <Label htmlFor="name" className="text-right">
-              {t('nameLabel')}
+              Nama
             </Label>
             <div className="col-span-3">
               <Input
@@ -122,7 +120,7 @@ export function AddGoalDialog({ onGoalSave, existingGoal, triggerButton, current
           </div>
           <div className="grid grid-cols-4 items-center gap-4">
             <Label htmlFor="description" className="text-right">
-              {t('descriptionLabel')}
+              Deskripsi
             </Label>
             <div className="col-span-3">
               <Textarea
@@ -134,9 +132,9 @@ export function AddGoalDialog({ onGoalSave, existingGoal, triggerButton, current
             </div>
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setOpen(false)}>{t('cancelButton')}</Button>
+            <Button type="button" variant="outline" onClick={() => setOpen(false)}>Batal</Button>
             <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? t('savingButton') : t('saveButton')}
+              {isSubmitting ? "Menyimpan..." : "Simpan Sasaran"}
             </Button>
           </DialogFooter>
         </form>
