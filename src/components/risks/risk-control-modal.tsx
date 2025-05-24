@@ -11,11 +11,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import type { Control, Risk } from '@/lib/types';
+import type { Control, PotentialRisk } from '@/lib/types';
 import { useForm, type SubmitHandler } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -29,19 +28,18 @@ const controlSchema = z.object({
 type ControlFormData = z.infer<typeof controlSchema>;
 
 interface RiskControlModalProps {
-  risk: Risk | null;
+  potentialRisk: PotentialRisk | null; // Changed from Risk to PotentialRisk
   existingControl?: Control | null;
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   onSave: (control: Control) => void;
 }
 
-export function RiskControlModal({ risk, existingControl, isOpen, onOpenChange, onSave }: RiskControlModalProps) {
+export function RiskControlModal({ potentialRisk, existingControl, isOpen, onOpenChange, onSave }: RiskControlModalProps) {
   const {
     register,
     handleSubmit,
     reset,
-    control: formControl, // for react-hook-form's Controller, if needed for Select
     setValue,
     formState: { errors, isSubmitting },
   } = useForm<ControlFormData>({
@@ -68,11 +66,11 @@ export function RiskControlModal({ risk, existingControl, isOpen, onOpenChange, 
   }, [existingControl, reset, isOpen]);
 
   const onSubmit: SubmitHandler<ControlFormData> = (data) => {
-    if (!risk) return;
+    if (!potentialRisk) return;
 
     const newControl: Control = {
       id: existingControl?.id || `ctrl_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-      riskId: risk.id,
+      potentialRiskId: potentialRisk.id, // Updated to potentialRiskId
       description: data.description,
       effectiveness: data.effectiveness as 'Low' | 'Medium' | 'High',
       status: data.status as 'Planned' | 'In Progress' | 'Implemented' | 'Ineffective',
@@ -83,7 +81,7 @@ export function RiskControlModal({ risk, existingControl, isOpen, onOpenChange, 
     onOpenChange(false);
   };
   
-  if (!risk) return null;
+  if (!potentialRisk) return null;
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
@@ -91,7 +89,7 @@ export function RiskControlModal({ risk, existingControl, isOpen, onOpenChange, 
         <DialogHeader>
           <DialogTitle>{existingControl ? "Edit Control" : "Add New Control"}</DialogTitle>
           <DialogDescription>
-            Define a control measure for the risk: <span className="font-semibold">{risk.description}</span>.
+            Define a control measure for the potential risk: <span className="font-semibold">{potentialRisk.description}</span>.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)} className="grid gap-4 py-4">

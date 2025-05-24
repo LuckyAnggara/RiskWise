@@ -2,6 +2,26 @@
 export type LikelihoodImpactLevel = 'Very Low' | 'Low' | 'Medium' | 'High' | 'Very High';
 export const LIKELIHOOD_IMPACT_LEVELS: LikelihoodImpactLevel[] = ['Very Low', 'Low', 'Medium', 'High', 'Very High'];
 
+export const RISK_CATEGORIES = [
+  'Kebijakan', 
+  'Fraud', 
+  'Keuangan', 
+  'Operasional', 
+  'Reputasi', 
+  'Kepatuhan', 
+  'Strategis', 
+  'Bencana Alam', 
+  'Teknologi Informasi', 
+  'Sumber Daya Manusia',
+  'Hukum',
+  'Proyek',
+  'Lainnya'
+] as const;
+export type RiskCategory = typeof RISK_CATEGORIES[number];
+
+export const RISK_SOURCES = ['Internal', 'Eksternal'] as const;
+export type RiskSource = typeof RISK_SOURCES[number];
+
 export interface Goal {
   id: string;
   name: string;
@@ -11,19 +31,29 @@ export interface Goal {
   period: string; // e.g., "2024", "2025"
 }
 
-export interface Risk {
+export interface PotentialRisk {
   id: string;
   goalId: string; // Will link to a Goal that has uprId and period
   description: string;
+  category: RiskCategory | null;
+  owner: string | null; // Nama atau jabatan pemilik risiko
   likelihood: LikelihoodImpactLevel | null;
   impact: LikelihoodImpactLevel | null;
   identifiedAt: string; // ISO date string
   analysisCompletedAt?: string; // ISO date string
 }
 
+export interface RiskCause {
+  id: string;
+  potentialRiskId: string; // Links to PotentialRisk
+  description: string;
+  source: RiskSource;
+  createdAt: string; // ISO date string
+}
+
 export interface Control {
   id:string;
-  riskId: string; // Will link to a Risk, which links to a Goal with uprId and period
+  potentialRiskId: string; // Links to PotentialRisk
   description: string;
   effectiveness: 'Low' | 'Medium' | 'High' | null;
   status: 'Planned' | 'In Progress' | 'Implemented' | 'Ineffective';

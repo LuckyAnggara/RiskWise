@@ -5,7 +5,7 @@ import React, { useState, useEffect } from 'react';
 import { PageHeader } from '@/components/ui/page-header';
 import { GoalCard } from '@/components/goals/goal-card';
 import { AddGoalDialog } from '@/components/goals/add-goal-dialog';
-import type { Goal } from '@/lib/types';
+import type { Goal, PotentialRisk } from '@/lib/types'; // Added PotentialRisk
 import { PlusCircle, Target, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
@@ -18,8 +18,9 @@ const INITIAL_GOALS_TEMPLATE: Omit<Goal, 'uprId' | 'period'>[] = [
 ];
 
 const getGoalsStorageKey = (uprId: string, period: string) => `riskwise-upr${uprId}-period${period}-goals`;
-const getRisksStorageKey = (uprId: string, period: string, goalId: string) => `riskwise-upr${uprId}-period${period}-goal${goalId}-risks`;
-const getControlsStorageKey = (uprId: string, period: string, riskId: string) => `riskwise-upr${uprId}-period${period}-risk${riskId}-controls`;
+const getPotentialRisksStorageKey = (uprId: string, period: string, goalId: string) => `riskwise-upr${uprId}-period${period}-goal${goalId}-potentialRisks`;
+const getControlsStorageKey = (uprId: string, period: string, potentialRiskId: string) => `riskwise-upr${uprId}-period${period}-potentialRisk${potentialRiskId}-controls`;
+const getRiskCausesStorageKey = (uprId: string, period: string, potentialRiskId: string) => `riskwise-upr${uprId}-period${period}-potentialRisk${potentialRiskId}-causes`;
 
 
 export default function GoalsPage() {
@@ -63,7 +64,6 @@ export default function GoalsPage() {
   };
 
   const handleGoalSave = (goal: Goal) => {
-    // Goal from dialog already has uprId and period
     setGoals(prevGoals => {
       const existingIndex = prevGoals.findIndex(g => g.id === goal.id);
       let updatedGoals;
@@ -89,15 +89,14 @@ export default function GoalsPage() {
       toast({ title: "Goal Deleted", description: `Goal "${goalToDelete.name}" has been deleted.`, variant: "destructive" });
       
       if (typeof window !== 'undefined') {
-        // Delete associated risks and their controls
-        const risksStorageKey = getRisksStorageKey(currentUprId, currentPeriod, goalId);
-        const storedRisks = localStorage.getItem(risksStorageKey);
-        if (storedRisks) {
-          localStorage.removeItem(risksStorageKey);
-          const risks: Array<{id: string}> = JSON.parse(storedRisks);
-          risks.forEach(risk => {
-            const controlsStorageKey = getControlsStorageKey(currentUprId, currentPeriod, risk.id);
-            localStorage.removeItem(controlsStorageKey);
+        const potentialRisksStorageKey = getPotentialRisksStorageKey(currentUprId, currentPeriod, goalId);
+        const storedPotentialRisks = localStorage.getItem(potentialRisksStorageKey);
+        if (storedPotentialRisks) {
+          localStorage.removeItem(potentialRisksStorageKey);
+          const pRisks: PotentialRisk[] = JSON.parse(storedPotentialRisks);
+          pRisks.forEach(pRisk => {
+            localStorage.removeItem(getControlsStorageKey(currentUprId, currentPeriod, pRisk.id));
+            localStorage.removeItem(getRiskCausesStorageKey(currentUprId, currentPeriod, pRisk.id));
           });
         }
       }
@@ -161,7 +160,7 @@ export default function GoalsPage() {
               goal={goal} 
               onEditGoal={handleGoalSave} 
               onDeleteGoal={handleGoalDelete}
-              // Risk count can be fetched or passed if needed, simplified for now
+              // Potential risk count can be fetched or passed if needed, simplified for now
             />
           ))}
         </div>

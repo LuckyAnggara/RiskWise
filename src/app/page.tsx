@@ -7,14 +7,14 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { AlertCircle, ShieldCheck, Target, TrendingUp, Activity, Loader2 } from 'lucide-react';
-import type { Risk, Goal, Control, LikelihoodImpactLevel } from '@/lib/types';
+import type { PotentialRisk, Goal, Control, LikelihoodImpactLevel } from '@/lib/types'; // Updated to PotentialRisk
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { ChartConfig, ChartContainer, ChartTooltipContent } from "@/components/ui/chart";
 import { getCurrentUprId, getCurrentPeriod, initializeAppContext } from '@/lib/upr-period-context';
 
 const getGoalsStorageKey = (uprId: string, period: string) => `riskwise-upr${uprId}-period${period}-goals`;
-const getRisksStorageKey = (uprId: string, period: string, goalId: string) => `riskwise-upr${uprId}-period${period}-goal${goalId}-risks`;
-const getControlsStorageKey = (uprId: string, period: string, riskId: string) => `riskwise-upr${uprId}-period${period}-risk${riskId}-controls`;
+const getPotentialRisksStorageKey = (uprId: string, period: string, goalId: string) => `riskwise-upr${uprId}-period${period}-goal${goalId}-potentialRisks`;
+const getControlsStorageKey = (uprId: string, period: string, potentialRiskId: string) => `riskwise-upr${uprId}-period${period}-potentialRisk${potentialRiskId}-controls`;
 
 // Mock data templates - will be filtered/tagged with current UPR/Period if localStorage is empty
 const MOCK_GOALS_TEMPLATE: Omit<Goal, 'uprId' | 'period'>[] = [
@@ -22,15 +22,15 @@ const MOCK_GOALS_TEMPLATE: Omit<Goal, 'uprId' | 'period'>[] = [
   { id: 'g2', name: 'Expand Market Share (Mock)', description: 'Increase market share by 5%', createdAt: new Date().toISOString() },
 ];
 
-const MOCK_RISKS_TEMPLATE: Omit<Risk, 'goalId'>[] = [ 
-  { id: 'r1', description: 'Supply chain disruption (Mock)', likelihood: 'High', impact: 'Very High', identifiedAt: new Date().toISOString() },
-  { id: 'r2', description: 'Competitor launches similar product (Mock)', likelihood: 'Medium', impact: 'High', identifiedAt: new Date().toISOString() },
-  { id: 'r3', description: 'Regulatory changes (Mock)', likelihood: 'Low', impact: 'Medium', identifiedAt: new Date().toISOString() },
-  { id: 'r4', description: 'Key team member departure (Mock)', likelihood: 'Medium', impact: 'High', identifiedAt: new Date().toISOString()},
-  { id: 'r5', description: 'Economic downturn affecting demand (Mock)', likelihood: 'High', impact: 'High', identifiedAt: new Date().toISOString()},
+const MOCK_POTENTIAL_RISKS_TEMPLATE: Omit<PotentialRisk, 'goalId'>[] = [ 
+  { id: 'pr1', description: 'Supply chain disruption (Mock)', category: 'Operasional', owner: 'Head of Supply', likelihood: 'High', impact: 'Very High', identifiedAt: new Date().toISOString() },
+  { id: 'pr2', description: 'Competitor launches similar product (Mock)', category: 'Strategis', owner: 'Product Team', likelihood: 'Medium', impact: 'High', identifiedAt: new Date().toISOString() },
+  { id: 'pr3', description: 'Regulatory changes (Mock)', category: 'Kepatuhan', owner: 'Legal Dept', likelihood: 'Low', impact: 'Medium', identifiedAt: new Date().toISOString() },
+  { id: 'pr4', description: 'Key team member departure (Mock)', category: 'Sumber Daya Manusia', owner: 'HR Manager', likelihood: 'Medium', impact: 'High', identifiedAt: new Date().toISOString()},
+  { id: 'pr5', description: 'Economic downturn affecting demand (Mock)', category: 'Keuangan', owner: 'CFO', likelihood: 'High', impact: 'High', identifiedAt: new Date().toISOString()},
 ];
 
-const MOCK_CONTROLS_TEMPLATE: Omit<Control, 'riskId'>[] = [ 
+const MOCK_CONTROLS_TEMPLATE: Omit<Control, 'potentialRiskId'>[] = [ 
   { id: 'c1', description: 'Diversify suppliers (Mock)', effectiveness: 'Medium', status: 'In Progress', createdAt: new Date().toISOString() },
   { id: 'c2', description: 'Accelerate marketing campaign (Mock)', effectiveness: 'High', status: 'Implemented', createdAt: new Date().toISOString() },
 ];
@@ -51,7 +51,7 @@ const getRiskLevel = (likelihood: LikelihoodImpactLevel | null, impact: Likeliho
 
 const chartConfig = {
   count: {
-    label: "Risks",
+    label: "Potential Risks", // Updated label
     color: "hsl(var(--chart-1))",
   },
 } satisfies ChartConfig;
@@ -60,7 +60,7 @@ export default function DashboardPage() {
   const [currentUprId, setCurrentUprId] = useState('');
   const [currentPeriod, setCurrentPeriod] = useState('');
   const [goals, setGoals] = useState<Goal[]>([]);
-  const [risks, setRisks] = useState<Risk[]>([]);
+  const [potentialRisks, setPotentialRisks] = useState<PotentialRisk[]>([]); // Updated to PotentialRisk
   const [controls, setControls] = useState<Control[]>([]);
   const [riskLevelChartData, setRiskLevelChartData] = useState<{name: string; count: number}[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -80,7 +80,6 @@ export default function DashboardPage() {
       if (loadedGoalsData) {
         loadedGoals = JSON.parse(loadedGoalsData);
       } else {
-        // Initialize with mock data if no goals exist for this UPR/Period
         loadedGoals = MOCK_GOALS_TEMPLATE.map(g => ({...g, uprId: uprId, period: period}));
         if (MOCK_GOALS_TEMPLATE.length > 0) {
             localStorage.setItem(goalsStorageKey, JSON.stringify(loadedGoals));
@@ -88,43 +87,42 @@ export default function DashboardPage() {
       }
       setGoals(loadedGoals);
       
-      let allRisks: Risk[] = [];
+      let allPRisks: PotentialRisk[] = []; // Updated variable name
       let allControls: Control[] = [];
 
       loadedGoals.forEach((goal, goalIndex) => {
-        const risksStorageKey = getRisksStorageKey(goal.uprId, goal.period, goal.id);
-        let goalRisksData = localStorage.getItem(risksStorageKey);
-        let goalRisks: Risk[] = [];
+        const pRisksStorageKey = getPotentialRisksStorageKey(goal.uprId, goal.period, goal.id); // Updated key
+        let goalPRisksData = localStorage.getItem(pRisksStorageKey);
+        let goalPRisks: PotentialRisk[] = []; // Updated variable name
 
-        if (goalRisksData) {
-          goalRisks = JSON.parse(goalRisksData);
-        } else if (MOCK_RISKS_TEMPLATE.length > 0 && goalIndex < MOCK_RISKS_TEMPLATE.length) {
-            // Assign some mock risks if none exist for this goal in this UPR/Period
-            goalRisks = [ { ...MOCK_RISKS_TEMPLATE[goalIndex % MOCK_RISKS_TEMPLATE.length], goalId: goal.id, id: `mr-${goal.id}-${goalIndex}` } ];
-            localStorage.setItem(risksStorageKey, JSON.stringify(goalRisks));
+        if (goalPRisksData) {
+          goalPRisks = JSON.parse(goalPRisksData);
+        } else if (MOCK_POTENTIAL_RISKS_TEMPLATE.length > 0 && goalIndex < MOCK_POTENTIAL_RISKS_TEMPLATE.length) { // Updated mock template
+            goalPRisks = [ { ...MOCK_POTENTIAL_RISKS_TEMPLATE[goalIndex % MOCK_POTENTIAL_RISKS_TEMPLATE.length], goalId: goal.id, id: `mpr-${goal.id}-${goalIndex}` } ];
+            localStorage.setItem(pRisksStorageKey, JSON.stringify(goalPRisks));
         }
         
-        allRisks = [...allRisks, ...goalRisks];
+        allPRisks = [...allPRisks, ...goalPRisks];
 
-        goalRisks.forEach((risk, riskIndex) => {
-          const controlsStorageKey = getControlsStorageKey(goal.uprId, goal.period, risk.id);
-          let riskControlsData = localStorage.getItem(controlsStorageKey);
-          let riskControls: Control[] = [];
+        goalPRisks.forEach((pRisk, pRiskIndex) => { // Updated loop variable
+          const controlsStorageKey = getControlsStorageKey(goal.uprId, goal.period, pRisk.id); // Updated key
+          let pRiskControlsData = localStorage.getItem(controlsStorageKey);
+          let pRiskControls: Control[] = [];
 
-          if (riskControlsData) {
-            riskControls = JSON.parse(riskControlsData);
-          } else if (MOCK_CONTROLS_TEMPLATE.length > 0 && riskIndex < MOCK_CONTROLS_TEMPLATE.length) {
-            riskControls = [ { ...MOCK_CONTROLS_TEMPLATE[riskIndex % MOCK_CONTROLS_TEMPLATE.length], riskId: risk.id, id: `mc-${risk.id}-${riskIndex}` } ];
-            localStorage.setItem(controlsStorageKey, JSON.stringify(riskControls));
+          if (pRiskControlsData) {
+            pRiskControls = JSON.parse(pRiskControlsData);
+          } else if (MOCK_CONTROLS_TEMPLATE.length > 0 && pRiskIndex < MOCK_CONTROLS_TEMPLATE.length) {
+            pRiskControls = [ { ...MOCK_CONTROLS_TEMPLATE[pRiskIndex % MOCK_CONTROLS_TEMPLATE.length], potentialRiskId: pRisk.id, id: `mc-${pRisk.id}-${pRiskIndex}` } ]; // Updated potentialRiskId
+            localStorage.setItem(controlsStorageKey, JSON.stringify(pRiskControls));
           }
-          allControls = [...allControls, ...riskControls];
+          allControls = [...allControls, ...pRiskControls];
         });
       });
-      setRisks(allRisks);
+      setPotentialRisks(allPRisks); // Updated state setter
       setControls(allControls);
 
-      const chartData = allRisks.reduce((acc, risk) => {
-        const level = getRiskLevel(risk.likelihood, risk.impact);
+      const chartData = allPRisks.reduce((acc, pRisk) => { // Updated reduce variable
+        const level = getRiskLevel(pRisk.likelihood, pRisk.impact);
         const existing = acc.find(item => item.name === level);
         if (existing) {
           existing.count++;
@@ -150,15 +148,15 @@ export default function DashboardPage() {
     );
   }
 
-  const highPriorityRisks = risks
-    .filter(risk => {
-        const level = getRiskLevel(risk.likelihood, risk.impact);
+  const highPriorityPotentialRisks = potentialRisks // Updated variable name
+    .filter(pRisk => {
+        const level = getRiskLevel(pRisk.likelihood, pRisk.impact);
         return level === 'Critical' || level === 'High';
     })
     .slice(0, 5);
   
-  const totalRisks = risks.length;
-  const criticalRisksCount = risks.filter(r => getRiskLevel(r.likelihood, r.impact) === 'Critical').length;
+  const totalPotentialRisks = potentialRisks.length; // Updated variable name
+  const criticalPotentialRisksCount = potentialRisks.filter(pr => getRiskLevel(pr.likelihood, pr.impact) === 'Critical').length; // Updated filter variable
   const controlsImplemented = controls.filter(c => c.status === 'Implemented').length;
 
   return (
@@ -178,12 +176,12 @@ export default function DashboardPage() {
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Risks</CardTitle>
+            <CardTitle className="text-sm font-medium">Total Potential Risks</CardTitle> 
             <AlertCircle className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{totalRisks}</div>
-            <p className="text-xs text-muted-foreground">{criticalRisksCount} critical risks</p>
+            <div className="text-2xl font-bold">{totalPotentialRisks}</div>
+            <p className="text-xs text-muted-foreground">{criticalPotentialRisksCount} critical potential risks</p>
           </CardContent>
         </Card>
         <Card>
@@ -213,8 +211,8 @@ export default function DashboardPage() {
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Risk Distribution by Level</CardTitle>
-            <CardDescription>Number of risks in each calculated level for this UPR/Period.</CardDescription>
+            <CardTitle>Potential Risk Distribution by Level</CardTitle>
+            <CardDescription>Number of potential risks in each calculated level for this UPR/Period.</CardDescription>
           </CardHeader>
           <CardContent>
             {riskLevelChartData.length > 0 ? (
@@ -231,43 +229,50 @@ export default function DashboardPage() {
               </ResponsiveContainer>
             </ChartContainer>
             ) : (
-              <p className="text-muted-foreground text-center py-10">No risk data available for chart.</p>
+              <p className="text-muted-foreground text-center py-10">No potential risk data available for chart.</p>
             )}
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle>High Priority Risks</CardTitle>
-            <CardDescription>Top 5 critical or high-level risks requiring attention for this UPR/Period.</CardDescription>
+            <CardTitle>High Priority Potential Risks</CardTitle>
+            <CardDescription>Top 5 critical or high-level potential risks requiring attention for this UPR/Period.</CardDescription>
           </CardHeader>
           <CardContent>
-            {highPriorityRisks.length > 0 ? (
+            {highPriorityPotentialRisks.length > 0 ? (
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Description</TableHead>
+                    <TableHead>Category</TableHead>
+                    <TableHead>Owner</TableHead>
                     <TableHead>Level</TableHead>
                     <TableHead>Goal</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {highPriorityRisks.map((risk) => {
-                    const goal = goals.find(g => g.id === risk.goalId);
-                    const level = getRiskLevel(risk.likelihood, risk.impact);
+                  {highPriorityPotentialRisks.map((pRisk) => { // Updated loop variable
+                    const goal = goals.find(g => g.id === pRisk.goalId);
+                    const level = getRiskLevel(pRisk.likelihood, pRisk.impact);
                     return (
-                      <TableRow key={risk.id}>
-                        <TableCell className="font-medium max-w-xs truncate" title={risk.description}>{risk.description}</TableCell>
+                      <TableRow key={pRisk.id}>
+                        <TableCell className="font-medium max-w-xs truncate" title={pRisk.description}>{pRisk.description}</TableCell>
+                        <TableCell className="text-xs max-w-[100px] truncate" title={pRisk.category || ''}>
+                            <Badge variant={pRisk.category ? "secondary" : "outline"}>{pRisk.category || 'N/A'}</Badge>
+                        </TableCell>
+                        <TableCell className="text-xs max-w-[100px] truncate" title={pRisk.owner || ''}>{pRisk.owner || 'N/A'}</TableCell>
                         <TableCell>
                           <Badge variant={
                             level === 'Critical' ? 'destructive' :
-                            level === 'High' ? 'destructive' : 
+                            level === 'High' ? 'destructive' : // Consider a different color for High if Destructive is too strong
                             level === 'Medium' ? 'secondary' : 
                             'outline'
                           }
                           className={level === 'Medium' ? 'bg-yellow-500 text-black dark:bg-yellow-400 dark:text-black' : 
                                      level === 'Very Low' ? 'bg-sky-500 text-white dark:bg-sky-600' :
-                                     level === 'Low' ? 'bg-green-500 text-white dark:bg-green-600' : ''}
+                                     level === 'Low' ? 'bg-green-500 text-white dark:bg-green-600' : 
+                                     (level === 'High' ? 'bg-orange-500 text-white dark:bg-orange-600' : '')} // Custom for High if not destructive
                           >
                             {level}
                           </Badge>
@@ -279,7 +284,7 @@ export default function DashboardPage() {
                 </TableBody>
               </Table>
             ) : (
-              <p className="text-muted-foreground text-center py-10">No high priority risks identified.</p>
+              <p className="text-muted-foreground text-center py-10">No high priority potential risks identified.</p>
             )}
           </CardContent>
         </Card>

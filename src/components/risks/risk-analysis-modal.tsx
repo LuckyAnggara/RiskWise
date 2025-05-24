@@ -13,31 +13,31 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import type { Risk, LikelihoodImpactLevel } from '@/lib/types';
+import type { PotentialRisk, LikelihoodImpactLevel } from '@/lib/types';
 import { LIKELIHOOD_IMPACT_LEVELS } from '@/lib/types';
 
 interface RiskAnalysisModalProps {
-  risk: Risk | null;
+  potentialRisk: PotentialRisk | null;
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
-  onSave: (updatedRisk: Risk) => void;
+  onSave: (updatedPotentialRisk: PotentialRisk) => void;
 }
 
-export function RiskAnalysisModal({ risk, isOpen, onOpenChange, onSave }: RiskAnalysisModalProps) {
+export function RiskAnalysisModal({ potentialRisk, isOpen, onOpenChange, onSave }: RiskAnalysisModalProps) {
   const [likelihood, setLikelihood] = useState<LikelihoodImpactLevel | null>(null);
   const [impact, setImpact] = useState<LikelihoodImpactLevel | null>(null);
 
   useEffect(() => {
-    if (risk) {
-      setLikelihood(risk.likelihood);
-      setImpact(risk.impact);
+    if (potentialRisk) {
+      setLikelihood(potentialRisk.likelihood);
+      setImpact(potentialRisk.impact);
     }
-  }, [risk]);
+  }, [potentialRisk]);
 
   const handleSave = () => {
-    if (risk) {
+    if (potentialRisk) {
       onSave({
-        ...risk,
+        ...potentialRisk,
         likelihood,
         impact,
         analysisCompletedAt: new Date().toISOString(),
@@ -46,15 +46,15 @@ export function RiskAnalysisModal({ risk, isOpen, onOpenChange, onSave }: RiskAn
     }
   };
 
-  if (!risk) return null;
+  if (!potentialRisk) return null;
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>Analyze Risk</DialogTitle>
+          <DialogTitle>Analyze Potential Risk</DialogTitle>
           <DialogDescription>
-            Assess the likelihood and impact for the risk: <span className="font-semibold">{risk.description}</span>
+            Assess the likelihood and impact for the potential risk: <span className="font-semibold">{potentialRisk.description}</span>
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-4">

@@ -15,11 +15,15 @@ import {
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import type { Risk, Goal } from '@/lib/types';
+import type { PotentialRisk, Goal } from '@/lib/types'; // PotentialRisk
 import { useForm, type SubmitHandler } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { PlusCircle, Edit } from 'lucide-react';
+
+// This file is being replaced by add-edit-potential-risk-dialog.tsx
+// This is a placeholder to avoid breaking existing imports if any, but should be removed.
+// The functionality has been moved and enhanced in add-edit-potential-risk-dialog.tsx
 
 const riskSchema = z.object({
   description: z.string().min(10, "Risk description must be at least 10 characters long."),
@@ -29,13 +33,13 @@ const riskSchema = z.object({
 type RiskFormData = z.infer<typeof riskSchema>;
 
 interface AddEditRiskDialogProps {
-  goals: Goal[]; // These goals are already filtered for the current UPR/Period by the parent
-  onRiskSave: (risk: Risk, isNew: boolean) => void;
-  existingRisk?: Risk | null;
+  goals: Goal[];
+  onRiskSave: (risk: any, isNew: boolean) => void; // Using 'any' as this component is deprecated
+  existingRisk?: any | null;
   triggerButton?: React.ReactNode;
-  defaultGoalId?: string; // Optional: pre-select goal if adding from a specific goal's page
-  currentUprId: string; // Passed to confirm context, not directly saved on Risk object
-  currentPeriod: string; // Passed to confirm context, not directly saved on Risk object
+  defaultGoalId?: string;
+  currentUprId: string; 
+  currentPeriod: string;
 }
 
 export function AddEditRiskDialog({ 
@@ -50,7 +54,7 @@ export function AddEditRiskDialog({
   const [open, setOpen] = useState(false);
   const isEditing = !!existingRisk;
 
-  const {
+   const {
     register,
     handleSubmit,
     reset,
@@ -65,9 +69,8 @@ export function AddEditRiskDialog({
     },
   });
 
-  const selectedGoalId = watch("goalId");
-
   useEffect(() => {
+    console.warn("AddEditRiskDialog is deprecated. Use AddEditPotentialRiskDialog instead.");
     if (open) {
       if (existingRisk) {
         reset({
@@ -85,26 +88,20 @@ export function AddEditRiskDialog({
 
   const onSubmit: SubmitHandler<RiskFormData> = (data) => {
     const parentGoal = goals.find(g => g.id === data.goalId);
-    // Parent goal itself will contain the uprId and period.
-    // This check is to ensure the selected goal is indeed part of the current context.
     if (!parentGoal || parentGoal.uprId !== currentUprId || parentGoal.period !== currentPeriod) {
-      console.error("Selected parent goal not found or not in current UPR/Period context.");
-      // Potentially show a toast to the user
       return; 
     }
 
-    const riskData: Risk = {
-      id: existingRisk?.id || `risk_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-      goalId: data.goalId, // This goal inherently has the uprId and period via its own properties
+    const riskData = { // Simplified as this is deprecated
+      id: existingRisk?.id || `risk_${Date.now()}`,
+      goalId: data.goalId,
       description: data.description,
-      likelihood: existingRisk?.likelihood || null,
-      impact: existingRisk?.impact || null,
       identifiedAt: existingRisk?.identifiedAt || new Date().toISOString(),
-      analysisCompletedAt: existingRisk?.analysisCompletedAt,
     };
-    onRiskSave(riskData, !isEditing); // Pass true if it's a new risk
+    onRiskSave(riskData, !isEditing);
     setOpen(false);
   };
+
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -114,23 +111,23 @@ export function AddEditRiskDialog({
         ) : (
           <Button>
             {isEditing ? <Edit className="mr-2 h-4 w-4" /> : <PlusCircle className="mr-2 h-4 w-4" />}
-            {isEditing ? "Edit Risk" : "Add New Risk"}
+            {isEditing ? "Edit Risk (Deprecated)" : "Add New Risk (Deprecated)"}
           </Button>
         )}
       </DialogTrigger>
       <DialogContent className="sm:max-w-[480px]">
         <DialogHeader>
-          <DialogTitle>{isEditing ? "Edit Risk" : "Add New Risk"}</DialogTitle>
+          <DialogTitle>{isEditing ? "Edit Risk (Deprecated)" : "Add New Risk (Deprecated)"}</DialogTitle>
           <DialogDescription>
-            {isEditing ? "Update the details of this risk." : "Define a new risk and associate it with a goal."}
+            This component is deprecated. Please use the new Potential Risk dialog.
             {` For UPR: ${currentUprId}, Period: ${currentPeriod}`}
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit(onSubmit)} className="grid gap-4 py-4">
+         <form onSubmit={handleSubmit(onSubmit)} className="grid gap-4 py-4">
           <div className="space-y-1.5">
             <Label htmlFor="goalId">Associated Goal</Label>
             <Select
-              value={selectedGoalId} // Controlled component
+              value={watch("goalId")}
               onValueChange={(value) => setValue("goalId", value, { shouldValidate: true })}
               disabled={goals.length === 0}
             >
@@ -140,8 +137,6 @@ export function AddEditRiskDialog({
               <SelectContent>
                 {goals.length > 0 ? (
                   goals.map(goal => (
-                    // Ensure only goals from the current UPR/Period are shown,
-                    // which 'goals' prop should already guarantee.
                     <SelectItem key={goal.id} value={goal.id}>{goal.name}</SelectItem>
                   ))
                 ) : (

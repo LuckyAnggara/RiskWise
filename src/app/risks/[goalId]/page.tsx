@@ -9,8 +9,9 @@ import { RiskIdentificationCard } from '@/components/risks/risk-identification-c
 import { RiskListItem } from '@/components/risks/risk-list-item';
 import { RiskAnalysisModal } from '@/components/risks/risk-analysis-modal';
 import { RiskControlModal } from '@/components/risks/risk-control-modal';
-import type { Goal, Risk, Control, LikelihoodImpactLevel } from '@/lib/types';
-import { ArrowLeft, ShieldAlert, Loader2, LayoutGrid, List, Settings2, BarChart3, PlusCircle, Trash2 } from 'lucide-react';
+import { ManageRiskCausesDialog } from '@/components/risks/manage-risk-causes-dialog'; // Import new dialog
+import type { Goal, PotentialRisk, Control, RiskCause, LikelihoodImpactLevel } from '@/lib/types';
+import { ArrowLeft, ShieldAlert, Loader2, LayoutGrid, List, Settings2, BarChart3, PlusCircle, Trash2, Zap } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Separator } from '@/components/ui/separator';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -20,8 +21,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { getCurrentUprId, getCurrentPeriod, initializeAppContext } from '@/lib/upr-period-context';
 
 const getGoalsStorageKey = (uprId: string, period: string) => `riskwise-upr${uprId}-period${period}-goals`;
-const getRisksStorageKey = (uprId: string, period: string, goalId: string) => `riskwise-upr${uprId}-period${period}-goal${goalId}-risks`;
-const getControlsStorageKey = (uprId: string, period: string, riskId: string) => `riskwise-upr${uprId}-period${period}-risk${riskId}-controls`;
+const getPotentialRisksStorageKey = (uprId: string, period: string, goalId: string) => `riskwise-upr${uprId}-period${period}-goal${goalId}-potentialRisks`;
+const getControlsStorageKey = (uprId: string, period: string, potentialRiskId: string) => `riskwise-upr${uprId}-period${period}-potentialRisk${potentialRiskId}-controls`;
+const getRiskCausesStorageKey = (uprId: string, period: string, potentialRiskId: string) => `riskwise-upr${uprId}-period${period}-potentialRisk${potentialRiskId}-causes`;
+
 
 const getRiskLevel = (likelihood: LikelihoodImpactLevel | null, impact: LikelihoodImpactLevel | null): string => {
   if (!likelihood || !impact) return 'N/A';
@@ -56,17 +59,21 @@ export default function GoalRisksPage() {
   const [currentUprId, setCurrentUprId] = useState('');
   const [currentPeriod, setCurrentPeriod] = useState('');
   const [goal, setGoal] = useState<Goal | null>(null);
-  const [risks, setRisks] = useState<Risk[]>([]);
+  const [potentialRisks, setPotentialRisks] = useState<PotentialRisk[]>([]);
   const [controls, setControls] = useState<Control[]>([]);
+  const [riskCauses, setRiskCauses] = useState<RiskCause[]>([]); // State for risk causes
   const [isLoading, setIsLoading] = useState(true);
   const [viewMode, setViewMode] = useState<'card' | 'table'>('card');
   
-  const [selectedRiskForAnalysis, setSelectedRiskForAnalysis] = useState<Risk | null>(null);
+  const [selectedPotentialRiskForAnalysis, setSelectedPotentialRiskForAnalysis] = useState<PotentialRisk | null>(null);
   const [isAnalysisModalOpen, setIsAnalysisModalOpen] = useState(false);
   
-  const [selectedRiskForControl, setSelectedRiskForControl] = useState<Risk | null>(null);
+  const [selectedPotentialRiskForControl, setSelectedPotentialRiskForControl] = useState<PotentialRisk | null>(null);
   const [selectedControlForEdit, setSelectedControlForEdit] = useState<Control | null>(null);
   const [isControlModalOpen, setIsControlModalOpen] = useState(false);
+
+  const [selectedPotentialRiskForCauses, setSelectedPotentialRiskForCauses] = useState<PotentialRisk | null>(null); // For managing causes
+  const [isManageCausesModalOpen, setIsManageCausesModalOpen] = useState(false);
 
   const { toast } = useToast();
 
@@ -76,37 +83,43 @@ export default function GoalRisksPage() {
       const goalsStorageKey = getGoalsStorageKey(currentUprId, currentPeriod);
       const storedGoalsData = localStorage.getItem(goalsStorageKey);
       const allGoals: Goal[] = storedGoalsData ? JSON.parse(storedGoalsData) : [];
-      // Ensure goal matches current context, though navigation should usually ensure this
       const currentGoal = allGoals.find(g => g.id === goalId && g.uprId === currentUprId && g.period === currentPeriod);
       
       setGoal(currentGoal || null);
 
       if (currentGoal) {
-        const risksStorageKey = getRisksStorageKey(currentGoal.uprId, currentGoal.period, goalId);
-        const storedRisksData = localStorage.getItem(risksStorageKey);
-        const currentRisks: Risk[] = storedRisksData ? JSON.parse(storedRisksData) : [];
-        setRisks(currentRisks);
+        const potentialRisksStorageKey = getPotentialRisksStorageKey(currentGoal.uprId, currentGoal.period, goalId);
+        const storedPotentialRisksData = localStorage.getItem(potentialRisksStorageKey);
+        const currentPotentialRisks: PotentialRisk[] = storedPotentialRisksData ? JSON.parse(storedPotentialRisksData) : [];
+        setPotentialRisks(currentPotentialRisks);
 
         let allRiskControls: Control[] = [];
-        currentRisks.forEach(risk => {
-          const controlsStorageKey = getControlsStorageKey(currentGoal.uprId, currentGoal.period, risk.id);
+        let allRiskCausesForGoal: RiskCause[] = [];
+        currentPotentialRisks.forEach(pRisk => {
+          const controlsStorageKey = getControlsStorageKey(currentGoal.uprId, currentGoal.period, pRisk.id);
           const storedControlsData = localStorage.getItem(controlsStorageKey);
           if (storedControlsData) {
             allRiskControls = [...allRiskControls, ...JSON.parse(storedControlsData)];
           }
+          const causesStorageKey = getRiskCausesStorageKey(currentGoal.uprId, currentGoal.period, pRisk.id);
+          const storedCausesData = localStorage.getItem(causesStorageKey);
+          if (storedCausesData) {
+            allRiskCausesForGoal = [...allRiskCausesForGoal, ...JSON.parse(storedCausesData)];
+          }
         });
         setControls(allRiskControls);
+        setRiskCauses(allRiskCausesForGoal);
       } else {
-        // Goal not found for this UPR/Period or goalId is invalid
-        setRisks([]);
+        setPotentialRisks([]);
         setControls([]);
+        setRiskCauses([]);
       }
       setIsLoading(false);
     } else if (typeof window !== 'undefined' && (!goalId || !currentUprId || !currentPeriod)) {
-        // If essential params are missing after context load, treat as not found / loading finished.
         setGoal(null);
-        setRisks([]);
+        setPotentialRisks([]);
         setControls([]);
+        setRiskCauses([]);
         setIsLoading(false);
     }
   }, [goalId, currentUprId, currentPeriod]);
@@ -122,72 +135,72 @@ export default function GoalRisksPage() {
   useEffect(() => {
     if (currentUprId && currentPeriod && goalId) {
       loadData();
-    } else if (currentUprId && currentPeriod && !goalId){ // Case where page is loaded without a goalId
+    } else if (currentUprId && currentPeriod && !goalId){
         setIsLoading(false);
         setGoal(null);
     }
   }, [loadData, currentUprId, currentPeriod, goalId]);
 
-  const updateRisksInStorage = (goalForRisks: Goal, updatedRisks: Risk[]) => {
-    if (typeof window !== 'undefined' && goalForRisks) {
-      const key = getRisksStorageKey(goalForRisks.uprId, goalForRisks.period, goalForRisks.id);
-      localStorage.setItem(key, JSON.stringify(updatedRisks));
+  const updatePotentialRisksInStorage = (goalForPotentialRisks: Goal, updatedPRisks: PotentialRisk[]) => {
+    if (typeof window !== 'undefined' && goalForPotentialRisks) {
+      const key = getPotentialRisksStorageKey(goalForPotentialRisks.uprId, goalForPotentialRisks.period, goalForPotentialRisks.id);
+      localStorage.setItem(key, JSON.stringify(updatedPRisks));
     }
   };
 
-  const updateControlsInStorage = (goalForControls: Goal, riskId: string, updatedControlsForRisk: Control[]) => {
+  const updateControlsInStorage = (goalForControls: Goal, potentialRiskId: string, updatedControlsForPRisk: Control[]) => {
      if (typeof window !== 'undefined' && goalForControls) {
-        const key = getControlsStorageKey(goalForControls.uprId, goalForControls.period, riskId);
-        localStorage.setItem(key, JSON.stringify(updatedControlsForRisk));
+        const key = getControlsStorageKey(goalForControls.uprId, goalForControls.period, potentialRiskId);
+        localStorage.setItem(key, JSON.stringify(updatedControlsForPRisk));
      }
   };
 
-  const handleRisksIdentified = (newRisks: Risk[]) => {
-    if (!goal) return; // Goal must exist and be in current context
-    const updatedRisksState = [...risks, ...newRisks].sort((a,b) => a.description.localeCompare(b.description));
-    setRisks(updatedRisksState);
-    updateRisksInStorage(goal, updatedRisksState);
+  const handlePotentialRisksIdentified = (newPotentialRisks: PotentialRisk[]) => {
+    if (!goal) return;
+    const updatedPotentialRisksState = [...potentialRisks, ...newPotentialRisks].sort((a,b) => a.description.localeCompare(b.description));
+    setPotentialRisks(updatedPotentialRisksState);
+    updatePotentialRisksInStorage(goal, updatedPotentialRisksState);
     toast({
-        title: "Risks Identified!",
-        description: `${newRisks.length} potential risks brainstormed for "${goal.name}".`
+        title: "Potential Risks Identified!",
+        description: `${newPotentialRisks.length} potential risks brainstormed for "${goal.name}".`
     });
   };
   
-  const handleOpenAnalysisModal = (riskToAnalyze: Risk) => {
-    setSelectedRiskForAnalysis(riskToAnalyze);
+  const handleOpenAnalysisModal = (pRiskToAnalyze: PotentialRisk) => {
+    setSelectedPotentialRiskForAnalysis(pRiskToAnalyze);
     setIsAnalysisModalOpen(true);
   };
 
-  const handleSaveRiskAnalysis = (updatedRisk: Risk) => {
-    if (!goal) return; // Goal is from current context
-    const newRisksState = risks.map(r => r.id === updatedRisk.id ? updatedRisk : r);
-    setRisks(newRisksState);
-    updateRisksInStorage(goal, newRisksState);
-    toast({ title: "Risk Analyzed", description: `Analysis saved for risk: "${updatedRisk.description}"`});
+  const handleSaveRiskAnalysis = (updatedPotentialRisk: PotentialRisk) => {
+    if (!goal) return;
+    const newPotentialRisksState = potentialRisks.map(pr => pr.id === updatedPotentialRisk.id ? updatedPotentialRisk : pr);
+    setPotentialRisks(newPotentialRisksState);
+    updatePotentialRisksInStorage(goal, newPotentialRisksState);
+    toast({ title: "Potential Risk Analyzed", description: `Analysis saved for: "${updatedPotentialRisk.description}"`});
     setIsAnalysisModalOpen(false);
-    setSelectedRiskForAnalysis(null);
+    setSelectedPotentialRiskForAnalysis(null);
   };
 
-  const handleOpenControlModal = (riskForControl: Risk, controlToEdit?: Control) => {
-    setSelectedRiskForControl(riskForControl);
+  const handleOpenControlModal = (pRiskForControl: PotentialRisk, controlToEdit?: Control) => {
+    setSelectedPotentialRiskForControl(pRiskForControl);
     setSelectedControlForEdit(controlToEdit || null);
     setIsControlModalOpen(true);
   };
 
   const handleSaveControl = (control: Control) => {
-    if (!goal) return; // Goal is from current context
-    const riskSpecificControls = controls.filter(c => c.riskId === control.riskId);
-    const existingIndex = riskSpecificControls.findIndex(c => c.id === control.id);
-    let updatedRiskControlsList: Control[];
+    if (!goal) return;
+    const pRiskSpecificControls = controls.filter(c => c.potentialRiskId === control.potentialRiskId);
+    const existingIndex = pRiskSpecificControls.findIndex(c => c.id === control.id);
+    let updatedPRiskControlsList: Control[];
 
     if (existingIndex > -1) {
-      updatedRiskControlsList = riskSpecificControls.map(c => c.id === control.id ? control : c);
+      updatedPRiskControlsList = pRiskSpecificControls.map(c => c.id === control.id ? control : c);
     } else {
-      updatedRiskControlsList = [...riskSpecificControls, control];
+      updatedPRiskControlsList = [...pRiskSpecificControls, control];
     }
     
-    updateControlsInStorage(goal, control.riskId, updatedRiskControlsList);
-    const updatedOverallControls = controls.filter(c => c.riskId !== control.riskId).concat(updatedRiskControlsList);
+    updateControlsInStorage(goal, control.potentialRiskId, updatedPRiskControlsList);
+    const updatedOverallControls = controls.filter(c => c.potentialRiskId !== control.potentialRiskId).concat(updatedPRiskControlsList);
     setControls(updatedOverallControls);
     
     toast({ 
@@ -196,41 +209,54 @@ export default function GoalRisksPage() {
     });
     
     setIsControlModalOpen(false);
-    setSelectedRiskForControl(null);
+    setSelectedPotentialRiskForControl(null);
     setSelectedControlForEdit(null);
   };
 
-  const handleDeleteRisk = (riskIdToDelete: string) => {
-    if (!goal) return; // Goal is from current context
-    const riskToDelete = risks.find(r => r.id === riskIdToDelete);
-    if (!riskToDelete) return;
+  const handleDeletePotentialRisk = (pRiskIdToDelete: string) => {
+    if (!goal) return;
+    const pRiskToDelete = potentialRisks.find(pr => pr.id === pRiskIdToDelete);
+    if (!pRiskToDelete) return;
 
-    const updatedRisksState = risks.filter(r => r.id !== riskIdToDelete);
-    setRisks(updatedRisksState);
-    updateRisksInStorage(goal, updatedRisksState);
+    const updatedPotentialRisksState = potentialRisks.filter(pr => pr.id !== pRiskIdToDelete);
+    setPotentialRisks(updatedPotentialRisksState);
+    updatePotentialRisksInStorage(goal, updatedPotentialRisksState);
       
     if (typeof window !== 'undefined') {
-      const controlsKey = getControlsStorageKey(goal.uprId, goal.period, riskIdToDelete);
-      localStorage.removeItem(controlsKey);
+      localStorage.removeItem(getControlsStorageKey(goal.uprId, goal.period, pRiskIdToDelete));
+      localStorage.removeItem(getRiskCausesStorageKey(goal.uprId, goal.period, pRiskIdToDelete));
     }
-    setControls(currentControls => currentControls.filter(c => c.riskId !== riskIdToDelete));
-    toast({ title: "Risk Deleted", description: `Risk "${riskToDelete.description}" deleted.`, variant: "destructive" });
+    setControls(currentControls => currentControls.filter(c => c.potentialRiskId !== pRiskIdToDelete));
+    setRiskCauses(currentCauses => currentCauses.filter(rc => rc.potentialRiskId !== pRiskIdToDelete));
+    toast({ title: "Potential Risk Deleted", description: `Potential risk "${pRiskToDelete.description}" deleted.`, variant: "destructive" });
   };
 
   const handleDeleteControl = (controlIdToDelete: string) => {
-    if (!goal) return; // Goal is from current context
+    if (!goal) return;
     const controlToDelete = controls.find(c => c.id === controlIdToDelete);
     if (!controlToDelete) return;
 
-    const riskIdOfControl = controlToDelete.riskId;
-    const updatedRiskControlsList = controls
-        .filter(c => c.riskId === riskIdOfControl && c.id !== controlIdToDelete);
+    const pRiskIdOfControl = controlToDelete.potentialRiskId;
+    const updatedPRiskControlsList = controls
+        .filter(c => c.potentialRiskId === pRiskIdOfControl && c.id !== controlIdToDelete);
     
-    updateControlsInStorage(goal, riskIdOfControl, updatedRiskControlsList); 
+    updateControlsInStorage(goal, pRiskIdOfControl, updatedPRiskControlsList); 
     const updatedOverallControls = controls.filter(c => c.id !== controlIdToDelete);
     setControls(updatedOverallControls);
 
     toast({ title: "Control Deleted", description: `Control "${controlToDelete.description}" deleted.`, variant: "destructive" });
+  };
+
+  const handleOpenManageCausesModal = (pRisk: PotentialRisk) => {
+    setSelectedPotentialRiskForCauses(pRisk);
+    setIsManageCausesModalOpen(true);
+  };
+
+  const handleCausesUpdate = (potentialRiskId: string, updatedCauses: RiskCause[]) => {
+    // This function will be called by ManageRiskCausesDialog
+    // It needs to update the riskCauses state for this specific goal's risks
+    const otherCauses = riskCauses.filter(rc => rc.potentialRiskId !== potentialRiskId);
+    setRiskCauses([...otherCauses, ...updatedCauses]);
   };
 
 
@@ -238,7 +264,7 @@ export default function GoalRisksPage() {
     return (
       <div className="flex flex-col items-center justify-center h-screen">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
-        <p className="text-xl text-muted-foreground">Loading goal and risk data...</p>
+        <p className="text-xl text-muted-foreground">Loading goal and potential risk data...</p>
       </div>
     );
   }
@@ -258,7 +284,7 @@ export default function GoalRisksPage() {
   return (
     <div className="space-y-8">
       <PageHeader
-        title={`Risks for Goal: ${goal.name}`}
+        title={`Potential Risks for Goal: ${goal.name}`}
         description={`${goal.description}`}
         actions={
           <Button onClick={() => router.push('/goals')} variant="outline">
@@ -267,13 +293,13 @@ export default function GoalRisksPage() {
         }
       />
 
-      <RiskIdentificationCard goal={goal} onRisksIdentified={handleRisksIdentified} />
+      <RiskIdentificationCard goal={goal} onPotentialRisksIdentified={handlePotentialRisksIdentified} />
       
       <Separator />
 
       <div>
         <div className="flex items-center justify-between mb-4">
-            <h2 className="text-2xl font-semibold">Identified Risks ({risks.length})</h2>
+            <h2 className="text-2xl font-semibold">Identified Potential Risks ({potentialRisks.length})</h2>
             <div className="flex items-center space-x-2">
                 <Button 
                     variant={viewMode === 'card' ? 'default' : 'outline'} 
@@ -294,29 +320,31 @@ export default function GoalRisksPage() {
             </div>
         </div>
 
-        {risks.length === 0 ? (
+        {potentialRisks.length === 0 ? (
           <div className="text-center py-10 border-2 border-dashed border-muted-foreground/30 rounded-lg">
             <ShieldAlert className="mx-auto h-12 w-12 text-muted-foreground" />
-            <h3 className="mt-2 text-lg font-medium">No risks identified yet</h3>
+            <h3 className="mt-2 text-lg font-medium">No potential risks identified yet</h3>
             <p className="mt-1 text-sm text-muted-foreground">
-              Use the AI tool above to brainstorm risks for this goal.
+              Use the AI tool above to brainstorm potential risks for this goal.
             </p>
           </div>
         ) : viewMode === 'card' ? (
           <div className="space-y-4">
-            {risks.map((risk) => (
+            {potentialRisks.map((pRisk) => (
               <RiskListItem
-                key={risk.id}
-                risk={risk}
-                controls={controls.filter(c => c.riskId === risk.id)}
-                onAnalyze={() => handleOpenAnalysisModal(risk)}
-                onAddControl={() => handleOpenControlModal(risk)}
+                key={pRisk.id}
+                potentialRisk={pRisk}
+                controls={controls.filter(c => c.potentialRiskId === pRisk.id)}
+                riskCauses={riskCauses.filter(rc => rc.potentialRiskId === pRisk.id)}
+                onAnalyze={() => handleOpenAnalysisModal(pRisk)}
+                onAddControl={() => handleOpenControlModal(pRisk)}
                 onEditControl={(controlToEdit) => {
-                    const parentRisk = risks.find(r => r.id === controlToEdit.riskId);
-                    if (parentRisk) handleOpenControlModal(parentRisk, controlToEdit);
+                    const parentPRisk = potentialRisks.find(pr => pr.id === controlToEdit.potentialRiskId);
+                    if (parentPRisk) handleOpenControlModal(parentPRisk, controlToEdit);
                 }}
-                onDeleteRisk={() => handleDeleteRisk(risk.id)}
+                onDeletePotentialRisk={() => handleDeletePotentialRisk(pRisk.id)}
                 onDeleteControl={(controlId) => handleDeleteControl(controlId)}
+                onManageCauses={() => handleOpenManageCausesModal(pRisk)}
               />
             ))}
           </div>
@@ -326,31 +354,37 @@ export default function GoalRisksPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[40%]">Description</TableHead>
+                    <TableHead className="w-[30%]">Description</TableHead>
+                    <TableHead>Category</TableHead>
+                    <TableHead>Owner</TableHead>
                     <TableHead>Likelihood</TableHead>
                     <TableHead>Impact</TableHead>
                     <TableHead>Level</TableHead>
+                    <TableHead>Causes</TableHead>
                     <TableHead>Controls</TableHead>
                     <TableHead className="text-right w-[100px]">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {risks.map((risk) => {
-                    const riskLevelValue = getRiskLevel(risk.likelihood, risk.impact);
-                    const riskControlsList = controls.filter(c => c.riskId === risk.id);
+                  {potentialRisks.map((pRisk) => {
+                    const riskLevelValue = getRiskLevel(pRisk.likelihood, pRisk.impact);
+                    const riskControlsList = controls.filter(c => c.potentialRiskId === pRisk.id);
+                    const riskCausesList = riskCauses.filter(rc => rc.potentialRiskId === pRisk.id);
                     return (
-                      <TableRow key={risk.id}>
-                        <TableCell className="font-medium max-w-xs truncate" title={risk.description}>
-                            {risk.description}
+                      <TableRow key={pRisk.id}>
+                        <TableCell className="font-medium max-w-xs truncate" title={pRisk.description}>
+                            {pRisk.description}
                         </TableCell>
+                        <TableCell><Badge variant={pRisk.category ? "outline" : "ghost"}>{pRisk.category || 'N/A'}</Badge></TableCell>
+                        <TableCell className="text-xs truncate max-w-[100px]" title={pRisk.owner || ''}>{pRisk.owner || 'N/A'}</TableCell>
                         <TableCell>
-                          <Badge variant={risk.likelihood ? "secondary" : "outline"}>
-                            {risk.likelihood || 'N/A'}
+                          <Badge variant={pRisk.likelihood ? "secondary" : "outline"}>
+                            {pRisk.likelihood || 'N/A'}
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          <Badge variant={risk.impact ? "secondary" : "outline"}>
-                            {risk.impact || 'N/A'}
+                          <Badge variant={pRisk.impact ? "secondary" : "outline"}>
+                            {pRisk.impact || 'N/A'}
                           </Badge>
                         </TableCell>
                         <TableCell>
@@ -358,6 +392,7 @@ export default function GoalRisksPage() {
                             {riskLevelValue}
                           </Badge>
                         </TableCell>
+                        <TableCell>{riskCausesList.length}</TableCell>
                         <TableCell>{riskControlsList.length}</TableCell>
                         <TableCell className="text-right">
                           <DropdownMenu>
@@ -367,15 +402,27 @@ export default function GoalRisksPage() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => handleOpenAnalysisModal(risk)}>
-                                <BarChart3 className="mr-2 h-4 w-4" /> Analyze
+                               <DropdownMenuItem onClick={() => {
+                                /* For editing description, category, owner - need AddEditPotentialRiskDialog */
+                                /* This page doesn't have AddEditPotentialRiskDialog instance directly */
+                                /* Suggest navigating to AllRisksPage or implementing it here too */
+                                router.push(`/all-risks?edit=${pRisk.id}&goalId=${goal.id}`);
+                                toast({title: "Edit Action", description: "To edit full details, please go to 'All Potential Risks' page or implement edit here."})
+                              }}>
+                                <Edit className="mr-2 h-4 w-4" /> Edit Details (via All Risks)
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleOpenControlModal(risk)}>
+                              <DropdownMenuItem onClick={() => handleOpenManageCausesModal(pRisk)}>
+                                <Zap className="mr-2 h-4 w-4" /> Manage Causes
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleOpenAnalysisModal(pRisk)}>
+                                <BarChart3 className="mr-2 h-4 w-4" /> Analyze Level
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleOpenControlModal(pRisk)}>
                                 <PlusCircle className="mr-2 h-4 w-4" /> Add Control
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
-                              <DropdownMenuItem onClick={() => handleDeleteRisk(risk.id)} className="text-destructive focus:text-destructive focus:bg-destructive/10">
-                                <Trash2 className="mr-2 h-4 w-4" /> Delete Risk
+                              <DropdownMenuItem onClick={() => handleDeletePotentialRisk(pRisk.id)} className="text-destructive focus:text-destructive focus:bg-destructive/10">
+                                <Trash2 className="mr-2 h-4 w-4" /> Delete Potential Risk
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
@@ -390,26 +437,41 @@ export default function GoalRisksPage() {
         )}
       </div>
 
-      {selectedRiskForAnalysis && <RiskAnalysisModal
-        risk={selectedRiskForAnalysis}
+      {selectedPotentialRiskForAnalysis && <RiskAnalysisModal
+        potentialRisk={selectedPotentialRiskForAnalysis}
         isOpen={isAnalysisModalOpen}
         onOpenChange={setIsAnalysisModalOpen}
         onSave={handleSaveRiskAnalysis}
       />}
 
-      {selectedRiskForControl && <RiskControlModal
-        risk={selectedRiskForControl}
+      {selectedPotentialRiskForControl && <RiskControlModal
+        potentialRisk={selectedPotentialRiskForControl}
         existingControl={selectedControlForEdit}
         isOpen={isControlModalOpen}
         onOpenChange={(isOpen) => {
             setIsControlModalOpen(isOpen);
             if (!isOpen) {
-                setSelectedRiskForControl(null);
+                setSelectedPotentialRiskForControl(null);
                 setSelectedControlForEdit(null);
             }
         }}
         onSave={handleSaveControl}
       />}
+
+      {selectedPotentialRiskForCauses && goal && (
+        <ManageRiskCausesDialog
+            potentialRisk={selectedPotentialRiskForCauses}
+            goalUprId={goal.uprId}
+            goalPeriod={goal.period}
+            isOpen={isManageCausesModalOpen}
+            onOpenChange={(isOpen) => {
+                setIsManageCausesModalOpen(isOpen);
+                if (!isOpen) setSelectedPotentialRiskForCauses(null);
+            }}
+            onCausesUpdate={handleCausesUpdate}
+            initialCauses={riskCauses.filter(rc => rc.potentialRiskId === selectedPotentialRiskForCauses.id)}
+        />
+      )}
     </div>
   );
 }

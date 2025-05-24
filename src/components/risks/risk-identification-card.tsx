@@ -7,18 +7,17 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Loader2, Wand2 } from 'lucide-react';
-import type { Goal, Risk } from '@/lib/types';
-import { brainstormRisksAction } from '@/app/actions';
+import type { Goal, PotentialRisk } from '@/lib/types';
+import { brainstormPotentialRisksAction } from '@/app/actions';
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 interface RiskIdentificationCardProps {
   goal: Goal; // Goal already contains uprId and period
-  onRisksIdentified: (newRisks: Risk[]) => void;
+  onPotentialRisksIdentified: (newPotentialRisks: PotentialRisk[]) => void;
 }
 
-export function RiskIdentificationCard({ goal, onRisksIdentified }: RiskIdentificationCardProps) {
-  // Initialize with the goal's description, which includes its UPR and Period context implicitly.
+export function RiskIdentificationCard({ goal, onPotentialRisksIdentified }: RiskIdentificationCardProps) {
   const [goalDescriptionForAI, setGoalDescriptionForAI] = useState(
     `${goal.description} (Context for this goal: UPR ${goal.uprId}, Period ${goal.period})`
   );
@@ -26,29 +25,28 @@ export function RiskIdentificationCard({ goal, onRisksIdentified }: RiskIdentifi
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
 
-  const handleBrainstormRisks = async () => {
+  const handleBrainstormPotentialRisks = async () => {
     setIsLoading(true);
     setError(null);
     try {
-      // The goalDescriptionForAI already includes specific context.
-      // The action itself doesn't need separate uprId/period, as it operates on the description provided.
-      const result = await brainstormRisksAction({ goalDescription: goalDescriptionForAI });
-      if (result.success && result.data) {
-        const newRisks: Risk[] = result.data.risks.map(desc => ({
-          id: `risk_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-          goalId: goal.id, // Links to the goal (which has uprId & period)
+      const result = await brainstormPotentialRisksAction({ goalDescription: goalDescriptionForAI });
+      if (result.success && result.data && result.data.potentialRisks) {
+        const newPotentialRisks: PotentialRisk[] = result.data.potentialRisks.map(desc => ({
+          id: `prisk_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+          goalId: goal.id,
           description: desc,
+          category: null,
+          owner: null,
           likelihood: null,
           impact: null,
           identifiedAt: new Date().toISOString(),
         }));
-        onRisksIdentified(newRisks);
-        // Toast message is handled by the parent page (GoalRisksPage)
+        onPotentialRisksIdentified(newPotentialRisks);
       } else {
         setError(result.error || "An unknown error occurred during AI brainstorming.");
         toast({
           title: "AI Brainstorming Error",
-          description: result.error || "Failed to brainstorm risks using AI.",
+          description: result.error || "Failed to brainstorm potential risks using AI.",
           variant: "destructive",
         });
       }
@@ -69,7 +67,7 @@ export function RiskIdentificationCard({ goal, onRisksIdentified }: RiskIdentifi
   return (
     <Card>
       <CardHeader>
-        <CardTitle>AI-Powered Risk Identification</CardTitle>
+        <CardTitle>AI-Powered Potential Risk Identification</CardTitle>
         <CardDescription>
           Use AI to brainstorm potential risks for goal: <span className="font-semibold">{goal.name}</span>.
           Refine the description below for better AI results.
@@ -98,13 +96,13 @@ export function RiskIdentificationCard({ goal, onRisksIdentified }: RiskIdentifi
         )}
       </CardContent>
       <CardFooter>
-        <Button onClick={handleBrainstormRisks} disabled={isLoading || !goalDescriptionForAI.trim()}>
+        <Button onClick={handleBrainstormPotentialRisks} disabled={isLoading || !goalDescriptionForAI.trim()}>
           {isLoading ? (
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
           ) : (
             <Wand2 className="mr-2 h-4 w-4" />
           )}
-          Brainstorm Risks
+          Brainstorm Potential Risks
         </Button>
       </CardFooter>
     </Card>

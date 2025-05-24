@@ -1,17 +1,17 @@
 
 "use server";
 
-import { brainstormRisks as brainstormRisksFlow, type BrainstormRisksInput, type BrainstormRisksOutput } from "@/ai/flows/brainstorm-risks";
+import { brainstormPotentialRisks as brainstormPotentialRisksFlow, type BrainstormPotentialRisksInput, type BrainstormPotentialRisksOutput } from "@/ai/flows/brainstorm-risks";
 import { z } from "zod";
 
-const BrainstormRisksActionInputSchema = z.object({
+const BrainstormPotentialRisksActionInputSchema = z.object({
   goalDescription: z.string().min(10, "Goal description must be at least 10 characters long."),
 });
 
-export async function brainstormRisksAction(
-  values: z.infer<typeof BrainstormRisksActionInputSchema>
-): Promise<{ success: boolean; data?: BrainstormRisksOutput; error?: string }> {
-  const validatedFields = BrainstormRisksActionInputSchema.safeParse(values);
+export async function brainstormPotentialRisksAction(
+  values: z.infer<typeof BrainstormPotentialRisksActionInputSchema>
+): Promise<{ success: boolean; data?: BrainstormPotentialRisksOutput; error?: string }> {
+  const validatedFields = BrainstormPotentialRisksActionInputSchema.safeParse(values);
 
   if (!validatedFields.success) {
     return {
@@ -21,13 +21,13 @@ export async function brainstormRisksAction(
   }
 
   try {
-    const input: BrainstormRisksInput = {
+    const input: BrainstormPotentialRisksInput = {
       goalDescription: validatedFields.data.goalDescription,
     };
-    const output = await brainstormRisksFlow(input);
+    const output = await brainstormPotentialRisksFlow(input);
     return { success: true, data: output };
   } catch (error) {
-    console.error("Error in brainstormRisksAction:", error);
-    return { success: false, error: "Failed to brainstorm risks. Please try again." };
+    console.error("Error in brainstormPotentialRisksAction:", error);
+    return { success: false, error: "Failed to brainstorm potential risks. Please try again." };
   }
 }
