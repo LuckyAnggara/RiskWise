@@ -18,7 +18,10 @@ interface RiskIdentificationCardProps {
 }
 
 export function RiskIdentificationCard({ goal, onRisksIdentified }: RiskIdentificationCardProps) {
-  const [goalDescriptionForAI, setGoalDescriptionForAI] = useState(goal.description);
+  // Initialize with the goal's description, which includes its UPR and Period context implicitly.
+  const [goalDescriptionForAI, setGoalDescriptionForAI] = useState(
+    `${goal.description} (Context for this goal: UPR ${goal.uprId}, Period ${goal.period})`
+  );
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
@@ -27,27 +30,25 @@ export function RiskIdentificationCard({ goal, onRisksIdentified }: RiskIdentifi
     setIsLoading(true);
     setError(null);
     try {
-      // The goalDescription is the primary input for the AI; UPR/Period context is implicit via the goal.
-      const result = await brainstormRisksAction({ goalDescription: `${goalDescriptionForAI} (Context: UPR ${goal.uprId}, Period ${goal.period})` });
+      // The goalDescriptionForAI already includes specific context.
+      // The action itself doesn't need separate uprId/period, as it operates on the description provided.
+      const result = await brainstormRisksAction({ goalDescription: goalDescriptionForAI });
       if (result.success && result.data) {
         const newRisks: Risk[] = result.data.risks.map(desc => ({
           id: `risk_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-          goalId: goal.id, // This links it to the goal with its UPR and Period
+          goalId: goal.id, // Links to the goal (which has uprId & period)
           description: desc,
           likelihood: null,
           impact: null,
           identifiedAt: new Date().toISOString(),
         }));
         onRisksIdentified(newRisks);
-        toast({
-          title: "Risks Identified!",
-          description: `${newRisks.length} potential risks have been brainstormed for your goal.`,
-        });
+        // Toast message is handled by the parent page (GoalRisksPage)
       } else {
-        setError(result.error || "An unknown error occurred.");
+        setError(result.error || "An unknown error occurred during AI brainstorming.");
         toast({
-          title: "Error",
-          description: result.error || "Failed to brainstorm risks.",
+          title: "AI Brainstorming Error",
+          description: result.error || "Failed to brainstorm risks using AI.",
           variant: "destructive",
         });
       }
@@ -70,14 +71,13 @@ export function RiskIdentificationCard({ goal, onRisksIdentified }: RiskIdentifi
       <CardHeader>
         <CardTitle>AI-Powered Risk Identification</CardTitle>
         <CardDescription>
-          Use our AI assistant to brainstorm potential risks associated with your goal: <span className="font-semibold">{goal.name}</span>.
-          {` (UPR: ${goal.uprId}, Period: ${goal.period})`}
-          You can refine the goal description below for better results.
+          Use AI to brainstorm potential risks for goal: <span className="font-semibold">{goal.name}</span>.
+          Refine the description below for better AI results.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div>
-          <Label htmlFor="goalDescriptionAI">Goal Description for AI</Label>
+          <Label htmlFor="goalDescriptionAI">Goal Context for AI</Label>
           <Textarea
             id="goalDescriptionAI"
             value={goalDescriptionForAI}
@@ -87,7 +87,7 @@ export function RiskIdentificationCard({ goal, onRisksIdentified }: RiskIdentifi
             disabled={isLoading}
           />
           <p className="text-xs text-muted-foreground mt-1">
-            Provide a clear and detailed description for the AI to analyze.
+            Provide a clear, detailed description including the UPR ({goal.uprId}) and Period ({goal.period}) context for the AI.
           </p>
         </div>
         {error && (

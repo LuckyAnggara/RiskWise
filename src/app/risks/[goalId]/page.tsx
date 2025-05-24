@@ -17,17 +17,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Card, CardContent } from "@/components/ui/card";
-
-// Simulated current UPR and Period context - ideally this comes from a global context
-const CURRENT_UPR_ID = 'UPR001';
-const CURRENT_PERIOD = '2024';
+import { getCurrentUprId, getCurrentPeriod, initializeAppContext } from '@/lib/upr-period-context';
 
 const getGoalsStorageKey = (uprId: string, period: string) => `riskwise-upr${uprId}-period${period}-goals`;
 const getRisksStorageKey = (uprId: string, period: string, goalId: string) => `riskwise-upr${uprId}-period${period}-goal${goalId}-risks`;
 const getControlsStorageKey = (uprId: string, period: string, riskId: string) => `riskwise-upr${uprId}-period${period}-risk${riskId}-controls`;
 
-
-// Helper functions for risk level and color
 const getRiskLevel = (likelihood: LikelihoodImpactLevel | null, impact: LikelihoodImpactLevel | null): string => {
   if (!likelihood || !impact) return 'N/A';
   const L = { 'Very Low': 1, 'Low': 2, 'Medium': 3, 'High': 4, 'Very High': 5 };
@@ -45,7 +40,7 @@ const getRiskLevelColor = (level: string) => {
   switch (level.toLowerCase()) {
     case 'critical': return 'bg-red-600 hover:bg-red-700';
     case 'high': return 'bg-orange-500 hover:bg-orange-600';
-    case 'medium': return 'bg-yellow-400 hover:bg-yellow-500 text-black';
+    case 'medium': return 'bg-yellow-400 hover:bg-yellow-500 text-black dark:bg-yellow-500 dark:text-black';
     case 'low': return 'bg-green-500 hover:bg-green-600';
     case 'very low': return 'bg-sky-500 hover:bg-sky-600';
     default: return 'bg-gray-400 hover:bg-gray-500 text-white';
@@ -58,6 +53,8 @@ export default function GoalRisksPage() {
   const params = useParams();
   const goalId = params.goalId as string;
 
+  const [currentUprId, setCurrentUprId] = useState('');
+  const [currentPeriod, setCurrentPeriod] = useState('');
   const [goal, setGoal] = useState<Goal | null>(null);
   const [risks, setRisks] = useState<Risk[]>([]);
   const [controls, setControls] = useState<Control[]>([]);
@@ -74,12 +71,13 @@ export default function GoalRisksPage() {
   const { toast } = useToast();
 
   const loadData = useCallback(() => {
-    if (typeof window !== 'undefined' && goalId) {
+    if (typeof window !== 'undefined' && goalId && currentUprId && currentPeriod) {
       setIsLoading(true);
-      const goalsStorageKey = getGoalsStorageKey(CURRENT_UPR_ID, CURRENT_PERIOD);
+      const goalsStorageKey = getGoalsStorageKey(currentUprId, currentPeriod);
       const storedGoalsData = localStorage.getItem(goalsStorageKey);
       const allGoals: Goal[] = storedGoalsData ? JSON.parse(storedGoalsData) : [];
-      const currentGoal = allGoals.find(g => g.id === goalId && g.uprId === CURRENT_UPR_ID && g.period === CURRENT_PERIOD);
+      // Ensure goal matches current context, though navigation should usually ensure this
+      const currentGoal = allGoals.find(g => g.id === goalId && g.uprId === currentUprId && g.period === currentPeriod);
       
       setGoal(currentGoal || null);
 
@@ -98,31 +96,37 @@ export default function GoalRisksPage() {
           }
         });
         setControls(allRiskControls);
+      } else {
+        // Goal not found for this UPR/Period or goalId is invalid
+        setRisks([]);
+        setControls([]);
       }
       setIsLoading(false);
-    } else if (!goalId && typeof window !== 'undefined') {
+    } else if (typeof window !== 'undefined' && (!goalId || !currentUprId || !currentPeriod)) {
+        // If essential params are missing after context load, treat as not found / loading finished.
         setGoal(null);
         setRisks([]);
         setControls([]);
         setIsLoading(false);
     }
-  }, [goalId]);
+  }, [goalId, currentUprId, currentPeriod]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      loadData();
+      const context = initializeAppContext();
+      setCurrentUprId(context.uprId);
+      setCurrentPeriod(context.period);
     }
-  }, [loadData]);
+  }, []);
   
   useEffect(() => {
-    if (typeof window !== 'undefined' && isLoading) {
-       // This handles the case where SSR might have isLoading=true, then client sets it.
-      // If loadData already set it to false, this won't run.
-      const tm = setTimeout(() => setIsLoading(false), 0); // Ensure it runs after initial hydration attempts
-      return () => clearTimeout(tm);
+    if (currentUprId && currentPeriod && goalId) {
+      loadData();
+    } else if (currentUprId && currentPeriod && !goalId){ // Case where page is loaded without a goalId
+        setIsLoading(false);
+        setGoal(null);
     }
-  }, [isLoading]);
-
+  }, [loadData, currentUprId, currentPeriod, goalId]);
 
   const updateRisksInStorage = (goalForRisks: Goal, updatedRisks: Risk[]) => {
     if (typeof window !== 'undefined' && goalForRisks) {
@@ -139,10 +143,14 @@ export default function GoalRisksPage() {
   };
 
   const handleRisksIdentified = (newRisks: Risk[]) => {
-    if (!goal) return;
-    const updatedRisksState = [...risks, ...newRisks];
+    if (!goal) return; // Goal must exist and be in current context
+    const updatedRisksState = [...risks, ...newRisks].sort((a,b) => a.description.localeCompare(b.description));
     setRisks(updatedRisksState);
     updateRisksInStorage(goal, updatedRisksState);
+    toast({
+        title: "Risks Identified!",
+        description: `${newRisks.length} potential risks brainstormed for "${goal.name}".`
+    });
   };
   
   const handleOpenAnalysisModal = (riskToAnalyze: Risk) => {
@@ -151,7 +159,7 @@ export default function GoalRisksPage() {
   };
 
   const handleSaveRiskAnalysis = (updatedRisk: Risk) => {
-    if (!goal) return;
+    if (!goal) return; // Goal is from current context
     const newRisksState = risks.map(r => r.id === updatedRisk.id ? updatedRisk : r);
     setRisks(newRisksState);
     updateRisksInStorage(goal, newRisksState);
@@ -167,7 +175,7 @@ export default function GoalRisksPage() {
   };
 
   const handleSaveControl = (control: Control) => {
-    if (!goal) return;
+    if (!goal) return; // Goal is from current context
     const riskSpecificControls = controls.filter(c => c.riskId === control.riskId);
     const existingIndex = riskSpecificControls.findIndex(c => c.id === control.id);
     let updatedRiskControlsList: Control[];
@@ -193,7 +201,7 @@ export default function GoalRisksPage() {
   };
 
   const handleDeleteRisk = (riskIdToDelete: string) => {
-    if (!goal) return;
+    if (!goal) return; // Goal is from current context
     const riskToDelete = risks.find(r => r.id === riskIdToDelete);
     if (!riskToDelete) return;
 
@@ -210,7 +218,7 @@ export default function GoalRisksPage() {
   };
 
   const handleDeleteControl = (controlIdToDelete: string) => {
-    if (!goal) return;
+    if (!goal) return; // Goal is from current context
     const controlToDelete = controls.find(c => c.id === controlIdToDelete);
     if (!controlToDelete) return;
 
@@ -218,7 +226,7 @@ export default function GoalRisksPage() {
     const updatedRiskControlsList = controls
         .filter(c => c.riskId === riskIdOfControl && c.id !== controlIdToDelete);
     
-    updateControlsInStorage(goal, riskIdOfControl, updatedRiskControlsList);
+    updateControlsInStorage(goal, riskIdOfControl, updatedRiskControlsList); 
     const updatedOverallControls = controls.filter(c => c.id !== controlIdToDelete);
     setControls(updatedOverallControls);
 
@@ -226,11 +234,11 @@ export default function GoalRisksPage() {
   };
 
 
-  if (isLoading) {
+  if (isLoading || !currentUprId || !currentPeriod) {
     return (
       <div className="flex flex-col items-center justify-center h-screen">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
-        <p className="text-xl text-muted-foreground">Loading goal data...</p>
+        <p className="text-xl text-muted-foreground">Loading goal and risk data...</p>
       </div>
     );
   }
@@ -239,7 +247,7 @@ export default function GoalRisksPage() {
     return (
       <div className="flex flex-col items-center justify-center h-screen">
         <ShieldAlert className="w-16 h-16 text-muted-foreground mb-4" />
-        <p className="text-xl text-muted-foreground">Goal not found for UPR: {CURRENT_UPR_ID}, Period: {CURRENT_PERIOD}.</p>
+        <p className="text-xl text-muted-foreground">Goal not found for UPR: {currentUprId}, Period: {currentPeriod}.</p>
         <Button onClick={() => router.push('/goals')} className="mt-4">
           <ArrowLeft className="mr-2 h-4 w-4" /> Back to Goals
         </Button>
@@ -251,7 +259,7 @@ export default function GoalRisksPage() {
     <div className="space-y-8">
       <PageHeader
         title={`Risks for Goal: ${goal.name}`}
-        description={`${goal.description} (UPR: ${goal.uprId}, Period: ${goal.period})`}
+        description={`${goal.description}`}
         actions={
           <Button onClick={() => router.push('/goals')} variant="outline">
             <ArrowLeft className="mr-2 h-4 w-4" /> Back to Goals
@@ -291,7 +299,7 @@ export default function GoalRisksPage() {
             <ShieldAlert className="mx-auto h-12 w-12 text-muted-foreground" />
             <h3 className="mt-2 text-lg font-medium">No risks identified yet</h3>
             <p className="mt-1 text-sm text-muted-foreground">
-              Use the AI tool above to brainstorm risks.
+              Use the AI tool above to brainstorm risks for this goal.
             </p>
           </div>
         ) : viewMode === 'card' ? (
@@ -366,7 +374,7 @@ export default function GoalRisksPage() {
                                 <PlusCircle className="mr-2 h-4 w-4" /> Add Control
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
-                              <DropdownMenuItem onClick={() => handleDeleteRisk(risk.id)} className="text-destructive">
+                              <DropdownMenuItem onClick={() => handleDeleteRisk(risk.id)} className="text-destructive focus:text-destructive focus:bg-destructive/10">
                                 <Trash2 className="mr-2 h-4 w-4" /> Delete Risk
                               </DropdownMenuItem>
                             </DropdownMenuContent>

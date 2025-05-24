@@ -29,16 +29,24 @@ const riskSchema = z.object({
 type RiskFormData = z.infer<typeof riskSchema>;
 
 interface AddEditRiskDialogProps {
-  goals: Goal[]; // These should already be filtered for the current UPR/Period by the parent
-  onRiskSave: (risk: Risk, isEditing: boolean) => void;
+  goals: Goal[]; // These goals are already filtered for the current UPR/Period by the parent
+  onRiskSave: (risk: Risk, isNew: boolean) => void;
   existingRisk?: Risk | null;
   triggerButton?: React.ReactNode;
-  defaultGoalId?: string;
-  currentUprId: string; // Passed to confirm context
-  currentPeriod: string; // Passed to confirm context
+  defaultGoalId?: string; // Optional: pre-select goal if adding from a specific goal's page
+  currentUprId: string; // Passed to confirm context, not directly saved on Risk object
+  currentPeriod: string; // Passed to confirm context, not directly saved on Risk object
 }
 
-export function AddEditRiskDialog({ goals, onRiskSave, existingRisk, triggerButton, defaultGoalId, currentUprId, currentPeriod }: AddEditRiskDialogProps) {
+export function AddEditRiskDialog({ 
+  goals, 
+  onRiskSave, 
+  existingRisk, 
+  triggerButton, 
+  defaultGoalId,
+  currentUprId, 
+  currentPeriod 
+}: AddEditRiskDialogProps) {
   const [open, setOpen] = useState(false);
   const isEditing = !!existingRisk;
 
@@ -77,27 +85,24 @@ export function AddEditRiskDialog({ goals, onRiskSave, existingRisk, triggerButt
 
   const onSubmit: SubmitHandler<RiskFormData> = (data) => {
     const parentGoal = goals.find(g => g.id === data.goalId);
-    if (!parentGoal) {
-      // This should ideally not happen if goals are correctly filtered
-      console.error("Selected parent goal not found or not in current context.");
+    // Parent goal itself will contain the uprId and period.
+    // This check is to ensure the selected goal is indeed part of the current context.
+    if (!parentGoal || parentGoal.uprId !== currentUprId || parentGoal.period !== currentPeriod) {
+      console.error("Selected parent goal not found or not in current UPR/Period context.");
+      // Potentially show a toast to the user
       return; 
-    }
-    // Double-check context, though parentGoal should already be from current context
-    if(parentGoal.uprId !== currentUprId || parentGoal.period !== currentPeriod) {
-        console.error("Attempting to save risk to a goal outside the current UPR/Period context.");
-        return;
     }
 
     const riskData: Risk = {
       id: existingRisk?.id || `risk_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-      goalId: data.goalId, // This goal inherently has the uprId and period
+      goalId: data.goalId, // This goal inherently has the uprId and period via its own properties
       description: data.description,
       likelihood: existingRisk?.likelihood || null,
       impact: existingRisk?.impact || null,
       identifiedAt: existingRisk?.identifiedAt || new Date().toISOString(),
       analysisCompletedAt: existingRisk?.analysisCompletedAt,
     };
-    onRiskSave(riskData, isEditing);
+    onRiskSave(riskData, !isEditing); // Pass true if it's a new risk
     setOpen(false);
   };
 
@@ -125,8 +130,9 @@ export function AddEditRiskDialog({ goals, onRiskSave, existingRisk, triggerButt
           <div className="space-y-1.5">
             <Label htmlFor="goalId">Associated Goal</Label>
             <Select
-              value={selectedGoalId}
+              value={selectedGoalId} // Controlled component
               onValueChange={(value) => setValue("goalId", value, { shouldValidate: true })}
+              disabled={goals.length === 0}
             >
               <SelectTrigger id="goalId" className={errors.goalId ? "border-destructive" : ""}>
                 <SelectValue placeholder="Select a goal" />
@@ -134,10 +140,12 @@ export function AddEditRiskDialog({ goals, onRiskSave, existingRisk, triggerButt
               <SelectContent>
                 {goals.length > 0 ? (
                   goals.map(goal => (
+                    // Ensure only goals from the current UPR/Period are shown,
+                    // which 'goals' prop should already guarantee.
                     <SelectItem key={goal.id} value={goal.id}>{goal.name}</SelectItem>
                   ))
                 ) : (
-                  <SelectItem value="no-goals" disabled>No goals available in this UPR/Period. Create a goal first.</SelectItem>
+                  <SelectItem value="no-goals" disabled>No goals in this UPR/Period.</SelectItem>
                 )}
               </SelectContent>
             </Select>

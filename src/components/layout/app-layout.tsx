@@ -1,7 +1,7 @@
 
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import {
   SidebarProvider,
@@ -18,15 +18,20 @@ import { SidebarNav } from "./sidebar-nav";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { LogOut, User, Settings } from "lucide-react"; // Added Settings here
+import { LogOut, User, Settings } from "lucide-react";
 import { Toaster } from "@/components/ui/toaster";
+import { getCurrentUprId, getCurrentPeriod, initializeAppContext } from '@/lib/upr-period-context';
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const [pageTitle, setPageTitle] = React.useState("Dashboard"); // This would ideally come from a context or route
-  
-  // This is a placeholder for a function that would update the title based on navigation
-  // For now, it's static. In a real app, you might use `usePathname` and a lookup.
-  React.useEffect(() => {
+  const [currentUpr, setCurrentUpr] = useState('');
+  const [currentPeriodDisplay, setCurrentPeriodDisplay] = useState('');
+
+  useEffect(() => {
+    // Initialize context on client mount
+    const context = initializeAppContext();
+    setCurrentUpr(context.uprId);
+    setCurrentPeriodDisplay(context.period);
     // Example: if (pathname.startsWith('/goals')) setPageTitle("Goals");
   }, []);
 
@@ -57,7 +62,12 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b bg-background/80 px-4 backdrop-blur md:px-6">
           <div className="flex items-center gap-2">
             <SidebarTrigger className="md:hidden" />
-            <h1 className="text-xl font-semibold">{pageTitle}</h1>
+            {/* <h1 className="text-xl font-semibold">{pageTitle}</h1> */}
+            {currentUpr && currentPeriodDisplay && (
+              <div className="text-sm text-muted-foreground">
+                <span className="font-semibold">UPR:</span> {currentUpr} | <span className="font-semibold">Period:</span> {currentPeriodDisplay}
+              </div>
+            )}
           </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -75,12 +85,14 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                 <User className="mr-2 h-4 w-4" />
                 <span>Profile</span>
               </DropdownMenuItem>
-              <DropdownMenuItem>
-                <Settings className="mr-2 h-4 w-4" />
-                <span>Settings</span>
+              <DropdownMenuItem asChild>
+                <Link href="/settings">
+                  <Settings className="mr-2 h-4 w-4" />
+                  <span>Settings</span>
+                </Link>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={() => alert('Logout functionality to be implemented.')}>
                 <LogOut className="mr-2 h-4 w-4" />
                 <span>Log out</span>
               </DropdownMenuItem>

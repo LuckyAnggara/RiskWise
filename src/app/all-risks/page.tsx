@@ -14,16 +14,12 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-
-// Simulated current UPR and Period context
-const CURRENT_UPR_ID = 'UPR001';
-const CURRENT_PERIOD = '2024';
+import { getCurrentUprId, getCurrentPeriod, initializeAppContext } from '@/lib/upr-period-context';
 
 const getGoalsStorageKey = (uprId: string, period: string) => `riskwise-upr${uprId}-period${period}-goals`;
 const getRisksStorageKey = (uprId: string, period: string, goalId: string) => `riskwise-upr${uprId}-period${period}-goal${goalId}-risks`;
 const getControlsStorageKey = (uprId: string, period: string, riskId: string) => `riskwise-upr${uprId}-period${period}-risk${riskId}-controls`;
 
-// Helper functions for risk level and color
 const getRiskLevel = (likelihood: LikelihoodImpactLevel | null, impact: LikelihoodImpactLevel | null): string => {
   if (!likelihood || !impact) return 'N/A';
   const L = { 'Very Low': 1, 'Low': 2, 'Medium': 3, 'High': 4, 'Very High': 5 };
@@ -41,7 +37,7 @@ const getRiskLevelColor = (level: string) => {
   switch (level.toLowerCase()) {
     case 'critical': return 'bg-red-600 hover:bg-red-700';
     case 'high': return 'bg-orange-500 hover:bg-orange-600';
-    case 'medium': return 'bg-yellow-400 hover:bg-yellow-500 text-black';
+    case 'medium': return 'bg-yellow-400 hover:bg-yellow-500 text-black dark:bg-yellow-500 dark:text-black';
     case 'low': return 'bg-green-500 hover:bg-green-600';
     case 'very low': return 'bg-sky-500 hover:bg-sky-600';
     default: return 'bg-gray-400 hover:bg-gray-500 text-white';
@@ -49,6 +45,8 @@ const getRiskLevelColor = (level: string) => {
 };
 
 export default function AllRisksPage() {
+  const [currentUprId, setCurrentUprId] = useState('');
+  const [currentPeriod, setCurrentPeriod] = useState('');
   const [goals, setGoals] = useState<Goal[]>([]);
   const [allRisks, setAllRisks] = useState<Risk[]>([]);
   const [allControls, setAllControls] = useState<Control[]>([]);
@@ -67,9 +65,9 @@ export default function AllRisksPage() {
   const { toast } = useToast();
 
   const loadData = useCallback(() => {
-    setIsLoading(true);
-    if (typeof window !== 'undefined') {
-      const goalsStorageKey = getGoalsStorageKey(CURRENT_UPR_ID, CURRENT_PERIOD);
+    if (typeof window !== 'undefined' && currentUprId && currentPeriod) {
+      setIsLoading(true);
+      const goalsStorageKey = getGoalsStorageKey(currentUprId, currentPeriod);
       const storedGoalsData = localStorage.getItem(goalsStorageKey);
       const loadedGoals: Goal[] = storedGoalsData ? JSON.parse(storedGoalsData) : [];
       setGoals(loadedGoals);
@@ -78,32 +76,40 @@ export default function AllRisksPage() {
       let collectedControls: Control[] = [];
 
       loadedGoals.forEach(goal => {
-        // Ensure we only process goals matching current UPR/Period, though loadedGoals should already be filtered
-        if (goal.uprId === CURRENT_UPR_ID && goal.period === CURRENT_PERIOD) {
-          const risksStorageKey = getRisksStorageKey(goal.uprId, goal.period, goal.id);
-          const storedRisksData = localStorage.getItem(risksStorageKey);
-          if (storedRisksData) {
-            const goalRisks: Risk[] = JSON.parse(storedRisksData);
-            collectedRisks = [...collectedRisks, ...goalRisks];
-            goalRisks.forEach(risk => {
-              const controlsStorageKey = getControlsStorageKey(goal.uprId, goal.period, risk.id);
-              const storedControlsData = localStorage.getItem(controlsStorageKey);
-              if (storedControlsData) {
-                collectedControls = [...collectedControls, ...JSON.parse(storedControlsData)];
-              }
-            });
-          }
+        // Goal objects already contain their UPR ID and Period
+        const risksStorageKey = getRisksStorageKey(goal.uprId, goal.period, goal.id);
+        const storedRisksData = localStorage.getItem(risksStorageKey);
+        if (storedRisksData) {
+          const goalRisks: Risk[] = JSON.parse(storedRisksData);
+          collectedRisks = [...collectedRisks, ...goalRisks];
+          goalRisks.forEach(risk => {
+            const controlsStorageKey = getControlsStorageKey(goal.uprId, goal.period, risk.id);
+            const storedControlsData = localStorage.getItem(controlsStorageKey);
+            if (storedControlsData) {
+              collectedControls = [...collectedControls, ...JSON.parse(storedControlsData)];
+            }
+          });
         }
       });
       setAllRisks(collectedRisks);
       setAllControls(collectedControls);
+      setIsLoading(false);
     }
-    setIsLoading(false);
+  }, [currentUprId, currentPeriod]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const context = initializeAppContext();
+      setCurrentUprId(context.uprId);
+      setCurrentPeriod(context.period);
+    }
   }, []);
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    if (currentUprId && currentPeriod) {
+      loadData();
+    }
+  }, [loadData, currentUprId, currentPeriod]);
 
   const updateRisksInStorageForGoal = (uprId: string, period: string, goalId: string, updatedRisksForGoal: Risk[]) => {
     if (typeof window !== 'undefined') {
@@ -119,30 +125,34 @@ export default function AllRisksPage() {
      }
   };
 
-  const handleRiskSave = (risk: Risk, isEditing: boolean) => {
+  const handleRiskSave = (risk: Risk, isNew: boolean) => {
+    // risk.goalId is already set from the dialog. The goal itself contains uprId and period.
     const parentGoal = goals.find(g => g.id === risk.goalId);
     if (!parentGoal) {
         toast({ title: "Error", description: "Parent goal not found for the risk.", variant: "destructive"});
         return;
     }
-    if (parentGoal.uprId !== CURRENT_UPR_ID || parentGoal.period !== CURRENT_PERIOD) {
-        toast({ title: "Error", description: "Risk cannot be saved to a goal outside the current UPR/Period.", variant: "destructive"});
+    // Risk object itself doesn't directly store uprId/period, it's via parentGoal.
+    // Ensure the save operation respects the current context.
+    if (parentGoal.uprId !== currentUprId || parentGoal.period !== currentPeriod) {
+        toast({ title: "Context Mismatch", description: "Cannot save risk for a goal outside the current UPR/Period context.", variant: "destructive" });
         return;
     }
-
+    
     let newAllRisksState;
+    // Get all risks for the specific goal, excluding the one being edited (if editing)
     const goalSpecificRisks = allRisks.filter(r => r.goalId === risk.goalId && r.id !== risk.id);
     
-    if (isEditing) {
+    if (!isNew) { // Editing existing risk
       newAllRisksState = allRisks.map(r => r.id === risk.id ? risk : r);
-      updateRisksInStorageForGoal(parentGoal.uprId, parentGoal.period, risk.goalId, [...goalSpecificRisks, risk]);
+      updateRisksInStorageForGoal(parentGoal.uprId, parentGoal.period, risk.goalId, [...goalSpecificRisks, risk].sort((a,b) => a.description.localeCompare(b.description)));
       toast({ title: "Risk Updated", description: `Risk "${risk.description}" has been updated.` });
-    } else {
+    } else { // Adding new risk
       newAllRisksState = [...allRisks, risk];
-      updateRisksInStorageForGoal(parentGoal.uprId, parentGoal.period, risk.goalId, [...goalSpecificRisks, risk]);
+      updateRisksInStorageForGoal(parentGoal.uprId, parentGoal.period, risk.goalId, [...goalSpecificRisks, risk].sort((a,b) => a.description.localeCompare(b.description)));
       toast({ title: "Risk Added", description: `New risk "${risk.description}" added.` });
     }
-    setAllRisks(newAllRisksState);
+    setAllRisks(newAllRisksState.sort((a,b) => a.description.localeCompare(b.description)));
     setIsAddEditRiskModalOpen(false);
     setRiskToEdit(null);
   };
@@ -153,7 +163,7 @@ export default function AllRisksPage() {
   };
 
   const handleOpenAddRiskModal = () => {
-    setRiskToEdit(null); // Ensure it's an "add" operation
+    setRiskToEdit(null); 
     setIsAddEditRiskModalOpen(true);
   };
   
@@ -164,7 +174,7 @@ export default function AllRisksPage() {
 
   const handleSaveRiskAnalysis = (updatedRisk: Risk) => {
     const parentGoal = goals.find(g => g.id === updatedRisk.goalId);
-    if (!parentGoal) return;
+    if (!parentGoal) return; // Should not happen if data is consistent
 
     const newRisksState = allRisks.map(r => r.id === updatedRisk.id ? updatedRisk : r);
     setAllRisks(newRisksState);
@@ -238,7 +248,6 @@ export default function AllRisksPage() {
     const parentGoal = goals.find(g => g.id === parentRisk.goalId);
     if (!parentGoal) return;
 
-
     const riskIdOfControl = controlToDelete.riskId;
     const updatedRiskControlsList = allControls
         .filter(c => c.riskId === riskIdOfControl && c.id !== controlIdToDelete);
@@ -252,27 +261,27 @@ export default function AllRisksPage() {
   };
 
 
-  if (isLoading) {
+  if (isLoading || !currentUprId || !currentPeriod) {
     return (
       <div className="flex flex-col items-center justify-center h-screen">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
-        <p className="text-xl text-muted-foreground">Loading all risks for UPR: {CURRENT_UPR_ID}, Period: {CURRENT_PERIOD}...</p>
+        <p className="text-xl text-muted-foreground">Loading all risks data...</p>
       </div>
     );
   }
 
   // Filter goals for the AddEditRiskDialog to only show goals from the current UPR/Period
-  const relevantGoals = goals.filter(g => g.uprId === CURRENT_UPR_ID && g.period === CURRENT_PERIOD);
+  const relevantGoals = goals.filter(g => g.uprId === currentUprId && g.period === currentPeriod);
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title={`All Risks for UPR: ${CURRENT_UPR_ID} (Period: ${CURRENT_PERIOD})`}
-        description="Manage all identified risks across all your goals for the current unit and period."
+        title={`All Risks`}
+        description={`Manage all identified risks across all goals for UPR: ${currentUprId}, Period: ${currentPeriod}.`}
         actions={
           <Button onClick={handleOpenAddRiskModal} disabled={relevantGoals.length === 0}>
             <PlusCircle className="mr-2 h-4 w-4" /> Add New Risk
-            {relevantGoals.length === 0 && <span className="ml-2 text-xs">(Create a goal in this UPR/Period first)</span>}
+            {relevantGoals.length === 0 && <span className="ml-2 text-xs">(Create a goal first)</span>}
           </Button>
         }
       />
@@ -282,7 +291,7 @@ export default function AllRisksPage() {
           <ListChecks className="mx-auto h-12 w-12 text-muted-foreground" />
           <h3 className="mt-2 text-lg font-medium">No risks identified yet for this UPR/Period</h3>
           <p className="mt-1 text-sm text-muted-foreground">
-            Click "Add New Risk" to start populating your risk register.
+            Click "Add New Risk" to start populating your risk register, or identify risks from specific goals.
           </p>
         </div>
       ) : (
@@ -347,7 +356,7 @@ export default function AllRisksPage() {
                               <PlusCircle className="mr-2 h-4 w-4" /> Manage Controls
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem onClick={() => handleDeleteRisk(risk.id)} className="text-destructive">
+                            <DropdownMenuItem onClick={() => handleDeleteRisk(risk.id)} className="text-destructive focus:text-destructive focus:bg-destructive/10">
                               <Trash2 className="mr-2 h-4 w-4" /> Delete Risk
                             </DropdownMenuItem>
                           </DropdownMenuContent>
@@ -363,13 +372,13 @@ export default function AllRisksPage() {
       )}
 
       {isAddEditRiskModalOpen && <AddEditRiskDialog
-        goals={relevantGoals} // Pass only relevant goals
+        goals={relevantGoals} 
         isOpen={isAddEditRiskModalOpen}
         onOpenChange={setIsAddEditRiskModalOpen}
         onRiskSave={handleRiskSave}
         existingRisk={riskToEdit}
-        currentUprId={CURRENT_UPR_ID}
-        currentPeriod={CURRENT_PERIOD}
+        currentUprId={currentUprId} // Pass current context
+        currentPeriod={currentPeriod} // Pass current context
       />}
 
       {selectedRiskForAnalysis && <RiskAnalysisModal

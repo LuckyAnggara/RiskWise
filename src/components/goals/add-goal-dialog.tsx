@@ -32,8 +32,8 @@ interface AddGoalDialogProps {
   onGoalSave: (goal: Goal) => void;
   existingGoal?: Goal | null;
   triggerButton?: React.ReactNode;
-  currentUprId: string;
-  currentPeriod: string;
+  currentUprId: string; // Now passed as prop
+  currentPeriod: string; // Now passed as prop
 }
 
 export function AddGoalDialog({ onGoalSave, existingGoal, triggerButton, currentUprId, currentPeriod }: AddGoalDialogProps) {
@@ -46,37 +46,48 @@ export function AddGoalDialog({ onGoalSave, existingGoal, triggerButton, current
   } = useForm<GoalFormData>({
     resolver: zodResolver(goalSchema),
     defaultValues: {
-      name: existingGoal?.name || "",
-      description: existingGoal?.description || "",
+      name: "",
+      description: "",
     },
   });
 
   useEffect(() => {
-    if (existingGoal) {
-      reset({
-        name: existingGoal.name,
-        description: existingGoal.description,
-      });
-    } else {
-      reset({ name: "", description: "" });
+    if (open) { // Reset form when dialog opens or existingGoal changes while open
+      if (existingGoal) {
+        reset({
+          name: existingGoal.name,
+          description: existingGoal.description,
+        });
+      } else {
+        reset({ name: "", description: "" });
+      }
     }
-  }, [existingGoal, reset, open]);
+  }, [existingGoal, open, reset]);
 
   const onSubmit: SubmitHandler<GoalFormData> = (data) => {
     const newGoal: Goal = {
       id: existingGoal?.id || `goal_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       ...data,
       createdAt: existingGoal?.createdAt || new Date().toISOString(),
-      uprId: existingGoal?.uprId || currentUprId,
-      period: existingGoal?.period || currentPeriod,
+      uprId: currentUprId, // Use passed prop
+      period: currentPeriod, // Use passed prop
     };
     onGoalSave(newGoal);
     setOpen(false);
-    reset(); 
+    // reset(); // Reset is handled by useEffect on 'open' state change now
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={(isOpen) => {
+      setOpen(isOpen);
+      if (!isOpen) { // Ensure reset when dialog is closed externally too
+        if (existingGoal) {
+          reset({name: existingGoal.name, description: existingGoal.description});
+        } else {
+          reset({name: "", description: ""});
+        }
+      }
+    }}>
       <DialogTrigger asChild>
         {triggerButton ? (
           React.cloneElement(triggerButton as React.ReactElement, { onClick: () => setOpen(true) })
