@@ -3,7 +3,7 @@
 
 import Link from 'next/link';
 import { usePathname } from "next/navigation"; 
-import { LayoutDashboard, Target, ListChecks, Cog } from "lucide-react"; 
+import { LayoutDashboard, Target, ListChecks, Cog, BarChart3, Edit } from "lucide-react"; 
 import { cn } from "@/lib/utils";
 import {
   SidebarMenu,
@@ -23,7 +23,8 @@ interface NavItem {
 const navItems: NavItem[] = [
   { label: "Dasbor", href: "/", icon: LayoutDashboard },
   { label: "Sasaran", href: "/goals", icon: Target },
-  { label: "Semua Risiko", href: "/all-risks", icon: ListChecks },
+  { label: "Identifikasi Risiko", href: "/all-risks", icon: Edit }, // Changed label and icon
+  { label: "Analisis Risiko", href: "/risk-analysis", icon: BarChart3 }, // New Menu Item
   { label: "Pengaturan", href: "/settings", icon: Cog },
 ];
 
@@ -33,8 +34,10 @@ export function SidebarNav() {
   
   const isActive = (navHref: string) => {
     if (navHref === "/") {
-      return pathname === "/";
+      return pathname === "/" || pathname === "" ; // Handle root path
     }
+    // For other paths, check if the current pathname starts with the navHref
+    // This handles cases like /all-risks and /all-risks/manage/new
     return pathname.startsWith(navHref);
   };
 

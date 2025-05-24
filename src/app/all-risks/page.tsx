@@ -9,11 +9,11 @@ import { Input } from '@/components/ui/input';
 import { RiskAnalysisModal } from '@/components/risks/risk-analysis-modal';
 import { RiskControlModal } from '@/components/risks/risk-control-modal';
 import { ManageRiskCausesDialog } from '@/components/risks/manage-risk-causes-dialog';
-import type { Goal, PotentialRisk, Control, RiskCause, RiskCategory } from '@/lib/types';
-import { RISK_CATEGORIES } from '@/lib/types';
+import type { Goal, PotentialRisk, Control, RiskCause, RiskCategory, LikelihoodImpactLevel } from '@/lib/types';
+import { RISK_CATEGORIES, LIKELIHOOD_IMPACT_LEVELS } from '@/lib/types';
 import { PlusCircle, Loader2, Settings2, BarChart3, Trash2, Edit, ListChecks, Zap, ChevronDown, ChevronUp, Search, Filter } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, DropdownMenuCheckboxItem, DropdownMenuLabel } from "@/components/ui/dropdown-menu";
@@ -24,6 +24,7 @@ const getGoalsStorageKey = (uprId: string, period: string) => `riskwise-upr${upr
 const getPotentialRisksStorageKey = (uprId: string, period: string, goalId: string) => `riskwise-upr${uprId}-period${period}-goal${goalId}-potentialRisks`;
 const getControlsStorageKey = (uprId: string, period: string, potentialRiskId: string) => `riskwise-upr${uprId}-period${period}-potentialRisk${potentialRiskId}-controls`;
 const getRiskCausesStorageKey = (uprId: string, period: string, potentialRiskId: string) => `riskwise-upr${uprId}-period${period}-potentialRisk${potentialRiskId}-causes`;
+
 
 export default function AllRisksPage() {
   const router = useRouter();
@@ -84,7 +85,7 @@ export default function AllRisksPage() {
           });
         }
       });
-      setAllPotentialRisks(collectedPotentialRisks); // Sorting will be done in useMemo
+      setAllPotentialRisks(collectedPotentialRisks);
       setAllControls(collectedControls);
       setAllRiskCauses(collectedRiskCauses);
       setIsLoading(false);
@@ -108,7 +109,7 @@ export default function AllRisksPage() {
   const updatePotentialRisksInStorageForGoal = (uprId: string, period: string, goalId: string, updatedPotentialRisksForGoal: PotentialRisk[]) => {
     if (typeof window !== 'undefined') {
       const key = getPotentialRisksStorageKey(uprId, period, goalId);
-      localStorage.setItem(key, JSON.stringify(updatedPotentialRisksForGoal));
+      localStorage.setItem(key, JSON.stringify(updatedPotentialRisksForGoal.sort((a,b) => a.description.localeCompare(b.description))));
     }
   };
   
@@ -121,7 +122,7 @@ export default function AllRisksPage() {
   
   const handleOpenAddPotentialRiskPage = () => {
     if (goals.filter(g => g.uprId === currentUprId && g.period === currentPeriod).length === 0) {
-        toast({ title: "Tidak Dapat Menambah Risiko", description: "Harap buat setidaknya satu sasaran untuk UPR/Periode saat ini sebelum menambahkan potensi risiko.", variant: "destructive"});
+        toast({ title: "Tidak Dapat Menambah Potensi Risiko", description: "Harap buat setidaknya satu sasaran untuk UPR/Periode saat ini sebelum menambahkan potensi risiko.", variant: "destructive"});
         return;
     }
     router.push('/all-risks/manage/new');
@@ -296,18 +297,18 @@ export default function AllRisksPage() {
     return (
       <div className="flex flex-col items-center justify-center h-screen">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
-        <p className="text-xl text-muted-foreground">Memuat semua data potensi risiko...</p>
+        <p className="text-xl text-muted-foreground">Memuat data identifikasi risiko...</p>
       </div>
     );
   }
 
   const relevantGoals = goals.filter(g => g.uprId === currentUprId && g.period === currentPeriod);
-  const totalTableColumns = 8; // 1 expand + Deskripsi, Kategori, Pemilik, Sasaran, Penyebab, Kontrol, Aksi
+  const totalTableColumns = 7; // 1 expand + Deskripsi, Kategori, Pemilik, Sasaran, Penyebab, Kontrol, Aksi (No likelihood, impact, level)
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title={`Semua Potensi Risiko`}
+        title={`Identifikasi Risiko`}
         description={`Kelola semua potensi risiko yang teridentifikasi di semua sasaran untuk UPR: ${currentUprId}, Periode: ${currentPeriod}.`}
         actions={
           <Button onClick={handleOpenAddPotentialRiskPage} disabled={relevantGoals.length === 0}>
@@ -401,11 +402,10 @@ export default function AllRisksPage() {
       ) : (
         <Card>
           <CardContent className="p-0">
-            {/* The Table component itself from ShadCN includes a div with overflow-auto for horizontal scrolling */}
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[40px]"></TableHead> {/* Kolom untuk tombol expand */}
+                  <TableHead className="w-[40px]"></TableHead> 
                   <TableHead className="w-[30%] min-w-[250px]">Deskripsi</TableHead>
                   <TableHead className="min-w-[150px]">Kategori</TableHead>
                   <TableHead className="min-w-[150px]">Pemilik</TableHead>
@@ -458,7 +458,7 @@ export default function AllRisksPage() {
                                 <Zap className="mr-2 h-4 w-4" /> Kelola Penyebab (Cepat)
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => handleOpenAnalysisModal(pRisk)}>
-                                <BarChart3 className="mr-2 h-4 w-4" /> Analisis Level
+                                <BarChart3 className="mr-2 h-4 w-4" /> Analisis Level (Modal)
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => handleOpenControlModal(pRisk)}>
                                 <PlusCircle className="mr-2 h-4 w-4" /> Kelola Kontrol
@@ -473,7 +473,7 @@ export default function AllRisksPage() {
                       </TableRow>
                       {isExpanded && (
                         <TableRow className="bg-muted/30 hover:bg-muted/40">
-                          <TableCell colSpan={totalTableColumns} className="p-0">
+                          <TableCell colSpan={totalTableColumns} className="p-0"> {/* Ensure colSpan is correct */}
                             <div className="p-3 space-y-1 text-sm">
                               <h4 className="font-semibold text-foreground">Deskripsi Lengkap:</h4>
                               <p className="text-muted-foreground whitespace-pre-wrap">{pRisk.description}</p>
@@ -528,5 +528,3 @@ export default function AllRisksPage() {
     </div>
   );
 }
-
-    
