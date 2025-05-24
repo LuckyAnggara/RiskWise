@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import {Link} from 'next-intl/link'; // Changed import
+import {Link} from 'next-intl'; // Corrected import
 import {
   SidebarProvider,
   Sidebar,
@@ -25,7 +25,6 @@ import { useTranslations } from 'next-intl';
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const t = useTranslations('AppLayout');
-  // const locale = useLocale(); // No longer needed for Link hrefs if using next-intl/link properly
   const [currentUpr, setCurrentUpr] = useState('');
   const [currentPeriodDisplay, setCurrentPeriodDisplay] = useState('');
 
@@ -40,7 +39,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     <SidebarProvider defaultOpen>
       <Sidebar variant="sidebar" collapsible="icon" side="left">
         <SidebarHeader className="p-4">
-          <Link href="/" className="flex items-center gap-2 group-data-[collapsible=icon]:justify-center"> {/* href changed */}
+          <Link href="/" className="flex items-center gap-2 group-data-[collapsible=icon]:justify-center">
             <AppLogo className="h-8 w-8 text-primary" />
             <span className="font-semibold text-lg text-primary group-data-[collapsible=icon]:hidden">
               RiskWise
@@ -85,7 +84,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                 <span>{t('profile')}</span>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
-                <Link href="/settings"> {/* href changed */}
+                <Link href="/settings">
                   <SettingsIcon className="mr-2 h-4 w-4" />
                   <span>{t('settings')}</span>
                 </Link>

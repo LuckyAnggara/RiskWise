@@ -1,7 +1,7 @@
 
 "use client";
 
-import {Link} from 'next-intl/link'; // Changed import
+import {Link} from 'next-intl'; // Corrected import
 import { usePathname } from "next/navigation";
 import { LayoutDashboard, Target, ListChecks, Cog } from "lucide-react"; 
 import { cn } from "@/lib/utils";
@@ -39,6 +39,8 @@ export function SidebarNav() {
     if (navHref === "/") {
       return cleanPathname === "/";
     }
+    // Check if the current path starts with the nav item's href
+    // and is either an exact match or followed by a '/' (for sub-pages)
     return cleanPathname.startsWith(navHref) && 
            (cleanPathname.length === navHref.length || cleanPathname[navHref.length] === '/');
   };
@@ -49,7 +51,7 @@ export function SidebarNav() {
         <SidebarGroupLabel>{t('menu')}</SidebarGroupLabel>
         {navItems.map((item) => (
           <SidebarMenuItem key={item.href}>
-            <Link href={item.href}> {/* Removed legacyBehavior and passHref */}
+            <Link href={item.href}>
               <SidebarMenuButton
                 asChild
                 isActive={isActive(item.href)}
@@ -70,4 +72,3 @@ export function SidebarNav() {
     </SidebarMenu>
   );
 }
-
