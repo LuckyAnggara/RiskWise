@@ -69,10 +69,8 @@ export function BrainstormSuggestionsModal({
         id: `prisk_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
         goalId: goalId,
         description: suggestion.description,
-        category: suggestion.category, // Use category from AI suggestion
+        category: suggestion.category,
         owner: null,
-        likelihood: null,
-        impact: null,
         identifiedAt: new Date().toISOString(),
         sequenceNumber: currentSequence,
       };

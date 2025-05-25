@@ -5,7 +5,7 @@ import React, { useState } from 'react';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Wand2 } from 'lucide-react';
-import type { Goal, PotentialRisk, RiskCategory } from '@/lib/types'; // Import RiskCategory
+import type { Goal, PotentialRisk, RiskCategory } from '@/lib/types'; 
 import { useToast } from "@/hooks/use-toast";
 import { BrainstormContextModal } from './brainstorm-context-modal';
 import { BrainstormSuggestionsModal } from './brainstorm-suggestions-modal';
@@ -27,7 +27,7 @@ export function RiskIdentificationCard({ goal, onPotentialRisksIdentified, exist
   const [isSuggestionsModalOpen, setIsSuggestionsModalOpen] = useState(false);
   const [aiSuggestions, setAiSuggestions] = useState<AISuggestion[]>([]);
 
-  const initialAIContext = `Nama Sasaran: ${goal.name}\nKode Sasaran: ${goal.code || 'N/A'}\nDeskripsi Sasaran: ${goal.description}\nKonteks UPR: ${goal.uprId}, Periode: ${goal.period}`;
+  const initialAIContext = `Nama Sasaran: ${goal.name}\nKode Sasaran: ${goal.code || '[TANPA KODE]'}\nDeskripsi Sasaran: ${goal.description}\nKonteks UPR: ${goal.uprId}, Periode: ${goal.period}`;
 
   const handleSuggestionsReady = (suggestions: AISuggestion[]) => {
     if (suggestions.length === 0) {

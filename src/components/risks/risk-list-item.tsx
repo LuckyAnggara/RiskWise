@@ -5,7 +5,7 @@ import type { PotentialRisk, Control, RiskCause, LikelihoodImpactLevel, RiskLeve
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { BarChart3, ShieldCheck, Edit, Trash2, Settings2, PlusCircle, Zap, ListChecks } from 'lucide-react';
+import { ShieldCheck, Edit, Trash2, Settings2, PlusCircle, Zap, ListChecks } from 'lucide-react'; // Removed BarChart3 as it's not used for inherent analysis here
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,15 +16,15 @@ import {
 
 interface RiskListItemProps {
   potentialRisk: PotentialRisk;
-  goalCode: string;
+  goalCode: string | undefined; // Can be undefined if goal not found or code missing
   controls: Control[];
   riskCauses: RiskCause[];
-  onAnalyze: (potentialRisk: PotentialRisk) => void;
+  // onAnalyze removed as inherent analysis is removed from PotentialRisk
   onAddControl: (potentialRisk: PotentialRisk) => void;
   onEditControl: (control: Control) => void;
   onDeletePotentialRisk: (potentialRiskId: string) => void;
   onDeleteControl: (controlId: string) => void;
-  onManageCauses: (potentialRisk: PotentialRisk) => void; 
+  // onManageCauses: (potentialRisk: PotentialRisk) => void; // Replaced by onEditDetails
   onEditDetails: (potentialRiskId: string) => void;
 }
 
@@ -47,7 +47,7 @@ const getCauseSourceColorClasses = (source: RiskCause['source']) => {
   switch (source) {
     case 'Internal':
       return "bg-sky-100 text-sky-800 border-sky-300 dark:bg-sky-900/50 dark:text-sky-300 dark:border-sky-700";
-    case 'Eksternal': // Assuming Eksternal is the Indonesian term
+    case 'Eksternal':
       return "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/50 dark:text-amber-300 dark:border-amber-700";
     default:
       return "border-transparent bg-secondary text-secondary-foreground";
@@ -60,16 +60,16 @@ export function RiskListItem({
   goalCode,
   controls, 
   riskCauses,
-  onAnalyze, 
+  // onAnalyze, 
   onAddControl, 
   onEditControl, 
   onDeletePotentialRisk, 
   onDeleteControl,
-  // onManageCauses, // Replaced by onEditDetails
   onEditDetails
 }: RiskListItemProps) {
   
-  const potentialRiskCodeDisplay = `${goalCode || 'S?'}.PR${potentialRisk.sequenceNumber || '?'}`;
+  const displayGoalCode = goalCode || 'S?'; // Fallback if goalCode is undefined
+  const potentialRiskCodeDisplay = `${displayGoalCode}.PR${potentialRisk.sequenceNumber || '?'}`;
 
   return (
     <Card>
@@ -86,12 +86,9 @@ export function RiskListItem({
               <DropdownMenuItem onClick={() => onEditDetails(potentialRisk.id)}> 
                 <Edit className="mr-2 h-4 w-4" /> Edit Detail & Penyebab
               </DropdownMenuItem>
-              {/* <DropdownMenuItem onClick={() => onManageCauses(potentialRisk)}>
-                <Zap className="mr-2 h-4 w-4" /> Kelola Penyebab (Cepat) 
+              {/* <DropdownMenuItem onClick={() => onAnalyze(potentialRisk)}>
+                <BarChart3 className="mr-2 h-4 w-4" /> Analisis Level (Inheren) // Removed
               </DropdownMenuItem> */}
-              <DropdownMenuItem onClick={() => onAnalyze(potentialRisk)}>
-                <BarChart3 className="mr-2 h-4 w-4" /> Analisis Level (Inheren)
-              </DropdownMenuItem>
               <DropdownMenuItem onClick={() => onAddControl(potentialRisk)}>
                 <PlusCircle className="mr-2 h-4 w-4" /> Tambah Kontrol
               </DropdownMenuItem>
@@ -120,7 +117,6 @@ export function RiskListItem({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
-        {/* Analysis of Potential Risk itself is now primarily via the modal, not displayed directly here to reduce clutter */}
         
         {riskCauses.length > 0 && (
           <div>
@@ -131,7 +127,7 @@ export function RiskListItem({
             <div className="pl-1 space-y-1 max-h-24 overflow-y-auto scroll-smooth border-l-2 border-border ml-2">
               {riskCauses.slice(0, 3).map(cause => (
                 <div key={cause.id} className="text-sm text-muted-foreground p-1.5 rounded hover:bg-muted/40 ml-2">
-                  <span className="font-medium">{potentialRiskCodeDisplay}.PC{cause.sequenceNumber || '?'} - {cause.description}</span>
+                  <span className="font-medium">PC{cause.sequenceNumber || '?'} - {cause.description}</span>
                   <Badge className={`ml-2 text-xs font-normal ${getCauseSourceColorClasses(cause.source)}`}>{cause.source}</Badge>
                 </div>
               ))}

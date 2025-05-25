@@ -23,7 +23,7 @@ export interface Goal {
   createdAt: string; // ISO date string
   uprId: string; 
   period: string; 
-  code: string; // e.g., "A1", "B12"
+  code: string; 
 }
 
 export interface PotentialRisk {
@@ -32,10 +32,7 @@ export interface PotentialRisk {
   description: string;
   category: RiskCategory | null;
   owner: string | null; 
-  likelihood: LikelihoodImpactLevel | null; // Inherent likelihood
-  impact: LikelihoodImpactLevel | null; // Inherent impact
   identifiedAt: string; // ISO date string
-  analysisCompletedAt?: string; 
   sequenceNumber: number; 
 }
 
@@ -64,4 +61,3 @@ export interface Control {
 }
 
 export type RiskLevel = 'Sangat Rendah' | 'Rendah' | 'Sedang' | 'Tinggi' | 'Sangat Tinggi' | 'N/A';
-

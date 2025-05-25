@@ -18,7 +18,7 @@ import { RISK_CATEGORIES, RISK_SOURCES, LIKELIHOOD_IMPACT_LEVELS } from '@/lib/t
 import { useForm, type SubmitHandler, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { ArrowLeft, PlusCircle, Trash2, Loader2, Save, Edit3, BarChart3 } from 'lucide-react';
+import { ArrowLeft, PlusCircle, Trash2, Loader2, Save, BarChart3 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { getCurrentUprId, getCurrentPeriod, initializeAppContext } from '@/lib/upr-period-context';
 import { Separator } from '@/components/ui/separator';
@@ -123,7 +123,7 @@ export default function ManagePotentialRiskPage() {
     setGoals(loadedGoals.sort((a, b) => {
       const codeA = typeof a.code === 'string' ? a.code : '';
       const codeB = typeof b.code === 'string' ? b.code : '';
-      return codeA.localeCompare(codeB, undefined, {numeric: true});
+      return codeA.localeCompare(codeB, undefined, {numeric: true, sensitivity: 'base'});
     }));
     if (loadedGoals.length > 0 && isCreatingNew) {
         setPotentialRiskValue("goalId", loadedGoals[0].id);
@@ -168,7 +168,7 @@ export default function ManagePotentialRiskPage() {
       });
       const causesStorageKey = getRiskCausesStorageKey(parentGoalForRisk.uprId, parentGoalForRisk.period, foundPotentialRisk.id);
       const storedCausesData = localStorage.getItem(causesStorageKey);
-      setRiskCauses(storedCausesData ? JSON.parse(storedCausesData).sort((a: RiskCause, b: RiskCause) => a.sequenceNumber - b.sequenceNumber) : []);
+      setRiskCauses(storedCausesData ? JSON.parse(storedCausesData).sort((a: RiskCause, b: RiskCause) => (a.sequenceNumber || 0) - (b.sequenceNumber || 0)) : []);
     } else if (!isCreatingNew) {
       toast({ title: "Kesalahan", description: "Potensi Risiko tidak ditemukan.", variant: "destructive" });
       router.push('/all-risks');
@@ -211,8 +211,6 @@ export default function ManagePotentialRiskPage() {
         description: data.description,
         category: data.category === NO_CATEGORY_SENTINEL ? null : data.category,
         owner: data.owner || null,
-        likelihood: null,
-        impact: null,
         identifiedAt: new Date().toISOString(),
         sequenceNumber: currentGoalPotentialRisks.length + 1,
       };
@@ -237,6 +235,8 @@ export default function ManagePotentialRiskPage() {
             const oldGoalPRKey = getPotentialRisksStorageKeyForGoal(oldParentGoal.uprId, oldParentGoal.period, oldParentGoal.id);
             let oldGoalPRs: PotentialRisk[] = JSON.parse(localStorage.getItem(oldGoalPRKey) || '[]');
             oldGoalPRs = oldGoalPRs.filter(pr => pr.id !== currentPotentialRisk.id);
+            // Re-sequence PRs in old goal
+            oldGoalPRs.forEach((pr, index) => pr.sequenceNumber = index + 1);
             localStorage.setItem(oldGoalPRKey, JSON.stringify(oldGoalPRs.sort((a,b)=>(a.sequenceNumber - b.sequenceNumber || a.description.localeCompare(b.description)))));
         }
         const newGoalPRKey = getPotentialRisksStorageKeyForGoal(parentGoal.uprId, parentGoal.period, data.goalId);
@@ -284,7 +284,7 @@ export default function ManagePotentialRiskPage() {
       createdAt: new Date().toISOString(),
       sequenceNumber: riskCauses.length + 1,
     };
-    const updatedCauses = [...riskCauses, newCause].sort((a,b) => a.sequenceNumber - b.sequenceNumber);
+    const updatedCauses = [...riskCauses, newCause].sort((a,b) => (a.sequenceNumber || 0) - (b.sequenceNumber || 0));
     setRiskCauses(updatedCauses);
     localStorage.setItem(getRiskCausesStorageKey(parentPotentialRiskGoal.uprId, parentPotentialRiskGoal.period, currentPotentialRisk.id), JSON.stringify(updatedCauses));
     toast({ title: "Penyebab Risiko Ditambahkan", description: `Penyebab "${newCause.description}" (PC${newCause.sequenceNumber}) ditambahkan.` });
@@ -298,11 +298,10 @@ export default function ManagePotentialRiskPage() {
 
     const causeToDelete = riskCauses.find(c => c.id === causeId);
     if (!causeToDelete) return;
-    const updatedCauses = riskCauses.filter(c => c.id !== causeId);
-    // Re-sequence remaining causes
-    const resequencedCauses = updatedCauses.map((cause, index) => ({ ...cause, sequenceNumber: index + 1 }));
-    setRiskCauses(resequencedCauses); 
-    localStorage.setItem(getRiskCausesStorageKey(parentPotentialRiskGoal.uprId, parentPotentialRiskGoal.period, currentPotentialRisk.id), JSON.stringify(resequencedCauses));
+    let updatedCauses = riskCauses.filter(c => c.id !== causeId);
+    updatedCauses = updatedCauses.map((cause, index) => ({ ...cause, sequenceNumber: index + 1 }));
+    setRiskCauses(updatedCauses.sort((a,b) => (a.sequenceNumber || 0) - (b.sequenceNumber || 0))); 
+    localStorage.setItem(getRiskCausesStorageKey(parentPotentialRiskGoal.uprId, parentPotentialRiskGoal.period, currentPotentialRisk.id), JSON.stringify(updatedCauses));
     toast({ title: "Penyebab Risiko Dihapus", description: `Penyebab "${causeToDelete.description}" (PC${causeToDelete.sequenceNumber}) dihapus.`, variant: "destructive" });
   };
 
@@ -315,7 +314,7 @@ export default function ManagePotentialRiskPage() {
     );
   }
   
-  const parentGoalCode = currentPotentialRisk ? goals.find(g => g.id === currentPotentialRisk.goalId)?.code : "";
+  const parentGoalCode = currentPotentialRisk ? (goals.find(g => g.id === currentPotentialRisk.goalId)?.code || 'S?') : (goals.length > 0 ? goals[0].code || 'S?' : 'S?');
   const potentialRiskCode = parentGoalCode && currentPotentialRisk ? `${parentGoalCode}.PR${currentPotentialRisk.sequenceNumber}` : (isCreatingNew ? "PR Baru" : "PR...");
 
   return (
@@ -496,7 +495,7 @@ export default function ManagePotentialRiskPage() {
                           <TableHead>Sumber</TableHead>
                           <TableHead className="min-w-[100px]">KRI</TableHead>
                           <TableHead className="min-w-[100px]">Toleransi</TableHead>
-                          <TableHead>Prob.</TableHead>
+                          <TableHead>Kemungkinan</TableHead>
                           <TableHead>Dampak</TableHead>
                           <TableHead>Level</TableHead>
                           <TableHead className="text-right">Aksi</TableHead>
@@ -546,5 +545,3 @@ export default function ManagePotentialRiskPage() {
     </div>
   );
 }
-
-    

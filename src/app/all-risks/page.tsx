@@ -7,12 +7,11 @@ import Link from 'next/link';
 import { PageHeader } from '@/components/ui/page-header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { RiskAnalysisModal } from '@/components/risks/risk-analysis-modal';
+// RiskAnalysisModal is no longer used here for PotentialRisk inherent analysis
 import { RiskControlModal } from '@/components/risks/risk-control-modal';
-// import { ManageRiskCausesDialog } from '@/components/risks/manage-risk-causes-dialog'; // Manage causes directly on edit page now
 import type { Goal, PotentialRisk, Control, RiskCause, RiskCategory, LikelihoodImpactLevel, RiskLevel } from '@/lib/types';
 import { RISK_CATEGORIES } from '@/lib/types';
-import { PlusCircle, Loader2, Settings2, BarChart3, Trash2, Edit, ListChecks, ChevronDown, ChevronUp, Search, Filter, Zap } from 'lucide-react';
+import { PlusCircle, Loader2, Settings2, Trash2, Edit, ListChecks, ChevronDown, ChevronUp, Search, Filter, Zap } from 'lucide-react'; // BarChart3 removed
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -42,15 +41,11 @@ export default function AllRisksPage() {
   const [selectedCategories, setSelectedCategories] = useState<RiskCategory[]>([]);
   const [selectedGoalIds, setSelectedGoalIds] = useState<string[]>([]);
 
-  const [selectedPotentialRiskForAnalysis, setSelectedPotentialRiskForAnalysis] = useState<PotentialRisk | null>(null);
-  const [isAnalysisModalOpen, setIsAnalysisModalOpen] = useState(false);
+  // selectedPotentialRiskForAnalysis and isAnalysisModalOpen are removed
   
   const [selectedPotentialRiskForControl, setSelectedPotentialRiskForControl] = useState<PotentialRisk | null>(null);
   const [selectedControlForEdit, setSelectedControlForEdit] = useState<Control | null>(null);
   const [isControlModalOpen, setIsControlModalOpen] = useState(false);
-
-  // const [selectedPotentialRiskForCauses, setSelectedPotentialRiskForCauses] = useState<PotentialRisk | null>(null);
-  // const [isManageCausesModalOpen, setIsManageCausesModalOpen] = useState(false);
 
   const { toast } = useToast();
 
@@ -138,28 +133,7 @@ export default function AllRisksPage() {
     router.push(`/all-risks/manage/${pRiskId}`);
   };
   
-  const handleOpenAnalysisModal = (pRiskToAnalyze: PotentialRisk) => {
-    setSelectedPotentialRiskForAnalysis(pRiskToAnalyze);
-    setIsAnalysisModalOpen(true);
-  };
-
-  const handleSaveRiskAnalysis = (updatedPotentialRisk: PotentialRisk) => {
-    const parentGoal = goals.find(g => g.id === updatedPotentialRisk.goalId);
-    if (!parentGoal) return;
-
-    setAllPotentialRisks(prevRisks => 
-        prevRisks.map(pr => pr.id === updatedPotentialRisk.id ? updatedPotentialRisk : pr)
-    );
-    
-    const goalPotentialRisks = allPotentialRisks
-        .map(pr => pr.id === updatedPotentialRisk.id ? updatedPotentialRisk : pr)
-        .filter(pr => pr.goalId === updatedPotentialRisk.goalId);
-    updatePotentialRisksInStorageForGoal(parentGoal.uprId, parentGoal.period, updatedPotentialRisk.goalId, goalPotentialRisks);
-
-    toast({ title: "Analisis Inheren Potensi Risiko Disimpan", description: `Analisis untuk: "${updatedPotentialRisk.description}" telah disimpan.`});
-    setIsAnalysisModalOpen(false);
-    setSelectedPotentialRiskForAnalysis(null);
-  };
+  // handleOpenAnalysisModal and handleSaveRiskAnalysis are removed
 
   const handleOpenControlModal = (pRiskForControl: PotentialRisk, controlToEdit?: Control) => {
     setSelectedPotentialRiskForControl(pRiskForControl);
@@ -292,7 +266,7 @@ export default function AllRisksPage() {
         
         const codeA = goalA?.code || '';
         const codeB = goalB?.code || '';
-        const codeComparison = codeA.localeCompare(codeB, undefined, {numeric: true});
+        const codeComparison = codeA.localeCompare(codeB, undefined, {numeric: true, sensitivity: 'base'});
         if (codeComparison !== 0) return codeComparison;
 
         const seqA = a.sequenceNumber || 0;
@@ -314,7 +288,7 @@ export default function AllRisksPage() {
   }
 
   const relevantGoals = goals.filter(g => g.uprId === currentUprId && g.period === currentPeriod);
-  const totalTableColumns = 8; // Expand, Kode, Deskripsi, Kategori, Pemilik, Sasaran, Penyebab, Kontrol, Aksi
+  const totalTableColumns = 7; // Expand, Kode, Deskripsi, Kategori, Pemilik, Sasaran, Penyebab, Kontrol, Aksi -> Now 7 after removing L, I, L
 
   return (
     <div className="space-y-6">
@@ -376,7 +350,7 @@ export default function AllRisksPage() {
               <DropdownMenuSeparator />
               {relevantGoals.length > 0 ? (
                 <ScrollArea className="h-[200px]">
-                  {relevantGoals.sort((a,b) => (a.code || '').localeCompare(b.code || '', undefined, {numeric: true})).map((goal) => (
+                  {relevantGoals.sort((a,b) => (a.code || '').localeCompare(b.code || '', undefined, {numeric: true, sensitivity: 'base'})).map((goal) => (
                     <DropdownMenuCheckboxItem
                       key={goal.id}
                       checked={selectedGoalIds.includes(goal.id)}
@@ -477,9 +451,7 @@ export default function AllRisksPage() {
                               <DropdownMenuItem onClick={() => handleOpenEditPotentialRiskPage(pRisk.id)}>
                                 <Edit className="mr-2 h-4 w-4" /> Edit Detail & Penyebab
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleOpenAnalysisModal(pRisk)}>
-                                <BarChart3 className="mr-2 h-4 w-4" /> Analisis Level (Inheren)
-                              </DropdownMenuItem>
+                              {/* Inherent analysis action removed */}
                               <DropdownMenuItem onClick={() => handleOpenControlModal(pRisk)}>
                                 <PlusCircle className="mr-2 h-4 w-4" /> Kelola Kontrol
                               </DropdownMenuItem>
@@ -494,7 +466,7 @@ export default function AllRisksPage() {
                       {isExpanded && (
                         <TableRow className="bg-muted/30 hover:bg-muted/40">
                           <TableCell /> 
-                          <TableCell colSpan={totalTableColumns -1} className="p-0">
+                          <TableCell colSpan={totalTableColumns -1} className="p-0"> {/* Adjusted colSpan */}
                             <div className="p-3 space-y-1 text-xs">
                               <h4 className="font-semibold text-foreground">Deskripsi Lengkap Potensi Risiko:</h4>
                               <p className="text-muted-foreground whitespace-pre-wrap">{pRisk.description}</p>
@@ -511,16 +483,7 @@ export default function AllRisksPage() {
         </Card>
       )}
 
-      {selectedPotentialRiskForAnalysis && goals.find(g => g.id === selectedPotentialRiskForAnalysis.goalId) && (
-        <RiskAnalysisModal
-            potentialRisk={selectedPotentialRiskForAnalysis}
-            goalDescription={goals.find(g => g.id === selectedPotentialRiskForAnalysis!.goalId)?.description || ""}
-            isOpen={isAnalysisModalOpen}
-            onOpenChange={setIsAnalysisModalOpen}
-            onSave={handleSaveRiskAnalysis}
-        />
-      )}
-
+      {/* RiskAnalysisModal and its state are removed */}
 
       {selectedPotentialRiskForControl && <RiskControlModal
         potentialRisk={selectedPotentialRiskForControl}
@@ -535,22 +498,6 @@ export default function AllRisksPage() {
         }}
         onSave={handleSaveControl}
       />}
-
-      {/* ManageRiskCausesDialog is no longer needed here as causes are managed on the detail page */}
-      {/* {selectedPotentialRiskForCauses && (
-        <ManageRiskCausesDialog
-            potentialRisk={selectedPotentialRiskForCauses}
-            goalUprId={goals.find(g => g.id === selectedPotentialRiskForCauses.goalId)?.uprId || currentUprId}
-            goalPeriod={goals.find(g => g.id === selectedPotentialRiskForCauses.goalId)?.period || currentPeriod}
-            isOpen={isManageCausesModalOpen}
-            onOpenChange={(isOpen) => {
-                setIsManageCausesModalOpen(isOpen);
-                if (!isOpen) setSelectedPotentialRiskForCauses(null);
-            }}
-            onCausesUpdate={handleCausesUpdate}
-            initialCauses={allRiskCauses.filter(rc => rc.potentialRiskId === selectedPotentialRiskForCauses.id)}
-        />
-      )} */}
     </div>
   );
 }
