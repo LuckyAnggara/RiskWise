@@ -19,7 +19,7 @@ import type { Goal } from '@/lib/types';
 import { useForm, type SubmitHandler } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { PlusCircle, Pencil, Loader2 } from 'lucide-react'; // Added Loader2
+import { PlusCircle, Pencil, Loader2 } from 'lucide-react';
 
 const goalSchema = z.object({
   name: z.string().min(3, "Nama sasaran minimal 3 karakter."),
@@ -29,24 +29,22 @@ const goalSchema = z.object({
 type GoalFormData = z.infer<typeof goalSchema>;
 
 interface AddGoalDialogProps {
-  onGoalSave: (goalData: GoalFormData, existingGoalId?: string) => Promise<void>; // Made async
+  onGoalSave: (goalData: GoalFormData, existingGoalId?: string) => Promise<void>;
   existingGoal?: Goal | null;
   triggerButton?: React.ReactNode;
-  existingGoalsCount: number; // Tetap diperlukan jika logika kodefikasi di client-side sebelum kirim ke server
 }
 
 export function AddGoalDialog({ 
   onGoalSave, 
   existingGoal, 
   triggerButton,
-  existingGoalsCount, 
 }: AddGoalDialogProps) {
   const [open, setOpen] = useState(false);
   const {
     register,
     handleSubmit,
     reset,
-    formState: { errors, isSubmitting }, // isSubmitting from react-hook-form
+    formState: { errors, isSubmitting },
   } = useForm<GoalFormData>({
     resolver: zodResolver(goalSchema),
     defaultValues: {

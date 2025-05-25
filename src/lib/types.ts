@@ -1,27 +1,29 @@
 
-export const LIKELIHOOD_LEVELS_MAP = {
-  "Hampir tidak terjadi": 1,
-  "Jarang terjadi": 2,
-  "Kadang terjadi": 3,
-  "Sering terjadi": 4,
-  "Hampir pasti terjadi": 5,
+export const LIKELIHOOD_LEVELS_DESC_MAP = {
+  "Hampir tidak terjadi (1)": 1,
+  "Jarang terjadi (2)": 2,
+  "Kadang terjadi (3)": 3,
+  "Sering terjadi (4)": 4,
+  "Hampir pasti terjadi (5)": 5,
 } as const;
-export type LikelihoodLevelDesc = keyof typeof LIKELIHOOD_LEVELS_MAP;
-export const LIKELIHOOD_LEVELS_DESC: LikelihoodLevelDesc[] = Object.keys(LIKELIHOOD_LEVELS_MAP) as LikelihoodLevelDesc[];
+export type LikelihoodLevelDesc = keyof typeof LIKELIHOOD_LEVELS_DESC_MAP;
+export const LIKELIHOOD_LEVELS_DESC = Object.keys(LIKELIHOOD_LEVELS_DESC_MAP) as LikelihoodLevelDesc[];
 
 
-export const IMPACT_LEVELS_MAP = {
-  "Tidak Signifikan": 1,
-  "Minor": 2,
-  "Moderat": 3,
-  "Signifikan": 4,
-  "Sangat Signifikan": 5,
+export const IMPACT_LEVELS_DESC_MAP = {
+  "Tidak Signifikan (1)": 1,
+  "Minor (2)": 2,
+  "Moderat (3)": 3,
+  "Signifikan (4)": 4,
+  "Sangat Signifikan (5)": 5,
 } as const;
-export type ImpactLevelDesc = keyof typeof IMPACT_LEVELS_MAP;
-export const IMPACT_LEVELS_DESC: ImpactLevelDesc[] = Object.keys(IMPACT_LEVELS_MAP) as ImpactLevelDesc[];
+export type ImpactLevelDesc = keyof typeof IMPACT_LEVELS_DESC_MAP;
+export const IMPACT_LEVELS_DESC = Object.keys(IMPACT_LEVELS_DESC_MAP) as ImpactLevelDesc[];
+
 
 export type CalculatedRiskLevelCategory = 'Sangat Rendah' | 'Rendah' | 'Sedang' | 'Tinggi' | 'Sangat Tinggi';
 export type RiskLevelDisplay = CalculatedRiskLevelCategory | 'N/A';
+
 
 export const RISK_CATEGORIES = [
   'Kebijakan', 
@@ -51,15 +53,18 @@ export interface Goal {
   name: string;
   description: string;
   code: string; 
-  createdAt: string; // Sebaiknya simpan sebagai Firestore Timestamp, tapi string ISO juga bisa
+  createdAt: string; 
   uprId: string; 
   period: string; 
   userId?: string; // UID pengguna Firebase yang membuat/memiliki sasaran
 }
 
 export interface PotentialRisk {
-  id: string; // Firestore document ID
-  goalId: string; 
+  id: string; 
+  goalId: string;
+  uprId: string;
+  period: string;
+  userId?: string;
   description: string;
   category: RiskCategory | null;
   owner: string | null; 
@@ -68,8 +73,11 @@ export interface PotentialRisk {
 }
 
 export interface RiskCause {
-  id: string; // Firestore document ID
+  id: string; 
   potentialRiskId: string; 
+  uprId: string;
+  period: string;
+  userId?: string;
   description: string;
   source: RiskSource;
   keyRiskIndicator: string | null;
@@ -82,12 +90,13 @@ export interface RiskCause {
 }
 
 export interface ControlMeasure {
-  id: string; // Firestore document ID
+  id: string; 
   riskCauseId: string;
   potentialRiskId: string; 
   goalId: string; 
   uprId: string;
   period: string;
+  userId?: string;
   controlType: ControlMeasureTypeKey;
   sequenceNumber: number; 
   description: string;

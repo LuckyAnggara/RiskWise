@@ -5,14 +5,14 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { PageHeader } from '@/components/ui/page-header';
 import { GoalCard } from '@/components/goals/goal-card';
 import { AddGoalDialog } from '@/components/goals/add-goal-dialog';
-import type { Goal, PotentialRisk } from '@/lib/types';
+import type { Goal } from '@/lib/types';
 import { PlusCircle, Target, Loader2, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { getCurrentUprId, getCurrentPeriod, initializeAppContext } from '@/lib/upr-period-context';
 import { useAuth } from '@/contexts/auth-context';
-import { addGoal, getGoals, updateGoal, deleteGoal } from '@/services/goalService'; // Import Firestore service
+import { addGoal, getGoals, updateGoal, deleteGoal } from '@/services/goalService';
 
 export default function GoalsPage() {
   const [goals, setGoals] = useState<Goal[]>([]);
@@ -53,9 +53,8 @@ export default function GoalsPage() {
   useEffect(() => {
     if (currentUprId && currentPeriod && currentUser) {
       loadGoals();
-    } else {
-      // Jika belum ada currentUser, tampilkan state loading atau kosong
-      setIsLoading(!currentUser); // Tetap loading jika user belum ada
+    } else if (!currentUser) {
+      setIsLoading(false); 
       setGoals([]);
     }
   }, [currentUprId, currentPeriod, currentUser, loadGoals]);
@@ -75,36 +74,32 @@ export default function GoalsPage() {
         const newGoal = await addGoal(goalData, currentUprId, currentPeriod, currentUser.uid);
         toast({ title: "Sasaran Ditambahkan", description: `Sasaran baru "${newGoal.name}" (${newGoal.code}) telah berhasil ditambahkan.` });
       }
-      loadGoals(); // Muat ulang daftar sasaran
-    } catch (error) {
+      loadGoals(); 
+    } catch (error: any) {
       console.error("Gagal menyimpan sasaran:", error);
-      toast({ title: "Kesalahan", description: "Gagal menyimpan sasaran.", variant: "destructive" });
+      toast({ title: "Kesalahan", description: error.message || "Gagal menyimpan sasaran.", variant: "destructive" });
     }
   };
 
   const handleGoalDelete = async (goalId: string) => {
     const goalToDelete = goals.find(g => g.id === goalId);
-    if (!goalToDelete) return;
+    if (!goalToDelete || !currentUprId || !currentPeriod) return;
 
-    // Konfirmasi sebelum menghapus (opsional, tapi disarankan)
-    // const confirmed = window.confirm(`Apakah Anda yakin ingin menghapus sasaran "${goalToDelete.name}"?`);
-    // if (!confirmed) return;
+    const confirmed = window.confirm(`Apakah Anda yakin ingin menghapus sasaran "${goalToDelete.name}" (${goalToDelete.code})? Semua potensi risiko, penyebab, dan rencana pengendalian terkait juga akan dihapus.`);
+    if (!confirmed) return;
 
     try {
-      await deleteGoal(goalId);
-      // PENTING: Anda juga perlu menghapus semua data terkait (PotentialRisks, RiskCauses, ControlMeasures)
-      // dari Firestore. Ini biasanya memerlukan Firebase Cloud Functions untuk cascading delete yang aman.
-      // Untuk saat ini, kita hanya menghapus dari UI.
-      toast({ title: "Sasaran Dihapus", description: `Sasaran "${goalToDelete.name}" (${goalToDelete.code}) telah dihapus.`, variant: "destructive" });
-      loadGoals(); // Muat ulang daftar sasaran
-    } catch (error) {
+      await deleteGoal(goalId, currentUprId, currentPeriod);
+      toast({ title: "Sasaran Dihapus", description: `Sasaran "${goalToDelete.name}" (${goalToDelete.code}) dan semua data terkait telah dihapus.`, variant: "destructive" });
+      loadGoals(); 
+    } catch (error: any) {
       console.error("Gagal menghapus sasaran:", error);
-      toast({ title: "Kesalahan", description: "Gagal menghapus sasaran.", variant: "destructive" });
+      toast({ title: "Kesalahan", description: error.message || "Gagal menghapus sasaran.", variant: "destructive" });
     }
   };
 
   const filteredGoals = useMemo(() => {
-    let sortedGoals = [...goals]; // Data sudah diurutkan dari Firestore berdasarkan 'code'
+    let sortedGoals = [...goals]; 
     if (!searchTerm) {
       return sortedGoals;
     }
@@ -115,7 +110,7 @@ export default function GoalsPage() {
     );
   }, [goals, searchTerm]);
   
-  if (isLoading || !currentUprId || !currentPeriod) {
+  if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center h-screen">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
@@ -123,6 +118,21 @@ export default function GoalsPage() {
       </div>
     );
   }
+   if (!currentUser && !isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen">
+        <Target className="mx-auto h-12 w-12 text-muted-foreground" />
+        <h3 className="mt-4 text-xl font-medium">Akses Dibatasi</h3>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Silakan login untuk mengakses halaman ini.
+        </p>
+        <Button onClick={() => router.push('/login')} className="mt-6">
+            Ke Halaman Login
+        </Button>
+      </div>
+    );
+  }
+
 
   return (
     <div className="space-y-6">
@@ -137,7 +147,6 @@ export default function GoalsPage() {
                 <PlusCircle className="mr-2 h-4 w-4" /> Tambah Sasaran Baru
               </Button>
             }
-            existingGoalsCount={goals.length} // Diperlukan untuk penomoran kode, meskipun service akan menghitung ulang
           />
         }
       />
@@ -180,7 +189,6 @@ export default function GoalsPage() {
                   <PlusCircle className="mr-2 h-4 w-4" /> Tambah Sasaran Baru
                 </Button>
               }
-              existingGoalsCount={goals.length}
             />
           </div>
         </div>
