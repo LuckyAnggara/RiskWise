@@ -4,15 +4,21 @@
 import React from 'react';
 import { Badge } from "@/components/ui/badge";
 import type { RiskCause, LikelihoodLevelDesc, ImpactLevelDesc, CalculatedRiskLevelCategory } from '@/lib/types';
-import { LIKELIHOOD_LEVELS_DESC_MAP, IMPACT_LEVELS_DESC_MAP } from '@/lib/types';
+import { LIKELIHOOD_LEVELS_MAP, IMPACT_LEVELS_MAP } from '@/lib/types'; // Corrected import
 import { getRiskLevelColor, getCalculatedRiskLevel } from '@/app/risk-cause-analysis/[riskCauseId]/page';
 
 interface RiskPriorityMatrixProps {
   riskCauses: Array<RiskCause & { riskScore?: number | null; riskLevelText?: string }>;
 }
 
-const likelihoodLevelsSorted = Object.entries(LIKELIHOOD_LEVELS_DESC_MAP).sort(([, aVal], [, bVal]) => bVal - aVal).map(([desc,]) => desc as LikelihoodLevelDesc);
-const impactLevelsSorted = Object.entries(IMPACT_LEVELS_DESC_MAP).sort(([, aVal], [, bVal]) => aVal - bVal).map(([desc,]) => desc as ImpactLevelDesc);
+// Sort by numeric value, then map to description
+const likelihoodLevelsSorted = Object.entries(LIKELIHOOD_LEVELS_MAP)
+  .sort(([, aVal], [, bVal]) => bVal - aVal) // Sort descending by value for matrix display (5 at top)
+  .map(([desc,]) => desc as LikelihoodLevelDesc);
+
+const impactLevelsSorted = Object.entries(IMPACT_LEVELS_MAP)
+  .sort(([, aVal], [, bVal]) => aVal - bVal) // Sort ascending by value for matrix display (1 at left)
+  .map(([desc,]) => desc as ImpactLevelDesc);
 
 
 export function RiskPriorityMatrix({ riskCauses }: RiskPriorityMatrixProps) {
@@ -91,4 +97,3 @@ export function RiskPriorityMatrix({ riskCauses }: RiskPriorityMatrixProps) {
   );
 }
 
-    
