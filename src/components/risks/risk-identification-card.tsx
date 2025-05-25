@@ -5,7 +5,7 @@ import React, { useState } from 'react';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Wand2 } from 'lucide-react';
-import type { Goal, PotentialRisk } from '@/lib/types';
+import type { Goal, PotentialRisk, RiskCategory } from '@/lib/types'; // Import RiskCategory
 import { useToast } from "@/hooks/use-toast";
 import { BrainstormContextModal } from './brainstorm-context-modal';
 import { BrainstormSuggestionsModal } from './brainstorm-suggestions-modal';
@@ -16,32 +16,37 @@ interface RiskIdentificationCardProps {
   existingPotentialRisksCount: number;
 }
 
+interface AISuggestion {
+  description: string;
+  category: RiskCategory | null;
+}
+
 export function RiskIdentificationCard({ goal, onPotentialRisksIdentified, existingPotentialRisksCount }: RiskIdentificationCardProps) {
   const { toast } = useToast();
   const [isContextModalOpen, setIsContextModalOpen] = useState(false);
   const [isSuggestionsModalOpen, setIsSuggestionsModalOpen] = useState(false);
-  const [aiSuggestions, setAiSuggestions] = useState<string[]>([]);
+  const [aiSuggestions, setAiSuggestions] = useState<AISuggestion[]>([]);
 
-  const initialAIContext = `Sasaran ${goal.code || '[TANPA KODE]'}: ${goal.name} - ${goal.description} (Konteks untuk sasaran ini: UPR ${goal.uprId}, Periode ${goal.period})`;
+  const initialAIContext = `Nama Sasaran: ${goal.name}\nKode Sasaran: ${goal.code || 'N/A'}\nDeskripsi Sasaran: ${goal.description}\nKonteks UPR: ${goal.uprId}, Periode: ${goal.period}`;
 
-  const handleSuggestionsReady = (suggestions: string[]) => {
+  const handleSuggestionsReady = (suggestions: AISuggestion[]) => {
     if (suggestions.length === 0) {
         toast({
             title: "Tidak Ada Saran dari AI",
             description: "AI tidak menghasilkan potensi risiko untuk konteks yang diberikan.",
             variant: "default"
         });
-        setIsContextModalOpen(false); // Close context modal
+        setIsContextModalOpen(false); 
         return;
     }
     setAiSuggestions(suggestions);
-    setIsContextModalOpen(false); // Close context modal
-    setIsSuggestionsModalOpen(true); // Open suggestions modal
+    setIsContextModalOpen(false); 
+    setIsSuggestionsModalOpen(true); 
   };
 
   const handleSaveSelectedRisks = (newRisks: PotentialRisk[]) => {
-    onPotentialRisksIdentified(newRisks); // This function is passed from the parent page
-    setIsSuggestionsModalOpen(false); // Close suggestions modal
+    onPotentialRisksIdentified(newRisks); 
+    setIsSuggestionsModalOpen(false); 
     toast({
       title: "Potensi Risiko Disimpan",
       description: `${newRisks.length} potensi risiko baru telah ditambahkan dari saran AI.`,

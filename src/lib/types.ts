@@ -4,18 +4,12 @@ export const LIKELIHOOD_IMPACT_LEVELS: LikelihoodImpactLevel[] = ['Sangat Rendah
 
 export const RISK_CATEGORIES = [
   'Kebijakan', 
-  'Fraud', 
-  'Keuangan', 
-  'Operasional', 
+  'Hukum', 
   'Reputasi', 
   'Kepatuhan', 
-  'Strategis', 
-  'Bencana Alam', 
-  'Teknologi Informasi', 
-  'Sumber Daya Manusia',
-  'Hukum',
-  'Proyek',
-  'Lainnya'
+  'Keuangan', 
+  'Fraud', 
+  'Operasional'
 ] as const;
 export type RiskCategory = typeof RISK_CATEGORIES[number];
 
@@ -70,3 +64,4 @@ export interface Control {
 }
 
 export type RiskLevel = 'Sangat Rendah' | 'Rendah' | 'Sedang' | 'Tinggi' | 'Sangat Tinggi' | 'N/A';
+

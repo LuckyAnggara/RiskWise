@@ -17,12 +17,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { Loader2, Wand2 } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { brainstormPotentialRisksAction } from '@/app/actions';
+import type { RiskCategory } from '@/lib/types';
 
 interface BrainstormContextModalProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   initialContext: string;
-  onSuggestionsReady: (suggestions: string[]) => void;
+  onSuggestionsReady: (suggestions: Array<{ description: string; category: RiskCategory | null }>) => void;
   goalUprId: string;
   goalPeriod: string;
 }
@@ -53,7 +54,7 @@ export function BrainstormContextModal({
     setIsLoading(true);
     try {
       const result = await brainstormPotentialRisksAction({ 
-        goalDescription: context, // Include UPR/Period context within this description
+        goalDescription: context, 
         desiredCount: desiredCount 
       });
       if (result.success && result.data && result.data.potentialRisks) {
@@ -101,7 +102,7 @@ export function BrainstormContextModal({
             />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="desiredCount">Jumlah Potensi Risiko yang Diinginkan (1-10, opsional)</Label>
+            <Label htmlFor="desiredCount">Jumlah Potensi Risiko yang Diinginkan (1-10)</Label>
             <Input
               id="desiredCount"
               type="number"
