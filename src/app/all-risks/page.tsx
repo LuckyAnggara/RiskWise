@@ -150,7 +150,7 @@ export default function AllRisksPage() {
         .filter(pr => pr.goalId === updatedPotentialRisk.goalId);
     updatePotentialRisksInStorageForGoal(parentGoal.uprId, parentGoal.period, updatedPotentialRisk.goalId, goalPotentialRisks);
 
-    toast({ title: "Potensi Risiko Dianalisis", description: `Analisis disimpan untuk: "${updatedPotentialRisk.description}"`});
+    toast({ title: "Analisis Inheren Potensi Risiko Disimpan", description: `Analisis untuk: "${updatedPotentialRisk.description}" telah disimpan.`});
     setIsAnalysisModalOpen(false);
     setSelectedPotentialRiskForAnalysis(null);
   };
@@ -303,7 +303,7 @@ export default function AllRisksPage() {
   }
 
   const relevantGoals = goals.filter(g => g.uprId === currentUprId && g.period === currentPeriod);
-  const totalTableColumns = 7; // 1 expand + Deskripsi, Kategori, Pemilik, Sasaran, Penyebab, Kontrol, Aksi (No likelihood, impact, level)
+  const totalTableColumns = 7; // Expand, Deskripsi, Kategori, Pemilik, Sasaran, Penyebab, Kontrol, Aksi
 
   return (
     <div className="space-y-6">
@@ -458,7 +458,7 @@ export default function AllRisksPage() {
                                 <Zap className="mr-2 h-4 w-4" /> Kelola Penyebab (Cepat)
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => handleOpenAnalysisModal(pRisk)}>
-                                <BarChart3 className="mr-2 h-4 w-4" /> Analisis Level (Modal)
+                                <BarChart3 className="mr-2 h-4 w-4" /> Analisis Level (Inheren)
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => handleOpenControlModal(pRisk)}>
                                 <PlusCircle className="mr-2 h-4 w-4" /> Kelola Kontrol
@@ -473,7 +473,7 @@ export default function AllRisksPage() {
                       </TableRow>
                       {isExpanded && (
                         <TableRow className="bg-muted/30 hover:bg-muted/40">
-                          <TableCell colSpan={totalTableColumns} className="p-0"> {/* Ensure colSpan is correct */}
+                          <TableCell colSpan={totalTableColumns} className="p-0">
                             <div className="p-3 space-y-1 text-sm">
                               <h4 className="font-semibold text-foreground">Deskripsi Lengkap:</h4>
                               <p className="text-muted-foreground whitespace-pre-wrap">{pRisk.description}</p>
@@ -528,3 +528,5 @@ export default function AllRisksPage() {
     </div>
   );
 }
+
+    

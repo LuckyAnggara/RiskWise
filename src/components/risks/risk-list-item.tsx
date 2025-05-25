@@ -27,37 +27,6 @@ interface RiskListItemProps {
   onEditDetails: (potentialRiskId: string) => void;
 }
 
-const getRiskLevel = (likelihood: LikelihoodImpactLevel | null, impact: LikelihoodImpactLevel | null): string => {
-  if (!likelihood || !impact) return 'N/A';
-  const L: { [key in LikelihoodImpactLevel]: number } = { 'Sangat Rendah': 1, 'Rendah': 2, 'Sedang': 3, 'Tinggi': 4, 'Sangat Tinggi': 5 };
-  const I: { [key in LikelihoodImpactLevel]: number } = { 'Sangat Rendah': 1, 'Rendah': 2, 'Sedang': 3, 'Tinggi': 4, 'Sangat Tinggi': 5 };
-  
-  const likelihoodValue = L[likelihood];
-  const impactValue = I[impact];
-
-  if (!likelihoodValue || !impactValue) return 'N/A';
-
-  const score = likelihoodValue * impactValue;
-
-  if (score >= 20) return 'Sangat Tinggi';
-  if (score >= 16) return 'Tinggi';
-  if (score >= 12) return 'Sedang';
-  if (score >= 6) return 'Rendah';
-  if (score >= 1) return 'Sangat Rendah';
-  return 'N/A';
-};
-
-const getRiskLevelColor = (level: string) => {
-  switch (level.toLowerCase()) {
-    case 'sangat tinggi': return 'bg-red-600 hover:bg-red-700 text-white';
-    case 'tinggi': return 'bg-orange-500 hover:bg-orange-600 text-white';
-    case 'sedang': return 'bg-yellow-400 hover:bg-yellow-500 text-black dark:bg-yellow-500 dark:text-black';
-    case 'rendah': return 'bg-blue-500 hover:bg-blue-600 text-white';
-    case 'sangat rendah': return 'bg-green-500 hover:bg-green-600 text-white';
-    default: return 'bg-gray-400 hover:bg-gray-500 text-white';
-  }
-};
-
 const getControlStatusColorClasses = (status: Control['status']) => {
   switch (status) {
     case 'Implemented':
@@ -77,7 +46,7 @@ const getCauseSourceColorClasses = (source: RiskCause['source']) => {
   switch (source) {
     case 'Internal':
       return "bg-sky-100 text-sky-800 border-sky-300 dark:bg-sky-900/50 dark:text-sky-300 dark:border-sky-700";
-    case 'Eksternal': // Note: 'Eksternal' vs 'External' in types.ts
+    case 'Eksternal':
       return "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/50 dark:text-amber-300 dark:border-amber-700";
     default:
       return "border-transparent bg-secondary text-secondary-foreground";
@@ -97,16 +66,15 @@ export function RiskListItem({
   onManageCauses,
   onEditDetails
 }: RiskListItemProps) {
-  const riskLevel = getRiskLevel(potentialRisk.likelihood, potentialRisk.impact);
 
   return (
     <Card>
       <CardHeader>
         <div className="flex items-start justify-between">
-          <CardTitle className="text-lg">{potentialRisk.description}</CardTitle>
+          <CardTitle className="text-base">{potentialRisk.description}</CardTitle> {/* Adjusted font size */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" aria-label="Opsi risiko">
+              <Button variant="ghost" size="icon" aria-label="Opsi potensi risiko">
                 <Settings2 className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
@@ -118,7 +86,7 @@ export function RiskListItem({
                 <Zap className="mr-2 h-4 w-4" /> Kelola Penyebab (Cepat)
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => onAnalyze(potentialRisk)}>
-                <BarChart3 className="mr-2 h-4 w-4" /> Analisis Level
+                <BarChart3 className="mr-2 h-4 w-4" /> Analisis Level (Inheren)
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => onAddControl(potentialRisk)}>
                 <PlusCircle className="mr-2 h-4 w-4" /> Tambah Kontrol
@@ -148,26 +116,8 @@ export function RiskListItem({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
-        <div className="grid grid-cols-3 gap-2 text-center border p-2 rounded-md">
-          <div>
-            <span className="text-xs font-medium text-muted-foreground block">Probabilitas</span>
-            <Badge variant={potentialRisk.likelihood ? "outline" : "outline"} className={`text-xs mt-1 ${!potentialRisk.likelihood ? "text-muted-foreground" : ""}`}>
-              {potentialRisk.likelihood || 'Belum diatur'}
-            </Badge>
-          </div>
-          <div>
-            <span className="text-xs font-medium text-muted-foreground block">Dampak</span>
-            <Badge variant={potentialRisk.impact ? "outline" : "outline"} className={`text-xs mt-1 ${!potentialRisk.impact ? "text-muted-foreground" : ""}`}>
-              {potentialRisk.impact || 'Belum diatur'}
-            </Badge>
-          </div>
-          <div>
-            <span className="text-xs font-medium text-muted-foreground block">Level Risiko</span>
-             <Badge className={`${getRiskLevelColor(riskLevel)} text-xs mt-1`}>
-                {riskLevel}
-             </Badge>
-          </div>
-        </div>
+        {/* Likelihood, Impact, and Level for PotentialRisk itself are removed from here to avoid confusion */}
+        {/* Analysis is now focused on RiskCause level */}
         
         {riskCauses.length > 0 && (
           <div>
@@ -234,4 +184,4 @@ export function RiskListItem({
     </Card>
   );
 }
-
+    
