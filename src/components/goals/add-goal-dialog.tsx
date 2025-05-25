@@ -19,7 +19,7 @@ import type { Goal } from '@/lib/types';
 import { useForm, type SubmitHandler } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { PlusCircle, Pencil } from 'lucide-react';
+import { PlusCircle, Pencil, Loader2 } from 'lucide-react'; // Added Loader2
 
 const goalSchema = z.object({
   name: z.string().min(3, "Nama sasaran minimal 3 karakter."),
@@ -29,22 +29,24 @@ const goalSchema = z.object({
 type GoalFormData = z.infer<typeof goalSchema>;
 
 interface AddGoalDialogProps {
-  onGoalSave: (goalData: GoalFormData, existingGoalId?: string) => void;
+  onGoalSave: (goalData: GoalFormData, existingGoalId?: string) => Promise<void>; // Made async
   existingGoal?: Goal | null;
   triggerButton?: React.ReactNode;
+  existingGoalsCount: number; // Tetap diperlukan jika logika kodefikasi di client-side sebelum kirim ke server
 }
 
 export function AddGoalDialog({ 
   onGoalSave, 
   existingGoal, 
-  triggerButton, 
+  triggerButton,
+  existingGoalsCount, 
 }: AddGoalDialogProps) {
   const [open, setOpen] = useState(false);
   const {
     register,
     handleSubmit,
     reset,
-    formState: { errors, isSubmitting },
+    formState: { errors, isSubmitting }, // isSubmitting from react-hook-form
   } = useForm<GoalFormData>({
     resolver: zodResolver(goalSchema),
     defaultValues: {
@@ -66,10 +68,12 @@ export function AddGoalDialog({
     }
   }, [existingGoal, open, reset]);
 
-  const onSubmit: SubmitHandler<GoalFormData> = (data) => {
-    onGoalSave(data, existingGoal?.id);
+  const onSubmit: SubmitHandler<GoalFormData> = async (data) => {
+    await onGoalSave(data, existingGoal?.id);
     setOpen(false);
   };
+
+  const displayCode = existingGoal?.code || `(Kode Baru)`;
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => {
@@ -88,13 +92,13 @@ export function AddGoalDialog({
         ) : (
           <Button onClick={() => setOpen(true)}>
             {existingGoal ? <Pencil className="mr-2 h-4 w-4" /> : <PlusCircle className="mr-2 h-4 w-4" />}
-             {existingGoal ? `Edit Sasaran (${existingGoal.code})` : "Tambah Sasaran Baru"}
+             {existingGoal ? `Edit Sasaran (${displayCode})` : "Tambah Sasaran Baru"}
           </Button>
         )}
       </DialogTrigger>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>{existingGoal ? `Edit Sasaran (${existingGoal.code})` : "Tambah Sasaran Baru"}</DialogTitle>
+          <DialogTitle>{existingGoal ? `Edit Sasaran (${displayCode})` : "Tambah Sasaran Baru"}</DialogTitle>
           <DialogDescription>
             {existingGoal ? `Perbarui detail sasaran Anda.` : `Definisikan sasaran baru untuk mulai mengelola risikonya.`}
           </DialogDescription>
@@ -109,6 +113,7 @@ export function AddGoalDialog({
                 id="name"
                 {...register("name")}
                 className={errors.name ? "border-destructive" : ""}
+                disabled={isSubmitting}
               />
               {errors.name && <p className="text-xs text-destructive mt-1">{errors.name.message}</p>}
             </div>
@@ -122,14 +127,15 @@ export function AddGoalDialog({
                 id="description"
                 {...register("description")}
                 className={errors.description ? "border-destructive" : ""}
+                disabled={isSubmitting}
               />
               {errors.description && <p className="text-xs text-destructive mt-1">{errors.description.message}</p>}
             </div>
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setOpen(false)}>Batal</Button>
+            <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={isSubmitting}>Batal</Button>
             <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? "Menyimpan..." : (existingGoal ? "Simpan Perubahan" : "Simpan Sasaran")}
+              {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : (existingGoal ? "Simpan Perubahan" : "Simpan Sasaran")}
             </Button>
           </DialogFooter>
         </form>
@@ -137,4 +143,3 @@ export function AddGoalDialog({
     </Dialog>
   );
 }
-

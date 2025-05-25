@@ -47,17 +47,18 @@ export const CONTROL_MEASURE_TYPE_KEYS = Object.keys(CONTROL_MEASURE_TYPES) as C
 
 
 export interface Goal {
-  id: string;
+  id: string; // Firestore document ID
   name: string;
   description: string;
   code: string; 
-  createdAt: string; 
+  createdAt: string; // Sebaiknya simpan sebagai Firestore Timestamp, tapi string ISO juga bisa
   uprId: string; 
   period: string; 
+  userId?: string; // UID pengguna Firebase yang membuat/memiliki sasaran
 }
 
 export interface PotentialRisk {
-  id: string;
+  id: string; // Firestore document ID
   goalId: string; 
   description: string;
   category: RiskCategory | null;
@@ -67,7 +68,7 @@ export interface PotentialRisk {
 }
 
 export interface RiskCause {
-  id: string;
+  id: string; // Firestore document ID
   potentialRiskId: string; 
   description: string;
   source: RiskSource;
@@ -81,19 +82,19 @@ export interface RiskCause {
 }
 
 export interface ControlMeasure {
-  id: string;
+  id: string; // Firestore document ID
   riskCauseId: string;
-  potentialRiskId: string; // For context and easier data retrieval/deletion
-  goalId: string; // For context
+  potentialRiskId: string; 
+  goalId: string; 
   uprId: string;
   period: string;
   controlType: ControlMeasureTypeKey;
-  sequenceNumber: number; // Sequence per type, per riskCause
+  sequenceNumber: number; 
   description: string;
   keyControlIndicator: string | null;
   target: string | null;
   responsiblePerson: string | null;
-  deadline: string | null; // Consider using Date object or ISO string, for now string
+  deadline: string | null; 
   budget: number | null;
   createdAt: string;
   updatedAt?: string;

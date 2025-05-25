@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { PageHeader } from '@/components/ui/page-header';
 import { GoalCard } from '@/components/goals/goal-card';
 import { AddGoalDialog } from '@/components/goals/add-goal-dialog';
@@ -11,18 +11,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { getCurrentUprId, getCurrentPeriod, initializeAppContext } from '@/lib/upr-period-context';
-
-const INITIAL_GOALS_TEMPLATE: Omit<Goal, 'uprId' | 'period'>[] = [
-  { id: 'g1', code: 'L1', name: 'Luncurkan Produk X Baru', description: 'Berhasil mengembangkan dan meluncurkan Produk X pada Q4 untuk meraih 5% pangsa pasar dalam tahun pertama.', createdAt: '2023-10-15T10:00:00Z' },
-  { id: 'g2', code: 'T1', name: 'Tingkatkan Kepuasan Pelanggan', description: 'Naikkan skor kepuasan pelanggan (CSAT) dari 80% menjadi 90% pada akhir tahun melalui peningkatan dukungan dan kegunaan produk.', createdAt: '2023-11-01T14:30:00Z' },
-  { id: 'g3', code: 'E1', name: 'Ekspansi ke Pasar Baru', description: 'Membangun kehadiran pasar di setidaknya 3 wilayah baru utama pada pertengahan tahun depan, mencapai target penjualan awal.', createdAt: '2024-01-20T09:15:00Z' },
-];
-
-const getGoalsStorageKey = (uprId: string, period: string) => `riskwise-upr${uprId}-period${period}-goals`;
-const getPotentialRisksStorageKey = (uprId: string, period: string, goalId: string) => `riskwise-upr${uprId}-period${period}-goal${goalId}-potentialRisks`;
-const getControlsStorageKey = (uprId: string, period: string, potentialRiskId: string) => `riskwise-upr${uprId}-period${period}-potentialRisk${potentialRiskId}-controls`;
-const getRiskCausesStorageKey = (uprId: string, period: string, potentialRiskId: string) => `riskwise-upr${uprId}-period${period}-potentialRisk${potentialRiskId}-causes`;
-
+import { useAuth } from '@/contexts/auth-context';
+import { addGoal, getGoals, updateGoal, deleteGoal } from '@/services/goalService'; // Import Firestore service
 
 export default function GoalsPage() {
   const [goals, setGoals] = useState<Goal[]>([]);
@@ -31,120 +21,90 @@ export default function GoalsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const { toast } = useToast();
+  const { currentUser } = useAuth();
+
+  const loadGoals = useCallback(async () => {
+    if (!currentUser || !currentUprId || !currentPeriod) {
+      setGoals([]);
+      setIsLoading(false);
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const fetchedGoals = await getGoals(currentUprId, currentPeriod);
+      setGoals(fetchedGoals);
+    } catch (error) {
+      console.error("Gagal memuat sasaran:", error);
+      toast({ title: "Kesalahan", description: "Gagal memuat daftar sasaran.", variant: "destructive" });
+      setGoals([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [currentUprId, currentPeriod, currentUser, toast]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const context = initializeAppContext();
-      const uprId = context.uprId;
-      const period = context.period;
-      setCurrentUprId(uprId);
-      setCurrentPeriod(period);
-
-      const storageKey = getGoalsStorageKey(uprId, period);
-      const storedGoalsData = localStorage.getItem(storageKey);
-    
-      if (storedGoalsData) {
-        setGoals(JSON.parse(storedGoalsData));
-      } else {
-        const initialGoalsWithContext = INITIAL_GOALS_TEMPLATE.map(g => ({
-          ...g,
-          uprId: uprId,
-          period: period,
-        }));
-        setGoals(initialGoalsWithContext);
-        localStorage.setItem(storageKey, JSON.stringify(initialGoalsWithContext));
-      }
-      setIsLoading(false);
+      setCurrentUprId(context.uprId);
+      setCurrentPeriod(context.period);
     }
   }, []);
 
-  const updateLocalStorage = (updatedGoals: Goal[]) => {
-    if (typeof window !== 'undefined' && currentUprId && currentPeriod) {
-      const storageKey = getGoalsStorageKey(currentUprId, currentPeriod);
-      localStorage.setItem(storageKey, JSON.stringify(updatedGoals.sort((a, b) => {
-        const codeA = typeof a.code === 'string' ? a.code : '';
-        const codeB = typeof b.code === 'string' ? b.code : '';
-        return codeA.localeCompare(codeB, undefined, {numeric: true});
-      })));
+  useEffect(() => {
+    if (currentUprId && currentPeriod && currentUser) {
+      loadGoals();
+    } else {
+      // Jika belum ada currentUser, tampilkan state loading atau kosong
+      setIsLoading(!currentUser); // Tetap loading jika user belum ada
+      setGoals([]);
+    }
+  }, [currentUprId, currentPeriod, currentUser, loadGoals]);
+
+  const handleGoalSave = async (goalData: Omit<Goal, 'id' | 'code' | 'createdAt' | 'uprId' | 'period' | 'userId'>, existingGoalId?: string) => {
+    if (!currentUser || !currentUprId || !currentPeriod) {
+      toast({ title: "Autentikasi Diperlukan", description: "Anda harus login untuk menyimpan sasaran.", variant: "destructive" });
+      return;
+    }
+
+    try {
+      if (existingGoalId) {
+        await updateGoal(existingGoalId, goalData);
+        const editedGoal = goals.find(g => g.id === existingGoalId);
+        toast({ title: "Sasaran Diperbarui", description: `Sasaran "${goalData.name}" (${editedGoal?.code}) telah berhasil diperbarui.` });
+      } else {
+        const newGoal = await addGoal(goalData, currentUprId, currentPeriod, currentUser.uid);
+        toast({ title: "Sasaran Ditambahkan", description: `Sasaran baru "${newGoal.name}" (${newGoal.code}) telah berhasil ditambahkan.` });
+      }
+      loadGoals(); // Muat ulang daftar sasaran
+    } catch (error) {
+      console.error("Gagal menyimpan sasaran:", error);
+      toast({ title: "Kesalahan", description: "Gagal menyimpan sasaran.", variant: "destructive" });
     }
   };
 
-  const handleGoalSave = (goalData: Omit<Goal, 'id' | 'code' | 'createdAt' | 'uprId' | 'period'>, existingGoalId?: string) => {
-    setGoals(prevGoals => {
-      let updatedGoals;
-      if (existingGoalId) { // Editing existing goal
-        updatedGoals = prevGoals.map(g => 
-          g.id === existingGoalId 
-          ? { ...g, name: goalData.name, description: goalData.description } 
-          : g
-        );
-        const editedGoal = updatedGoals.find(g => g.id === existingGoalId);
-        toast({ title: "Sasaran Diperbarui", description: `Sasaran "${editedGoal?.name}" (${editedGoal?.code}) telah berhasil diperbarui.` });
-      } else { // Adding new goal
-        const firstLetter = goalData.name.charAt(0).toUpperCase();
-        const prefix = /^[A-Z]$/.test(firstLetter) ? firstLetter : 'X';
-        
-        const goalsWithSamePrefix = prevGoals.filter(g => g.code && g.code.startsWith(prefix));
-        let maxNum = 0;
-        goalsWithSamePrefix.forEach(g => {
-          if (g.code) {
-            const numPart = parseInt(g.code.substring(prefix.length), 10);
-            if (!isNaN(numPart) && numPart > maxNum) {
-              maxNum = numPart;
-            }
-          }
-        });
-        const newNumericPart = maxNum + 1;
-        const newGoalCode = `${prefix}${newNumericPart}`;
-
-        const newGoal: Goal = {
-          id: `goal_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-          name: goalData.name,
-          description: goalData.description,
-          code: newGoalCode,
-          createdAt: new Date().toISOString(),
-          uprId: currentUprId,
-          period: currentPeriod,
-        };
-        updatedGoals = [newGoal, ...prevGoals];
-        toast({ title: "Sasaran Ditambahkan", description: `Sasaran baru "${newGoal.name}" (${newGoal.code}) telah berhasil ditambahkan.` });
-      }
-      updateLocalStorage(updatedGoals);
-      return updatedGoals;
-    });
-  };
-
-  const handleGoalDelete = (goalId: string) => {
+  const handleGoalDelete = async (goalId: string) => {
     const goalToDelete = goals.find(g => g.id === goalId);
-    if (!goalToDelete || !currentUprId || !currentPeriod) return;
+    if (!goalToDelete) return;
 
-    setGoals(prevGoals => {
-      const updatedGoals = prevGoals.filter(g => g.id !== goalId);
-      updateLocalStorage(updatedGoals);
+    // Konfirmasi sebelum menghapus (opsional, tapi disarankan)
+    // const confirmed = window.confirm(`Apakah Anda yakin ingin menghapus sasaran "${goalToDelete.name}"?`);
+    // if (!confirmed) return;
+
+    try {
+      await deleteGoal(goalId);
+      // PENTING: Anda juga perlu menghapus semua data terkait (PotentialRisks, RiskCauses, ControlMeasures)
+      // dari Firestore. Ini biasanya memerlukan Firebase Cloud Functions untuk cascading delete yang aman.
+      // Untuk saat ini, kita hanya menghapus dari UI.
       toast({ title: "Sasaran Dihapus", description: `Sasaran "${goalToDelete.name}" (${goalToDelete.code}) telah dihapus.`, variant: "destructive" });
-      
-      if (typeof window !== 'undefined') {
-        const potentialRisksStorageKey = getPotentialRisksStorageKey(currentUprId, currentPeriod, goalId);
-        const storedPotentialRisks = localStorage.getItem(potentialRisksStorageKey);
-        if (storedPotentialRisks) {
-          localStorage.removeItem(potentialRisksStorageKey);
-          const pRisks: PotentialRisk[] = JSON.parse(storedPotentialRisks);
-          pRisks.forEach(pRisk => {
-            localStorage.removeItem(getControlsStorageKey(currentUprId, currentPeriod, pRisk.id));
-            localStorage.removeItem(getRiskCausesStorageKey(currentUprId, currentPeriod, pRisk.id));
-          });
-        }
-      }
-      return updatedGoals;
-    });
+      loadGoals(); // Muat ulang daftar sasaran
+    } catch (error) {
+      console.error("Gagal menghapus sasaran:", error);
+      toast({ title: "Kesalahan", description: "Gagal menghapus sasaran.", variant: "destructive" });
+    }
   };
 
   const filteredGoals = useMemo(() => {
-    let sortedGoals = [...goals].sort((a, b) => {
-        const codeA = typeof a.code === 'string' ? a.code : '';
-        const codeB = typeof b.code === 'string' ? b.code : '';
-        return codeA.localeCompare(codeB, undefined, {numeric: true});
-    });
+    let sortedGoals = [...goals]; // Data sudah diurutkan dari Firestore berdasarkan 'code'
     if (!searchTerm) {
       return sortedGoals;
     }
@@ -173,10 +133,11 @@ export default function GoalsPage() {
           <AddGoalDialog 
             onGoalSave={handleGoalSave}
             triggerButton={
-              <Button>
+              <Button disabled={!currentUser}>
                 <PlusCircle className="mr-2 h-4 w-4" /> Tambah Sasaran Baru
               </Button>
             }
+            existingGoalsCount={goals.length} // Diperlukan untuk penomoran kode, meskipun service akan menghitung ulang
           />
         }
       />
@@ -215,10 +176,11 @@ export default function GoalsPage() {
             <AddGoalDialog 
               onGoalSave={handleGoalSave} 
               triggerButton={
-                <Button>
+                <Button disabled={!currentUser}>
                   <PlusCircle className="mr-2 h-4 w-4" /> Tambah Sasaran Baru
                 </Button>
               }
+              existingGoalsCount={goals.length}
             />
           </div>
         </div>
@@ -239,5 +201,3 @@ export default function GoalsPage() {
     </div>
   );
 }
-
-    
