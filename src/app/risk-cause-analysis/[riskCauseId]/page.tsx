@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { PageHeader } from '@/components/ui/page-header';
 import { Button } from '@/components/ui/button';
@@ -9,8 +9,8 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import type { PotentialRisk, Goal, RiskCause, LikelihoodLevelDesc, ImpactLevelDesc, RiskCategory, RiskSource, CalculatedRiskLevelCategory } from '@/lib/types';
-import { LIKELIHOOD_LEVELS_DESC, IMPACT_LEVELS_DESC, LIKELIHOOD_LEVELS_MAP, IMPACT_LEVELS_MAP } from '@/lib/types';
+import type { PotentialRisk, Goal, RiskCause, LikelihoodLevelDesc, ImpactLevelDesc, RiskCategory } from '@/lib/types';
+import { LIKELIHOOD_LEVELS_DESC, IMPACT_LEVELS_DESC, LIKELIHOOD_LEVELS_MAP, IMPACT_LEVELS_MAP, CalculatedRiskLevelCategory } from '@/lib/types';
 import { useForm, type SubmitHandler, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -53,7 +53,7 @@ export const getCalculatedRiskLevel = (likelihood: LikelihoodLevelDesc | null, i
   else if (score >= 12) level = 'Sedang';
   else if (score >= 6) level = 'Rendah';
   else if (score >= 1) level = 'Sangat Rendah';
-  else level = 'Sangat Rendah'; 
+  else level = 'Sangat Rendah'; // Default for score 0 or invalid
 
   return { level, score };
 };
@@ -64,7 +64,7 @@ export const getRiskLevelColor = (level: CalculatedRiskLevelCategory | 'N/A') =>
     case 'sangat tinggi': return 'bg-red-600 hover:bg-red-700 text-white';
     case 'tinggi': return 'bg-orange-500 hover:bg-orange-600 text-white';
     case 'sedang': return 'bg-yellow-400 hover:bg-yellow-500 text-black dark:bg-yellow-500 dark:text-black';
-    case 'rendah': return 'bg-blue-500 hover:bg-blue-600 text-white';
+    case 'rendah': return 'bg-blue-500 hover:bg-blue-600 text-white'; 
     case 'sangat rendah': return 'bg-green-500 hover:bg-green-600 text-white';
     default: return 'bg-gray-400 hover:bg-gray-500 text-white';
   }
@@ -107,12 +107,13 @@ export default function RiskCauseAnalysisPage() {
     control,
     watch,
     setValue, 
+    getValues,
     formState: { errors },
   } = useForm<RiskCauseAnalysisFormData>({
     resolver: zodResolver(riskCauseAnalysisSchema),
     defaultValues: {
-        keyRiskIndicator: null,
-        riskTolerance: null,
+        keyRiskIndicator: "",
+        riskTolerance: "",
         likelihood: null,
         impact: null,
     }
@@ -122,78 +123,97 @@ export default function RiskCauseAnalysisPage() {
   const watchedImpact = watch("impact");
   const { level: calculatedRiskLevelText, score: calculatedRiskScore } = getCalculatedRiskLevel(watchedLikelihood, watchedImpact);
 
-
-  const getReturnPath = useCallback(() => {
+  const returnPathForButton = useMemo(() => {
     const fromQuery = searchParams.get('from');
     if (fromQuery) return fromQuery;
     if (parentPotentialRisk) return `/all-risks/manage/${parentPotentialRisk.id}`;
     return '/risk-analysis'; // Default fallback
   }, [searchParams, parentPotentialRisk]);
 
-  const loadData = useCallback(async () => {
-    const context = initializeAppContext();
-    setCurrentUprId(context.uprId);
-    setCurrentPeriod(context.period);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const context = initializeAppContext();
+      setCurrentUprId(context.uprId);
+      setCurrentPeriod(context.period);
+    }
+  }, []); 
+
+
+  useEffect(() => {
+    if (!currentUprId || !currentPeriod || !riskCauseId) {
+      // Do not proceed if context or ID is missing
+      if(riskCauseId) { // Only set loading false if riskCauseId was present but context was not ready
+          setPageIsLoading(false);
+      }
+      return;
+    }
+
     setPageIsLoading(true);
-
-    const goalsStorageKey = getGoalsStorageKey(context.uprId, context.period);
-    const storedGoalsData = localStorage.getItem(goalsStorageKey);
-    const allGoals: Goal[] = storedGoalsData ? JSON.parse(storedGoalsData) : [];
-
     let foundCause: RiskCause | null = null;
     let foundPotentialRisk: PotentialRisk | null = null;
     let foundGoal: Goal | null = null;
 
-    for (const goal of allGoals) {
-      const potentialRisksStorageKey = getPotentialRisksStorageKeyForGoal(goal.uprId, goal.period, goal.id);
-      const storedPotentialRisksData = localStorage.getItem(potentialRisksStorageKey);
-      if (storedPotentialRisksData) {
-        const goalPotentialRisks: PotentialRisk[] = JSON.parse(storedPotentialRisksData);
-        for (const pRisk of goalPotentialRisks) {
-          const causesStorageKey = getRiskCausesStorageKey(goal.uprId, goal.period, pRisk.id);
-          const storedCausesData = localStorage.getItem(causesStorageKey);
-          if (storedCausesData) {
-            const pRiskCauses: RiskCause[] = JSON.parse(storedCausesData);
-            const cause = pRiskCauses.find(rc => rc.id === riskCauseId);
-            if (cause) {
-              foundCause = cause;
-              foundPotentialRisk = pRisk;
-              foundGoal = goal;
-              break;
+    if (typeof window !== 'undefined') {
+      const goalsStorageKey = getGoalsStorageKey(currentUprId, currentPeriod);
+      const storedGoalsData = localStorage.getItem(goalsStorageKey);
+      const allGoals: Goal[] = storedGoalsData ? JSON.parse(storedGoalsData) : [];
+
+      for (const goal of allGoals) {
+        const potentialRisksStorageKey = getPotentialRisksStorageKeyForGoal(goal.uprId, goal.period, goal.id);
+        const storedPotentialRisksData = localStorage.getItem(potentialRisksStorageKey);
+        if (storedPotentialRisksData) {
+          const goalPotentialRisks: PotentialRisk[] = JSON.parse(storedPotentialRisksData);
+          for (const pRisk of goalPotentialRisks) {
+            const causesStorageKey = getRiskCausesStorageKey(goal.uprId, goal.period, pRisk.id);
+            const storedCausesData = localStorage.getItem(causesStorageKey);
+            if (storedCausesData) {
+              const pRiskCauses: RiskCause[] = JSON.parse(storedCausesData);
+              const cause = pRiskCauses.find(rc => rc.id === riskCauseId);
+              if (cause) {
+                foundCause = cause;
+                foundPotentialRisk = pRisk;
+                foundGoal = goal;
+                break;
+              }
             }
           }
         }
+        if (foundCause) break;
       }
-      if (foundCause) break;
     }
 
-    setCurrentRiskCause(foundCause);
-    setParentPotentialRisk(foundPotentialRisk);
-    setGrandParentGoal(foundGoal);
-    setAiSuggestion(null); 
-
-    if (foundCause) {
-      reset({
-        keyRiskIndicator: foundCause.keyRiskIndicator || "",
-        riskTolerance: foundCause.riskTolerance || "",
-        likelihood: foundCause.likelihood,
-        impact: foundCause.impact,
-      });
+    if (foundCause && foundPotentialRisk && foundGoal) {
+      // Only update if the found cause is different from the current one
+      // This helps prevent unnecessary re-renders and potential loops if data hasn't actually changed
+      setCurrentRiskCause(prev => (!prev || prev.id !== foundCause.id) ? foundCause : prev);
+      setParentPotentialRisk(foundPotentialRisk);
+      setGrandParentGoal(foundGoal);
     } else {
       toast({ title: "Kesalahan", description: "Detail Penyebab Risiko tidak ditemukan.", variant: "destructive" });
-      router.push(getReturnPath()); 
+      const fromQuery = searchParams.get('from'); // Read directly for navigation
+      router.push(fromQuery || (foundPotentialRisk ? `/all-risks/manage/${foundPotentialRisk.id}` : '/risk-analysis'));
     }
     setPageIsLoading(false);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [riskCauseId, reset, router, toast, getReturnPath]); 
+
+  // Dependencies: riskCauseId, currentUprId, currentPeriod trigger data re-fetch.
+  // router and toast are stable. searchParams is removed to prevent loops from its reference changing.
+  }, [riskCauseId, currentUprId, currentPeriod, router, toast]);
 
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      loadData();
+    // This effect resets the form when currentRiskCause (loaded data) changes.
+    if (currentRiskCause) {
+      reset({
+        keyRiskIndicator: currentRiskCause.keyRiskIndicator || "",
+        riskTolerance: currentRiskCause.riskTolerance || "",
+        likelihood: currentRiskCause.likelihood,
+        impact: currentRiskCause.impact,
+      });
+      setAiSuggestion(null); // Reset AI suggestion when the main cause data changes
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadData, riskCauseId]);
+  }, [currentRiskCause, reset]);
+
 
   const onSubmit: SubmitHandler<RiskCauseAnalysisFormData> = async (data) => {
     if (!currentRiskCause || !parentPotentialRisk || !grandParentGoal) {
@@ -233,6 +253,7 @@ export default function RiskCauseAnalysisPage() {
         goalDescription: grandParentGoal.description,
         riskCauseDescription: currentRiskCause.description,
       });
+
       if (result.success && result.data) {
         setAiSuggestion({
           likelihood: result.data.suggestedLikelihood,
@@ -240,8 +261,14 @@ export default function RiskCauseAnalysisPage() {
           impact: result.data.suggestedImpact,
           impactJustification: result.data.impactJustification,
         });
-        if (result.data.suggestedLikelihood) setValue('likelihood', result.data.suggestedLikelihood);
-        if (result.data.suggestedImpact) setValue('impact', result.data.suggestedImpact);
+
+        const currentValues = getValues();
+        if (result.data.suggestedLikelihood && result.data.suggestedLikelihood !== currentValues.likelihood) {
+          setValue('likelihood', result.data.suggestedLikelihood, {shouldValidate: true});
+        }
+        if (result.data.suggestedImpact && result.data.suggestedImpact !== currentValues.impact) {
+          setValue('impact', result.data.suggestedImpact, {shouldValidate: true});
+        }
 
       } else {
         toast({ title: "Kesalahan Saran AI", description: result.error || "Gagal mendapatkan saran dari AI.", variant: "destructive" });
@@ -261,11 +288,22 @@ export default function RiskCauseAnalysisPage() {
     return `${potentialRiskCode}•PC${cause.sequenceNumber || '?'}`;
   };
 
-  if (pageIsLoading || !currentRiskCause || !parentPotentialRisk || !grandParentGoal) {
+  if (pageIsLoading || !currentUprId || !currentPeriod) { // Ensure UPR/Period are loaded before showing content
     return (
       <div className="flex flex-col items-center justify-center h-screen">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
         <p className="text-xl text-muted-foreground">Memuat data analisis penyebab risiko...</p>
+      </div>
+    );
+  }
+  
+  if (!currentRiskCause || !parentPotentialRisk || !grandParentGoal) {
+     // This case should ideally be caught by the loading logic or the not found navigation
+     // If it still reaches here, it means data wasn't found but navigation didn't happen.
+    return (
+      <div className="flex flex-col items-center justify-center h-screen">
+        <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
+        <p className="text-xl text-muted-foreground">Memuat detail penyebab risiko atau data tidak ditemukan...</p>
       </div>
     );
   }
@@ -282,7 +320,7 @@ export default function RiskCauseAnalysisPage() {
         description={`Input KRI, Toleransi, Kemungkinan, dan Dampak untuk penyebab: "${currentRiskCause.description}"`}
         actions={
           <Button 
-            onClick={() => router.push(getReturnPath())} 
+            onClick={() => router.push(returnPathForButton)} 
             variant="outline"
           >
             <ArrowLeft className="mr-2 h-4 w-4" /> Kembali
@@ -363,7 +401,7 @@ export default function RiskCauseAnalysisPage() {
                                 <SelectValue placeholder="Pilih kemungkinan" />
                             </SelectTrigger>
                             <SelectContent>
-                            {LIKELIHOOD_LEVELS_DESC.map(level => (<SelectItem key={`lh-${level}`} value={level}>{`${level} (${LIKELIHOOD_LEVELS_MAP[level]})`}</SelectItem>))}
+                            {LIKELIHOOD_LEVELS_DESC.map(level => (<SelectItem key={`lh-${level}`} value={level}>{level}</SelectItem>))}
                             </SelectContent>
                         </Select>
                         )}
@@ -372,7 +410,7 @@ export default function RiskCauseAnalysisPage() {
                     {aiSuggestion?.likelihoodJustification && (
                       <Alert variant="default" className="mt-2 text-xs">
                          <Wand2 className="h-4 w-4" />
-                         <AlertTitle className="font-semibold">Saran AI (Kemungkinan): {aiSuggestion.likelihood ? `${aiSuggestion.likelihood} (${LIKELIHOOD_LEVELS_MAP[aiSuggestion.likelihood]})` : "Tidak ada"}</AlertTitle>
+                         <AlertTitle className="font-semibold">Saran AI (Kemungkinan): {aiSuggestion.likelihood || "Tidak ada"}</AlertTitle>
                          <AlertDescription>{aiSuggestion.likelihoodJustification}</AlertDescription>
                        </Alert>
                     )}
@@ -391,7 +429,7 @@ export default function RiskCauseAnalysisPage() {
                     <Controller
                         name="impact"
                         control={control}
-                        render={({ field }) => (
+                        render={({ field }) => ( // This is line 362 in this snippet
                         <Select 
                             value={field.value || ""} 
                             onValueChange={(value) => {
@@ -403,7 +441,7 @@ export default function RiskCauseAnalysisPage() {
                                 <SelectValue placeholder="Pilih dampak" />
                             </SelectTrigger>
                             <SelectContent>
-                            {IMPACT_LEVELS_DESC.map(level => (<SelectItem key={`im-${level}`} value={level}>{`${level} (${IMPACT_LEVELS_MAP[level]})`}</SelectItem>))}
+                            {IMPACT_LEVELS_DESC.map(level => (<SelectItem key={`im-${level}`} value={level}>{level}</SelectItem>))}
                             </SelectContent>
                         </Select>
                         )}
@@ -412,7 +450,7 @@ export default function RiskCauseAnalysisPage() {
                     {aiSuggestion?.impactJustification && (
                       <Alert variant="default" className="mt-2 text-xs">
                         <Wand2 className="h-4 w-4" />
-                        <AlertTitle className="font-semibold">Saran AI (Dampak): {aiSuggestion.impact ? `${aiSuggestion.impact} (${IMPACT_LEVELS_MAP[aiSuggestion.impact]})` : "Tidak ada"}</AlertTitle>
+                        <AlertTitle className="font-semibold">Saran AI (Dampak): {aiSuggestion.impact || "Tidak ada"}</AlertTitle>
                         <AlertDescription>{aiSuggestion.impactJustification}</AlertDescription>
                       </Alert>
                     )}
@@ -421,7 +459,7 @@ export default function RiskCauseAnalysisPage() {
                 <div className="space-y-2 rounded-md border p-3 bg-muted/30">
                     <div className="flex items-center justify-between">
                         <Label className="text-sm font-medium">Tingkat Risiko (Penyebab)</Label>
-                         <Badge className={`${getRiskLevelColor(calculatedRiskLevelText)}`}>
+                         <Badge className={`${getRiskLevelColor(calculatedRiskLevelText)} text-xs`}>
                             {calculatedRiskLevelText === 'N/A' ? 'N/A' : `${calculatedRiskLevelText} (${calculatedRiskScore})`}
                          </Badge>
                     </div>
