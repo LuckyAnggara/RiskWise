@@ -18,17 +18,23 @@ import { RISK_CATEGORIES, RISK_SOURCES, LIKELIHOOD_IMPACT_LEVELS } from '@/lib/t
 import { useForm, type SubmitHandler, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { ArrowLeft, PlusCircle, Trash2, Loader2, Save, BarChart3, Wand2 } from 'lucide-react';
+import { ArrowLeft, PlusCircle, Trash2, Loader2, Save, BarChart3, Wand2, Settings2, Edit } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { getCurrentUprId, getCurrentPeriod, initializeAppContext } from '@/lib/upr-period-context';
 import { Separator } from '@/components/ui/separator';
 import { BrainstormCausesContextModal } from '@/components/risks/brainstorm-causes-context-modal';
 import { BrainstormCausesSuggestionsModal } from '@/components/risks/brainstorm-causes-suggestions-modal';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 const potentialRiskFormSchema = z.object({
   description: z.string().min(10, "Deskripsi potensi risiko minimal 10 karakter."),
   goalId: z.string().min(1, "Sasaran harus dipilih."),
-  category: z.custom<RiskCategory>().nullable().refine(val => val === null || RISK_CATEGORIES.includes(val), {
+  category: z.custom<RiskCategory>().nullable().refine(val => val === null || RISK_CATEGORIES.includes(val as RiskCategory), {
     message: "Kategori risiko tidak valid.",
   }),
   owner: z.string().nullable(),
@@ -38,7 +44,7 @@ type PotentialRiskFormData = z.infer<typeof potentialRiskFormSchema>;
 
 const riskCauseFormSchema = z.object({
   causeDescription: z.string().min(5, "Deskripsi penyebab minimal 5 karakter."),
-  causeSource: z.custom<RiskSource>().refine(val => RISK_SOURCES.includes(val), {
+  causeSource: z.custom<RiskSource>().refine(val => RISK_SOURCES.includes(val as RiskSource), {
     message: "Sumber harus dipilih.",
   }),
 });
@@ -568,15 +574,29 @@ export default function ManagePotentialRiskPage() {
                                 <TableCell>
                                    <Badge className={`${getRiskLevelColor(causeRiskLevel)} text-xs`}>{causeRiskLevel}</Badge>
                                 </TableCell>
-                                <TableCell className="text-right space-x-1">
-                                  <Link href={`/risk-cause-analysis/${cause.id}`}>
-                                    <Button variant="outline" size="xs">
-                                      <BarChart3 className="h-3 w-3 mr-1" /> Analisis
-                                    </Button>
-                                  </Link>
-                                  <Button variant="ghost" size="xs" onClick={() => handleDeleteRiskCause(cause.id)} aria-label="Hapus penyebab">
-                                    <Trash2 className="h-3 w-3 text-destructive" />
-                                  </Button>
+                                <TableCell className="text-right">
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                      <Button variant="ghost" size="icon" className="h-7 w-7">
+                                        <Settings2 className="h-4 w-4" />
+                                      </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end">
+                                      <DropdownMenuItem asChild>
+                                        <Link href={`/risk-cause-analysis/${cause.id}`}>
+                                          <BarChart3 className="mr-2 h-4 w-4" />
+                                          Analisis Detail
+                                        </Link>
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem
+                                        onClick={() => handleDeleteRiskCause(cause.id)}
+                                        className="text-destructive focus:text-destructive focus:bg-destructive/10"
+                                      >
+                                        <Trash2 className="mr-2 h-4 w-4" />
+                                        Hapus
+                                      </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
                                 </TableCell>
                               </TableRow>
                             );
