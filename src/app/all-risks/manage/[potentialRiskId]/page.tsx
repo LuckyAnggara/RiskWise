@@ -2,7 +2,8 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { useParams, useRouter, Link } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation'; // useRouter is correct here
+import Link from 'next/link'; // Corrected import for Link
 import { PageHeader } from '@/components/ui/page-header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -152,7 +153,7 @@ export default function ManagePotentialRiskPage() {
       const loadedGoals = loadAllGoals(context.uprId, context.period);
       loadPotentialRiskAndCauses(context.uprId, context.period, loadedGoals);
     }
-  }, [loadAllGoals, loadPotentialRiskAndCauses]); // Removed potentialRiskIdParam dependency to prevent re-triggering on URL change by router.replace
+  }, [loadAllGoals, loadPotentialRiskAndCauses]); 
 
 
   const onPotentialRiskSubmit: SubmitHandler<PotentialRiskFormData> = async (data) => {
@@ -187,8 +188,8 @@ export default function ManagePotentialRiskPage() {
       currentGoalPotentialRisks.push(pRiskToSave);
       localStorage.setItem(goalPotentialRisksKey, JSON.stringify(currentGoalPotentialRisks.sort((a,b)=>(a.sequenceNumber - b.sequenceNumber || a.description.localeCompare(b.description)))));
       
-      setCurrentPotentialRisk(pRiskToSave); // Update state for the current page
-      router.replace(`/all-risks/manage/${pRiskToSave.id}`); // Change URL to edit mode for the new risk
+      setCurrentPotentialRisk(pRiskToSave); 
+      router.replace(`/all-risks/manage/${pRiskToSave.id}`);
 
     } else if (currentPotentialRisk) {
       pRiskToSave = {
@@ -199,7 +200,6 @@ export default function ManagePotentialRiskPage() {
       };
 
       if (currentPotentialRisk.goalId !== data.goalId) {
-        // Remove from old goal's list
         const oldParentGoal = goals.find(g => g.id === currentPotentialRisk.goalId);
         if (oldParentGoal) {
             const oldGoalPRKey = getPotentialRisksStorageKeyForGoal(oldParentGoal.uprId, oldParentGoal.period, oldParentGoal.id);
@@ -207,19 +207,17 @@ export default function ManagePotentialRiskPage() {
             oldGoalPRs = oldGoalPRs.filter(pr => pr.id !== currentPotentialRisk.id);
             localStorage.setItem(oldGoalPRKey, JSON.stringify(oldGoalPRs.sort((a,b)=>(a.sequenceNumber - b.sequenceNumber || a.description.localeCompare(b.description)))));
         }
-        // Add to new goal's list
         const newGoalPRKey = getPotentialRisksStorageKeyForGoal(parentGoal.uprId, parentGoal.period, data.goalId);
         let newGoalPRs: PotentialRisk[] = JSON.parse(localStorage.getItem(newGoalPRKey) || '[]');
-        pRiskToSave.goalId = data.goalId; // Update the pRiskToSave object itself
-        pRiskToSave.sequenceNumber = newGoalPRs.length + 1; // Assign new sequence number in the new goal
+        pRiskToSave.goalId = data.goalId; 
+        pRiskToSave.sequenceNumber = newGoalPRs.length + 1; 
         newGoalPRs.push(pRiskToSave);
         localStorage.setItem(newGoalPRKey, JSON.stringify(newGoalPRs.sort((a,b)=>(a.sequenceNumber - b.sequenceNumber || a.description.localeCompare(b.description)))));
       } else {
-        // GoalId hasn't changed, just update in its current list
         currentGoalPotentialRisks = currentGoalPotentialRisks.map(pr => pr.id === pRiskToSave.id ? pRiskToSave : pr);
         localStorage.setItem(goalPotentialRisksKey, JSON.stringify(currentGoalPotentialRisks.sort((a,b)=>(a.sequenceNumber - b.sequenceNumber || a.description.localeCompare(b.description)))));
       }
-      setCurrentPotentialRisk(pRiskToSave); // Update local state
+      setCurrentPotentialRisk(pRiskToSave); 
       successMessage = `Potensi Risiko "${pRiskToSave.description}" (PR${pRiskToSave.sequenceNumber}) diperbarui.`;
     } else {
       toast({ title: "Kesalahan", description: "Tidak dapat menyimpan. Data potensi risiko tidak lengkap.", variant: "destructive" });
@@ -269,7 +267,7 @@ export default function ManagePotentialRiskPage() {
     const causeToDelete = riskCauses.find(c => c.id === causeId);
     if (!causeToDelete) return;
     const updatedCauses = riskCauses.filter(c => c.id !== causeId);
-    setRiskCauses(updatedCauses); // No need to re-sort after delete, order maintained
+    setRiskCauses(updatedCauses); 
     localStorage.setItem(getRiskCausesStorageKey(parentPotentialRiskGoal.uprId, parentPotentialRiskGoal.period, currentPotentialRisk.id), JSON.stringify(updatedCauses));
     toast({ title: "Penyebab Risiko Dihapus", description: `Penyebab "${causeToDelete.description}" (PC${causeToDelete.sequenceNumber}) dihapus.`, variant: "destructive" });
   };
@@ -504,3 +502,5 @@ export default function ManagePotentialRiskPage() {
     </div>
   );
 }
+
+    
