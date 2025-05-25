@@ -1,11 +1,12 @@
 
 "use client";
 
-import type { PotentialRisk, Control, RiskCause, LikelihoodImpactLevel, RiskLevel } from '@/lib/types';
+import type { PotentialRisk, Control, RiskCause } from '@/lib/types';
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { ShieldCheck, Edit, Trash2, Settings2, PlusCircle, Zap, ListChecks } from 'lucide-react'; // Removed BarChart3 as it's not used for inherent analysis here
+import { ShieldCheck, Edit, Trash2, Settings2, PlusCircle, Zap, ListChecks, Copy } from 'lucide-react';
+import { Checkbox } from "@/components/ui/checkbox"; // Import Checkbox
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,16 +17,17 @@ import {
 
 interface RiskListItemProps {
   potentialRisk: PotentialRisk;
-  goalCode: string | undefined; // Can be undefined if goal not found or code missing
+  goalCode: string | undefined;
   controls: Control[];
   riskCauses: RiskCause[];
-  // onAnalyze removed as inherent analysis is removed from PotentialRisk
   onAddControl: (potentialRisk: PotentialRisk) => void;
   onEditControl: (control: Control) => void;
-  onDeletePotentialRisk: (potentialRiskId: string) => void;
+  onDeletePotentialRisk: (potentialRisk: PotentialRisk) => void; // Pass full object for dialog
   onDeleteControl: (controlId: string) => void;
-  // onManageCauses: (potentialRisk: PotentialRisk) => void; // Replaced by onEditDetails
   onEditDetails: (potentialRiskId: string) => void;
+  isSelected: boolean;
+  onSelectRisk: (checked: boolean) => void;
+  onDuplicateRisk: () => void;
 }
 
 const getControlStatusColorClasses = (status: Control['status']) => {
@@ -60,25 +62,40 @@ export function RiskListItem({
   goalCode,
   controls, 
   riskCauses,
-  // onAnalyze, 
   onAddControl, 
   onEditControl, 
   onDeletePotentialRisk, 
   onDeleteControl,
-  onEditDetails
+  onEditDetails,
+  isSelected,
+  onSelectRisk,
+  onDuplicateRisk
 }: RiskListItemProps) {
   
-  const displayGoalCode = goalCode || 'S?'; // Fallback if goalCode is undefined
+  const displayGoalCode = goalCode || 'S?'; 
   const potentialRiskCodeDisplay = `${displayGoalCode}.PR${potentialRisk.sequenceNumber || '?'}`;
 
   return (
-    <Card>
-      <CardHeader>
+    <Card className="flex flex-col">
+      <CardHeader className="pb-3">
         <div className="flex items-start justify-between">
-          <CardTitle className="text-base">{potentialRiskCodeDisplay} - {potentialRisk.description}</CardTitle>
+            <div className="flex items-center space-x-2 flex-grow min-w-0">
+                <Checkbox
+                    id={`select-risk-${potentialRisk.id}`}
+                    checked={isSelected}
+                    onCheckedChange={onSelectRisk}
+                    aria-label={`Pilih potensi risiko ${potentialRisk.description}`}
+                    className="flex-shrink-0 mt-1"
+                />
+                <CardTitle className="text-base font-semibold leading-tight min-w-0">
+                    <label htmlFor={`select-risk-${potentialRisk.id}`} className="cursor-pointer hover:underline">
+                        {potentialRiskCodeDisplay} - {potentialRisk.description}
+                    </label>
+                </CardTitle>
+            </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" aria-label="Opsi potensi risiko">
+              <Button variant="ghost" size="icon" aria-label="Opsi potensi risiko" className="flex-shrink-0 -mt-1 -mr-2">
                 <Settings2 className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
@@ -86,21 +103,21 @@ export function RiskListItem({
               <DropdownMenuItem onClick={() => onEditDetails(potentialRisk.id)}> 
                 <Edit className="mr-2 h-4 w-4" /> Edit Detail & Penyebab
               </DropdownMenuItem>
-              {/* <DropdownMenuItem onClick={() => onAnalyze(potentialRisk)}>
-                <BarChart3 className="mr-2 h-4 w-4" /> Analisis Level (Inheren) // Removed
-              </DropdownMenuItem> */}
               <DropdownMenuItem onClick={() => onAddControl(potentialRisk)}>
                 <PlusCircle className="mr-2 h-4 w-4" /> Tambah Kontrol
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={onDuplicateRisk}>
+                <Copy className="mr-2 h-4 w-4" /> Duplikat Risiko
+              </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => onDeletePotentialRisk(potentialRisk.id)} className="text-destructive focus:text-destructive focus:bg-destructive/10">
+              <DropdownMenuItem onClick={() => onDeletePotentialRisk(potentialRisk)} className="text-destructive focus:text-destructive focus:bg-destructive/10">
                 <Trash2 className="mr-2 h-4 w-4" /> Hapus Potensi Risiko
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
-        <CardDescription>
-          <div className="text-xs text-muted-foreground space-y-1 mt-1">
+        <CardDescription className="pt-1">
+          <div className="text-xs text-muted-foreground space-y-0.5 mt-1">
             <div>
               <strong>Teridentifikasi:</strong> {new Date(potentialRisk.identifiedAt).toLocaleDateString('id-ID', { year: 'numeric', month: 'short', day: 'numeric' })}
             </div>
@@ -116,7 +133,7 @@ export function RiskListItem({
           </div>
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="space-y-3 pt-2 pb-3 flex-grow">
         
         {riskCauses.length > 0 && (
           <div>
@@ -124,23 +141,23 @@ export function RiskListItem({
               <ListChecks className="h-4 w-4 mr-2 text-primary" />
               Potensi Penyebab ({riskCauses.length}):
             </h4>
-            <div className="pl-1 space-y-1 max-h-24 overflow-y-auto scroll-smooth border-l-2 border-border ml-2">
+            <div className="pl-1 space-y-1 max-h-20 overflow-y-auto scroll-smooth border-l-2 border-border ml-2">
               {riskCauses.slice(0, 3).map(cause => (
-                <div key={cause.id} className="text-sm text-muted-foreground p-1.5 rounded hover:bg-muted/40 ml-2">
+                <div key={cause.id} className="text-xs text-muted-foreground p-1.5 rounded hover:bg-muted/40 ml-2">
                   <span className="font-medium">PC{cause.sequenceNumber || '?'} - {cause.description}</span>
-                  <Badge className={`ml-2 text-xs font-normal ${getCauseSourceColorClasses(cause.source)}`}>{cause.source}</Badge>
+                  <Badge className={`ml-2 text-[10px] font-normal ${getCauseSourceColorClasses(cause.source)}`}>{cause.source}</Badge>
                 </div>
               ))}
               {riskCauses.length > 3 && <div className="text-xs text-muted-foreground pl-3 pt-1">...dan {riskCauses.length - 3} lainnya.</div>}
             </div>
-             <Button variant="link" size="sm" className="p-0 h-auto mt-1.5 text-primary hover:underline" onClick={() => onEditDetails(potentialRisk.id)}>
+             <Button variant="link" size="sm" className="p-0 h-auto mt-1 text-primary hover:underline text-xs" onClick={() => onEditDetails(potentialRisk.id)}>
                 Lihat/Kelola Semua Penyebab
             </Button>
           </div>
         )}
         {riskCauses.length === 0 && (
-             <Button variant="outline" size="sm" onClick={() => onEditDetails(potentialRisk.id)} className="w-full">
-                <Zap className="mr-2 h-4 w-4" /> Tambah & Kelola Penyebab
+             <Button variant="outline" size="sm" onClick={() => onEditDetails(potentialRisk.id)} className="w-full text-xs">
+                <Zap className="mr-2 h-3 w-3" /> Tambah & Kelola Penyebab
             </Button>
         )}
         
@@ -150,39 +167,41 @@ export function RiskListItem({
                 <ShieldCheck className="h-4 w-4 mr-2 text-primary" />
                 Kontrol ({controls.length}):
             </h4>
-            <div className="pl-1 space-y-1 max-h-24 overflow-y-auto scroll-smooth border-l-2 border-border ml-2">
+            <div className="pl-1 space-y-1 max-h-20 overflow-y-auto scroll-smooth border-l-2 border-border ml-2">
               {controls.map(control => (
-                <div key={control.id} className="text-sm text-muted-foreground p-1.5 rounded hover:bg-muted/40 group ml-2">
+                <div key={control.id} className="text-xs text-muted-foreground p-1.5 rounded hover:bg-muted/40 group ml-2">
                   <div className="flex justify-between items-center">
                     <div>
                       <span className="font-medium">{control.description}</span>
-                      <Badge className={`ml-2 text-xs font-normal ${getControlStatusColorClasses(control.status)}`}>{control.status}</Badge>
+                      <Badge className={`ml-2 text-[10px] font-normal ${getControlStatusColorClasses(control.status)}`}>{control.status}</Badge>
                     </div>
                     <div className="opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
                       <Button variant="ghost" size="icon-sm" onClick={() => onEditControl(control)} aria-label="Edit kontrol">
-                        <Edit className="h-3.5 w-3.5" />
+                        <Edit className="h-3 w-3" />
                       </Button>
                        <Button variant="ghost" size="icon-sm" onClick={() => onDeleteControl(control.id)} aria-label="Hapus kontrol">
-                        <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                        <Trash2 className="h-3 w-3 text-destructive" />
                       </Button>
                     </div>
                   </div>
                 </div>
               ))}
             </div>
-             <Button variant="link" size="sm" className="p-0 h-auto mt-1.5 text-primary hover:underline" onClick={() => onAddControl(potentialRisk)}>
+             <Button variant="link" size="sm" className="p-0 h-auto mt-1 text-primary hover:underline text-xs" onClick={() => onAddControl(potentialRisk)}>
                 Tambah Kontrol
             </Button>
           </div>
         )}
       </CardContent>
-      <CardFooter>
-        {controls.length === 0 && (
-            <Button variant="outline" size="sm" onClick={() => onAddControl(potentialRisk)} className="w-full">
-                <PlusCircle className="mr-2 h-4 w-4" /> Tambah Tindakan Kontrol
+      {controls.length === 0 && (
+        <CardFooter className="pt-0">
+            <Button variant="outline" size="sm" onClick={() => onAddControl(potentialRisk)} className="w-full text-xs">
+                <PlusCircle className="mr-2 h-3 w-3" /> Tambah Tindakan Kontrol
             </Button>
-        )}
-      </CardFooter>
+        </CardFooter>
+      )}
     </Card>
   );
 }
+
+    
