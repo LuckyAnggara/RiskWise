@@ -1,183 +1,546 @@
-"use client";
 
-import type { PotentialRisk, Control, RiskCause, LikelihoodImpactLevel } from '@/lib/types';
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { BarChart3, ShieldCheck, Edit, Trash2, Settings2, PlusCircle, Zap, ListChecks } from 'lucide-react';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-
-interface RiskListItemProps {
-  potentialRisk: PotentialRisk;
-  controls: Control[];
-  riskCauses: RiskCause[];
-  onAnalyze: (potentialRisk: PotentialRisk) => void;
-  onAddControl: (potentialRisk: PotentialRisk) => void;
-  onEditControl: (control: Control) => void;
-  onDeletePotentialRisk: (potentialRiskId: string) => void;
-  onDeleteControl: (controlId: string) => void;
-  onManageCauses: (potentialRisk: PotentialRisk) => void; 
-  onEditDetails: (potentialRiskId: string) => void;
-}
-
-const getRiskLevel = (likelihood: LikelihoodImpactLevel | null, impact: LikelihoodImpactLevel | null): string => {
-  if (!likelihood || !impact) return 'N/A';
-  const L = { 'Very Low': 1, 'Low': 2, 'Medium': 3, 'High': 4, 'Very High': 5 };
-  const I = { 'Very Low': 1, 'Low': 2, 'Medium': 3, 'High': 4, 'Very High': 5 };
-  const score = L[likelihood] * I[impact];
-
-  if (score >= 20) return 'Kritis';
-  if (score >= 12) return 'Tinggi';
-  if (score >= 6) return 'Sedang';
-  if (score >= 3) return 'Rendah';
-  return 'Sangat Rendah';
-};
-
-const getRiskLevelColor = (level: string) => {
-  switch (level.toLowerCase()) {
-    case 'kritis': return 'bg-red-600 hover:bg-red-700';
-    case 'tinggi': return 'bg-orange-500 hover:bg-orange-600';
-    case 'sedang': return 'bg-yellow-400 hover:bg-yellow-500 text-black dark:bg-yellow-500 dark:text-black';
-    case 'rendah': return 'bg-green-500 hover:bg-green-600';
-    case 'sangat rendah': return 'bg-sky-500 hover:bg-sky-600';
-    default: return 'bg-gray-400 hover:bg-gray-500';
+{
+  "SidebarNav": {
+    "menu": "Menu",
+    "dashboard": "Dasbor",
+    "goals": "Sasaran",
+    "allRisks": "Identifikasi Risiko",
+    "riskAnalysis": "Analisis Risiko",
+    "riskPriority": "Prioritas Risiko",
+    "settings": "Pengaturan"
+  },
+  "AppLayout": {
+    "myAccount": "Akun Saya",
+    "profile": "Profil",
+    "settings": "Pengaturan",
+    "logout": "Keluar",
+    "uprLabel": "UPR",
+    "periodLabel": "Periode"
+  },
+  "DashboardPage": {
+    "title": "Dasbor Risiko",
+    "description": "Ringkasan lanskap risiko Anda saat ini untuk UPR: {uprId}, Periode: {period}.",
+    "totalGoals": "Total Sasaran",
+    "totalGoalsDescription": "Sasaran yang dilacak untuk UPR/Periode ini",
+    "totalPotentialRisks": "Total Potensi Risiko",
+    "totalPotentialRisksDescription": "Jumlah potensi risiko teridentifikasi.",
+    "controlsImplemented": "Kontrol Diterapkan",
+    "controlsImplementedDescription": "Dari {totalControls} total kontrol",
+    "overallRiskTrend": "Tren Risiko Keseluruhan",
+    "overallRiskTrendDescription": "Berdasarkan 30 hari terakhir (data tiruan)",
+    "additionalInfoTitle": "Informasi Tambahan",
+    "additionalInfoDescription": "Analisis risiko detail sekarang dilakukan pada tingkat penyebab risiko.",
+    "additionalInfoContent": "Untuk melihat dan menganalisis tingkat risiko, silakan navigasi ke modul \"Analisis Risiko\" di mana setiap penyebab risiko dapat dinilai kemungkinan dan dampaknya. Modul \"Identifikasi Risiko\" digunakan untuk mencatat potensi risiko dan penyebab-penyebabnya.",
+    "stableTrend": "Stabil",
+    "loadingData": "Memuat data dasbor..."
+  },
+  "GoalsPage": {
+    "title": "Sasaran",
+    "description": "Definisikan dan kelola tujuan strategis Anda untuk UPR: {uprId}, Periode: {period}.",
+    "addNewGoal": "Tambah Sasaran Baru",
+    "noGoalsYet": "Belum ada sasaran untuk UPR/Periode ini",
+    "getStartedAddingGoal": "Mulailah dengan menambahkan sasaran pertama Anda.",
+    "goalCardCreated": "Dibuat: {date}",
+    "goalCardRisks": "{count} Potensi Risiko",
+    "goalCardViewRisks": "Lihat Risiko",
+    "toastGoalUpdatedTitle": "Sasaran Diperbarui",
+    "toastGoalUpdatedDescription": "Sasaran \"{name}\" ({code}) telah berhasil diperbarui.",
+    "toastGoalAddedTitle": "Sasaran Ditambahkan",
+    "toastGoalAddedDescription": "Sasaran baru \"{name}\" ({code}) telah berhasil ditambahkan.",
+    "toastGoalDeletedTitle": "Sasaran Dihapus",
+    "toastGoalDeletedDescription": "Sasaran \"{name}\" ({code}) telah dihapus.",
+    "loadingData": "Memuat data sasaran...",
+    "editGoalAriaLabel": "Edit sasaran {name} ({code})",
+    "deleteGoalAriaLabel": "Hapus sasaran {name} ({code})",
+    "searchPlaceholder": "Cari sasaran berdasarkan kode, nama, atau deskripsi...",
+    "noFilteredGoals": "Tidak ada sasaran ditemukan",
+    "noFilteredGoalsDescription": "Tidak ada sasaran yang cocok dengan kata kunci pencarian Anda: \"{searchTerm}\"."
+  },
+  "AddGoalDialog": {
+    "addTitle": "Tambah Sasaran Baru",
+    "editTitle": "Edit Sasaran ({code})",
+    "addDescription": "Definisikan sasaran baru untuk mulai mengelola risikonya.",
+    "editDescription": "Perbarui detail sasaran Anda.",
+    "nameLabel": "Nama Sasaran",
+    "descriptionLabel": "Deskripsi Sasaran",
+    "cancelButton": "Batal",
+    "saveButton": "Simpan Sasaran",
+    "savingButton": "Menyimpan...",
+    "updateButton": "Simpan Perubahan"
+  },
+  "AllRisksPage": {
+    "title": "Identifikasi Risiko",
+    "description": "Kelola semua potensi risiko yang teridentifikasi di semua sasaran untuk UPR: {uprId}, Periode: {period}.",
+    "addNewPotentialRisk": "Tambah Potensi Risiko Baru",
+    "createGoalFirstTooltip": "(Buat sasaran terlebih dahulu)",
+    "noPotentialRisksYet": "Belum ada potensi risiko yang teridentifikasi untuk UPR/Periode ini",
+    "noFilteredRisks": "Tidak ada potensi risiko yang cocok dengan kriteria filter Anda.",
+    "getStartedAddingPotentialRisk": "Klik \"Tambah Potensi Risiko Baru\" untuk mulai mengisi register risiko Anda.",
+    "adjustFilters": "Coba sesuaikan pencarian atau filter Anda.",
+    "tableHeaderExpand": "",
+    "tableHeaderCode": "Kode",
+    "tableHeaderPotentialRisk": "Potensi Risiko",
+    "tableHeaderCategory": "Kategori",
+    "tableHeaderOwner": "Pemilik",
+    "tableHeaderAssociatedGoal": "Sasaran Terkait",
+    "tableHeaderCauses": "Penyebab",
+    "tableHeaderControls": "Kontrol",
+    "tableHeaderActions": "Aksi",
+    "dropdownEditDetailsCauses": "Edit Detail & Penyebab",
+    "dropdownManageControls": "Kelola Kontrol",
+    "dropdownDeletePotentialRisk": "Hapus Potensi Risiko",
+    "toastCannotAddRiskTitle": "Tidak Dapat Menambah Potensi Risiko",
+    "toastCannotAddRiskDescription": "Harap buat setidaknya satu sasaran untuk UPR/Periode saat ini sebelum menambahkan potensi risiko.",
+    "loadingData": "Memuat data identifikasi risiko...",
+    "toastControlUpdatedTitle": "Kontrol Diperbarui",
+    "toastControlAddedTitle": "Kontrol Ditambahkan",
+    "toastControlSavedDescription": "Kontrol \"{description}\" {action}.",
+    "toastPRDeletedTitle": "Potensi Risiko Dihapus",
+    "toastPRDeletedDescription": "Potensi risiko \"{description}\" dihapus.",
+    "toastControlDeletedTitle": "Kontrol Dihapus",
+    "toastControlDeletedDescription": "Kontrol \"{description}\" dihapus.",
+    "searchPlaceholder": "Cari kode, deskripsi, kategori, pemilik...",
+    "filterCategoryButton": "Filter Kategori",
+    "filterGoalButton": "Filter Sasaran",
+    "filterOwnerButton": "Filter Pemilik",
+    "filterCategoryLabel": "Pilih Kategori",
+    "filterGoalLabel": "Pilih Sasaran Terkait",
+    "filterOwnerLabel": "Pilih Pemilik Risiko",
+    "noGoalsForFilter": "Tidak ada sasaran tersedia",
+    "noOwnersForFilter": "Tidak ada pemilik risiko.",
+    "expandedDescriptionTitle": "Deskripsi Lengkap Potensi Risiko:",
+    "showDescriptionAria": "Tampilkan deskripsi",
+    "hideDescriptionAria": "Sembunyikan deskripsi",
+    "selectAllRisks": "Pilih Semua Risiko",
+    "selectedCount": "{count} dipilih",
+    "deleteSelectedButton": "Hapus ({count}) yang Dipilih",
+    "deleteConfirmTitle": "Konfirmasi Hapus",
+    "deleteConfirmDescriptionSingle": "Apakah Anda yakin ingin menghapus potensi risiko ini? Semua penyebab dan kontrol terkait juga akan dihapus. Tindakan ini tidak dapat dibatalkan.",
+    "deleteConfirmDescriptionMultiple": "Apakah Anda yakin ingin menghapus {count} potensi risiko yang dipilih? Semua penyebab dan kontrol terkait juga akan dihapus. Tindakan ini tidak dapat dibatalkan.",
+    "cancelButton": "Batal",
+    "deleteButton": "Hapus"
+  },
+  "GoalRisksPage": {
+    "title": "Potensi Risiko untuk Sasaran: {goalCode} - {goalName}",
+    "pageDescription": "{goalDescription}",
+    "backToGoalsButton": "Kembali ke Sasaran",
+    "identifiedPotentialRisksTitle": "Potensi Risiko Teridentifikasi ({filteredCount} / {totalCount})",
+    "emptyStateTitle": "Belum ada potensi risiko yang teridentifikasi",
+    "emptyStateFilteredTitle": "Tidak ada potensi risiko yang cocok dengan filter",
+    "emptyStateDescription": "Gunakan alat AI di atas untuk brainstorming potensi risiko untuk sasaran ini.",
+    "emptyStateFilteredDescription": "Coba sesuaikan filter Anda.",
+    "loadingData": "Memuat data sasaran dan potensi risiko...",
+    "goalNotFound": "Sasaran tidak ditemukan untuk UPR: {uprId}, Periode: {currentPeriod}.",
+    "toastPotentialRisksIdentifiedTitle": "Potensi Risiko Teridentifikasi!",
+    "toastPotentialRisksIdentifiedDescription": "{count} potensi risiko telah di-brainstorm untuk \"{goalName}\". Anda sekarang dapat mengedit detailnya dan menambahkan penyebab.",
+    "toastControlUpdatedTitle": "Kontrol Diperbarui",
+    "toastControlAddedTitle": "Kontrol Ditambahkan",
+    "toastControlSavedDescription": "Kontrol \"{description}\" {action}.",
+    "toastPotentialRiskDeletedTitle": "Potensi Risiko Dihapus",
+    "toastPotentialRiskDeletedDescription": "Potensi risiko \"{description}\" ({code}) dihapus.",
+    "toastPotentialRiskDuplicatedTitle": "Risiko Diduplikasi",
+    "toastPotentialRiskDuplicatedDescription": "Potensi risiko \"{description}\" telah berhasil diduplikasi.",
+    "toastControlDeletedTitle": "Kontrol Dihapus",
+    "toastControlDeletedDescription": "Kontrol \"{description}\" dihapus.",
+    "viewModeCard": "Tampilan Kartu",
+    "viewModeTable": "Tampilan Tabel",
+    "tableHeaderPRCode": "Kode PR",
+    "tableHeaderDescription": "Deskripsi",
+    "tableHeaderCategory": "Kategori",
+    "tableHeaderOwner": "Pemilik",
+    "tableHeaderCauses": "Penyebab",
+    "tableHeaderControls": "Kontrol",
+    "tableHeaderActions": "Aksi",
+    "searchPlaceholder": "Cari kode, deskripsi, kategori...",
+    "filterCategoryButton": "Filter Kategori",
+    "filterOwnerButton": "Filter Pemilik",
+    "filterCategoryLabel": "Pilih Kategori",
+    "filterOwnerLabel": "Pilih Pemilik",
+    "noOwnersForFilter": "Tidak ada pemilik.",
+    "selectAllVisible": "Pilih Semua ({count} dipilih)",
+    "deleteSelectedButton": "Hapus ({count}) yang Dipilih",
+    "deleteConfirmTitle": "Konfirmasi Hapus",
+    "deleteConfirmDescriptionSingle": "Apakah Anda yakin ingin menghapus potensi risiko \"{description}\" ({code})? Semua penyebab dan kontrol terkait juga akan dihapus. Tindakan ini tidak dapat dibatalkan.",
+    "deleteConfirmDescriptionMultiple": "Apakah Anda yakin ingin menghapus {count} potensi risiko yang dipilih? Semua penyebab dan kontrol terkait juga akan dihapus. Tindakan ini tidak dapat dibatalkan.",
+    "cancelButton": "Batal",
+    "deleteButton": "Hapus",
+    "dropdownEditDetailsCauses": "Edit Detail & Penyebab",
+    "dropdownAddControl": "Tambah Kontrol",
+    "dropdownDuplicateRisk": "Duplikat Risiko",
+    "dropdownDeleteRisk": "Hapus Potensi Risiko"
+  },
+  "ManagePotentialRiskPage": {
+    "addTitle": "Tambah Potensi Risiko Baru",
+    "editTitle": "Edit Potensi Risiko ({code})",
+    "description": "Kelola detail dan penyebab potensi risiko. UPR: {uprId}, Periode: {period}.",
+    "backButton": "Kembali",
+    "potentialRiskDetailsTitle": "Detail Potensi Risiko",
+    "associatedGoalLabel": "Sasaran Terkait",
+    "selectGoalPlaceholder": "Pilih sasaran",
+    "noGoalsInPeriod": "Tidak ada sasaran di UPR/Periode ini.",
+    "potentialRiskDescriptionLabel": "Deskripsi Potensi Risiko",
+    "potentialRiskDescriptionPlaceholder": "Jelaskan potensi risiko...",
+    "riskCategoryLabel": "Kategori Risiko",
+    "selectCategoryPlaceholder": "Pilih kategori (opsional)",
+    "noCategoryOption": "_Tanpa Kategori_",
+    "riskOwnerLabel": "Pemilik Risiko (Opsional)",
+    "riskOwnerPlaceholder": "Contoh: Kepala Operasional, Departemen TI",
+    "createPotentialRiskButton": "Buat Potensi Risiko",
+    "saveChangesButton": "Simpan Perubahan",
+    "savingButton": "Menyimpan...",
+    "riskCausesForTitle": "Penyebab Risiko untuk: ({riskCode}) {riskDescription}",
+    "riskCausesDescription": "Identifikasi dan kelola penyebab spesifik yang berkontribusi pada potensi risiko ini.",
+    "brainstormCausesAIButton": "Brainstorm Penyebab (AI)",
+    "addNewCauseTitle": "Tambah Penyebab Baru (Manual)",
+    "causeDescriptionLabel": "Deskripsi Penyebab",
+    "causeDescriptionPlaceholder": "Jelaskan penyebab spesifik...",
+    "causeSourceLabel": "Sumber Penyebab",
+    "selectSourcePlaceholder": "Pilih sumber",
+    "addCauseButton": "Tambah Penyebab (Manual)",
+    "addingCauseButton": "Menambah...",
+    "existingCausesTitle": "Penyebab yang Ada ({count})",
+    "noCausesIdentified": "Belum ada penyebab yang teridentifikasi untuk potensi risiko ini.",
+    "tableHeaderCauseNumber": "No.",
+    "tableHeaderCauseDescription": "Deskripsi",
+    "tableHeaderCauseSource": "Sumber",
+    "tableHeaderCauseKRI": "KRI",
+    "tableHeaderCauseTolerance": "Toleransi",
+    "tableHeaderCauseLikelihood": "Kemungkinan",
+    "tableHeaderCauseImpact": "Dampak",
+    "tableHeaderCauseLevel": "Level Risiko",
+    "tableHeaderCauseActions": "Aksi",
+    "deleteCauseAriaLabel": "Hapus penyebab",
+    "analyzeCauseButton": "Analisis Detail",
+    "toastPRCreatedSuccess": "Potensi Risiko \"{description}\" (PR{sequenceNumber}) dibuat. Anda sekarang dapat menambahkan penyebabnya.",
+    "toastPRUpdatedSuccess": "Potensi Risiko \"{description}\" (PR{sequenceNumber}) diperbarui.",
+    "toastErrorSavingPR": "Tidak dapat menyimpan. Data potensi risiko tidak lengkap.",
+    "toastErrorInvalidGoal": "Sasaran induk yang dipilih tidak valid untuk UPR/Periode saat ini.",
+    "toastCauseAddedSuccess": "Penyebab \"{description}\" (PC{sequenceNumber}) ditambahkan.",
+    "toastCauseDeletedSuccess": "Penyebab \"{description}\" (PC{sequenceNumber}) dihapus.",
+    "toastErrorAddingCauseMissingRisk": "Tidak dapat menambah penyebab. Konteks potensi risiko induk tidak ditemukan.",
+    "toastErrorAddingCauseMissingGoal": "Tidak dapat menambah penyebab. Sasaran induk untuk potensi risiko tidak ditemukan.",
+    "loadingData": "Memuat data potensi risiko...",
+    "errorNotFound": "Potensi Risiko tidak ditemukan.",
+    "deleteCauseConfirmTitle": "Konfirmasi Hapus Penyebab",
+    "deleteCauseConfirmDescription": "Apakah Anda yakin ingin menghapus penyebab \"{description}\" (PC{sequenceNumber})? Tindakan ini tidak dapat dibatalkan.",
+    "deleteButton": "Hapus",
+    "cancelButton": "Batal"
+  },
+  "RiskIdentificationCard": {
+    "title": "Identifikasi Potensi Risiko dengan AI",
+    "description": "Gunakan AI untuk brainstorming potensi risiko untuk sasaran: {goalCode} - {goalName}.",
+    "brainstormButton": "Brainstorm Potensi Risiko dengan AI",
+    "toastPRIdentifiedDescription": "{count} potensi risiko baru telah ditambahkan dari saran AI."
+  },
+  "BrainstormContextModal": {
+    "title": "Konteks Brainstorming Potensi Risiko",
+    "description": "Sempurnakan konteks sasaran dan tentukan jumlah potensi risiko yang ingin Anda hasilkan.",
+    "contextLabel": "Konteks Sasaran untuk AI",
+    "contextPlaceholder": "Jelaskan sasaran secara detail untuk hasil AI yang lebih baik...",
+    "desiredCountLabel": "Jumlah Potensi Risiko yang Diinginkan (1-10)",
+    "desiredCountPlaceholder": "Contoh: 5",
+    "continueButton": "Lanjutkan ke Brainstorm",
+    "brainstormingButton": "Brainstorming...",
+    "cancelButton": "Batal",
+    "toastContextEmptyTitle": "Konteks Kosong",
+    "toastContextEmptyDescription": "Mohon isi konteks sasaran untuk AI.",
+    "toastInvalidCountTitle": "Jumlah Tidak Valid",
+    "toastInvalidCountDescription": "Jumlah potensi risiko harus antara 1 dan 10.",
+    "toastAIBrainstormingFailedTitle": "Brainstorming AI Gagal",
+    "toastAIBrainstormingFailedDescription": "Terjadi kesalahan saat AI melakukan brainstorming.",
+    "toastErrorGeneric": "Kesalahan"
+  },
+  "BrainstormSuggestionsModal": {
+    "title": "Saran Potensi Risiko dari AI",
+    "description": "Pilih potensi risiko yang ingin Anda simpan dari daftar saran AI di bawah ini.",
+    "noSuggestions": "AI tidak memberikan saran potensi risiko.",
+    "cancelButton": "Batal",
+    "saveSelectedButton": "Simpan Risiko Terpilih ({count})",
+    "toastNoSelectionTitle": "Tidak Ada Pilihan",
+    "toastNoSelectionDescription": "Mohon pilih setidaknya satu potensi risiko untuk disimpan."
+  },
+  "BrainstormCausesContextModal": {
+    "title": "Brainstorm Penyebab Risiko dengan AI (Fishbone)",
+    "description": "Sempurnakan konteks potensi risiko dan tentukan jumlah saran penyebab yang diinginkan.",
+    "potentialRiskLabel": "Potensi Risiko",
+    "potentialRiskContextLabel": "Konteks Potensi Risiko untuk AI",
+    "potentialRiskContextPlaceholder": "Deskripsi potensi risiko yang akan dianalisis penyebabnya...",
+    "desiredCauseCountLabel": "Jumlah Saran Penyebab yang Diinginkan (1-7)",
+    "desiredCauseCountPlaceholder": "Contoh: 3",
+    "continueButton": "Lanjutkan Brainstorm Penyebab",
+    "brainstormingButton": "Brainstorming...",
+    "cancelButton": "Batal",
+    "toastContextEmptyTitle": "Deskripsi Potensi Risiko Kosong",
+    "toastContextEmptyDescription": "Mohon isi deskripsi potensi risiko untuk AI.",
+    "toastInvalidCountTitle": "Jumlah Tidak Valid",
+    "toastInvalidCountDescription": "Jumlah saran penyebab risiko harus antara 1 dan 7.",
+    "toastAIBrainstormingFailedTitle": "Brainstorming Penyebab Gagal",
+    "toastAIBrainstormingFailedDescription": "Terjadi kesalahan saat AI melakukan brainstorming penyebab.",
+    "toastErrorGeneric": "Kesalahan",
+    "toastNoSuggestionsTitle": "Tidak Ada Saran Penyebab",
+    "toastNoSuggestionsDescription": "AI tidak menghasilkan saran penyebab risiko untuk konteks ini."
+  },
+  "BrainstormCausesSuggestionsModal": {
+    "title": "Saran Penyebab Risiko dari AI",
+    "description": "Pilih saran penyebab risiko yang ingin Anda simpan dari daftar AI di bawah ini.",
+    "noSuggestions": "AI tidak memberikan saran penyebab risiko.",
+    "cancelButton": "Batal",
+    "saveSelectedButton": "Simpan Penyebab Terpilih ({count})",
+    "toastNoSelectionTitle": "Tidak Ada Pilihan",
+    "toastNoSelectionDescription": "Mohon pilih setidaknya satu saran penyebab risiko untuk disimpan.",
+    "toastCausesSavedTitle": "Saran Penyebab Disimpan",
+    "toastCausesSavedDescription": "{count} penyebab risiko baru dari AI telah ditambahkan."
+  },
+  "SettingsPage": {
+    "title": "Pengaturan Aplikasi",
+    "description": "Kelola pengaturan global untuk RiskWise.",
+    "uprPeriodCardTitle": "Unit Pemilik Risiko (UPR) & Periode",
+    "uprPeriodCardDescription": "Konfigurasikan UPR aktif dan periode pelaporan untuk aplikasi.",
+    "currentUprIdLabel": "ID UPR Saat Ini",
+    "uprIdInfo": "ID UPR saat ini diatur secara sistem dan belum dapat diubah melalui UI ini.",
+    "activePeriodLabel": "Periode Aktif",
+    "selectPeriodPlaceholder": "Pilih periode",
+    "noPeriodsDefined": "Tidak ada periode yang ditentukan.",
+    "changePeriodInfo": "Mengubah periode aktif akan memuat ulang aplikasi.",
+    "managePeriodsCardTitle": "Kelola Periode yang Tersedia",
+    "managePeriodsCardDescription": "Tambahkan periode pelaporan baru ke sistem.",
+    "newPeriodLabel": "Periode Baru (mis., 2026, 2025/2026, 2025-S1)",
+    "newPeriodPlaceholder": "Masukkan periode baru",
+    "addPeriodButton": "Tambah Periode",
+    "currentAvailablePeriodsLabel": "Periode yang Tersedia Saat Ini:",
+    "noPeriodsDefinedYet": "Belum ada periode yang ditentukan.",
+    "toastPeriodChangedTitle": "Periode Diubah",
+    "toastPeriodChangedDescription": "Periode aktif diatur ke {period}. Halaman akan dimuat ulang.",
+    "toastErrorAddingPeriodEmpty": "Periode tidak boleh kosong.",
+    "toastErrorAddingPeriodFormat": "Gunakan format YYYY, YYYY/YYYY, atau YYYY-S1/S2/Q1-Q4.",
+    "toastPeriodAddedTitle": "Periode Ditambahkan",
+    "toastPeriodAddedDescription": "Periode \"{period}\" ditambahkan ke daftar yang tersedia."
+  },
+  "RiskAnalysisModal": {
+    "title": "Analisis Potensi Risiko (Inheren)",
+    "description": "Nilai kemungkinan dan dampak inheren untuk potensi risiko: {riskDescription}",
+    "likelihoodLabel": "Kemungkinan (Inheren)",
+    "selectLikelihoodPlaceholder": "Pilih kemungkinan",
+    "impactLabel": "Dampak (Inheren)",
+    "selectImpactPlaceholder": "Pilih dampak",
+    "viewRiskMatrixButton": "Lihat Matriks Profil Risiko",
+    "cancelButton": "Batal",
+    "saveAnalysisButton": "Simpan Analisis",
+    "getAISuggestionButtonLabel": "Dapatkan Saran AI",
+    "aiSuggestionErrorTitle": "Kesalahan Saran AI",
+    "aiSuggestionErrorDescription": "Gagal mendapatkan saran dari AI.",
+    "aiSuggestionGenericError": "Terjadi kesalahan saat meminta saran AI.",
+    "aiSuggestionLikelihoodTitle": "Saran AI (Kemungkinan): {level}",
+    "aiSuggestionImpactTitle": "Saran AI (Dampak): {level}",
+    "noSuggestion": "Tidak ada"
+  },
+  "RiskCauseAnalysisPage": {
+    "pageTitle": "Analisis Detail Penyebab Risiko: {code}",
+    "pageDescription": "Input KRI, Toleransi, Kemungkinan, dan Dampak untuk penyebab: \"{causeDescription}\"",
+    "backButton": "Kembali",
+    "riskContextTitle": "Konteks Risiko",
+    "relatedGoalLabel": "Sasaran Terkait ({code}):",
+    "relatedPotentialRiskLabel": "Potensi Risiko ({code}):",
+    "riskCategoryLabel": "Kategori Risiko:",
+    "potentialRiskOwnerLabel": "Pemilik Potensi Risiko:",
+    "causeDescriptionLabelFull": "Deskripsi Penyebab (PC{sequenceNumber}):",
+    "causeSourceLabel": "Sumber Penyebab:",
+    "analysisFormTitle": "Formulir Analisis Penyebab Risiko",
+    "kriLabel": "Key Risk Indicator (KRI)",
+    "kriPlaceholder": "Contoh: Jumlah keluhan pelanggan melebihi X per bulan, Persentase downtime sistem > Y%",
+    "toleranceLabel": "Toleransi Risiko",
+    "tolerancePlaceholder": "Contoh: Maksimal 5 keluhan pelanggan per bulan, Downtime sistem tidak boleh melebihi 2 jam per kuartal",
+    "likelihoodLabel": "Kemungkinan",
+    "selectLikelihoodPlaceholder": "Pilih kemungkinan",
+    "impactLabel": "Dampak",
+    "selectImpactPlaceholder": "Pilih dampak",
+    "riskLevelCauseLabel": "Tingkat Risiko (Penyebab)",
+    "riskLevelDescription": "Dihitung berdasarkan Kemungkinan dan Dampak yang dipilih untuk penyebab ini.",
+    "viewRiskMatrixButton": "Lihat Matriks Profil Risiko",
+    "saveButton": "Simpan Analisis Penyebab",
+    "savingButton": "Menyimpan...",
+    "getAISuggestionButtonLabel": "Dapatkan Saran AI",
+    "loadingData": "Memuat data analisis penyebab risiko...",
+    "errorNotFound": "Detail Penyebab Risiko tidak ditemukan.",
+    "errorContextMissing": "Konteks data tidak lengkap untuk menyimpan.",
+    "toastSuccess": "Sukses",
+    "toastAnalysisSaved": "Analisis untuk penyebab risiko {code} telah disimpan.",
+    "aiSuggestionErrorTitle": "Kesalahan Saran AI",
+    "aiSuggestionErrorDescription": "Gagal mendapatkan saran dari AI.",
+    "aiSuggestionGenericError": "Terjadi kesalahan saat meminta saran AI.",
+    "aiSuggestionLikelihoodTitle": "Saran AI (Kemungkinan): {level}",
+    "aiSuggestionImpactTitle": "Saran AI (Dampak): {level}",
+    "noSuggestion": "Tidak ada"
+  },
+  "RiskAnalysisPage": {
+    "title": "Analisis Risiko Penyebab",
+    "description": "Lakukan analisis KRI, Toleransi, Kemungkinan, dan Dampak untuk setiap penyebab risiko di UPR: {uprId}, Periode: {period}.",
+    "searchPlaceholder": "Cari kode, penyebab, KRI...",
+    "filterCategoryPRButton": "Kategori PR",
+    "filterCategoryPRLabel": "Pilih Kategori Potensi Risiko",
+    "filterGoalButton": "Sasaran",
+    "filterGoalLabel": "Pilih Sasaran Terkait",
+    "noGoalsForFilter": "Tidak ada sasaran tersedia",
+    "filterSourceButton": "Sumber",
+    "filterSourceLabel": "Pilih Sumber Penyebab",
+    "filterRiskLevelButton": "Level Risiko",
+    "filterRiskLevelLabel": "Pilih Level Risiko Penyebab",
+    "noRiskCausesIdentified": "Belum ada penyebab risiko yang teridentifikasi untuk dianalisis.",
+    "noFilteredRiskCauses": "Tidak ada penyebab risiko yang cocok dengan kriteria filter Anda.",
+    "getStartedRiskCauses": "Identifikasi potensi risiko dan penyebabnya terlebih dahulu di menu Identifikasi Risiko.",
+    "adjustFilters": "Coba sesuaikan pencarian atau filter Anda.",
+    "tableHeaderCode": "Kode",
+    "tableHeaderCause": "Penyebab Potensi Risiko",
+    "tableHeaderSource": "Sumber",
+    "tableHeaderKRI": "KRI",
+    "tableHeaderTolerance": "Toleransi",
+    "tableHeaderLikelihood": "Kemungkinan",
+    "tableHeaderImpact": "Dampak",
+    "tableHeaderRiskLevel": "Tingkat Risiko",
+    "tableHeaderPotentialRisk": "Potensi Risiko Induk",
+    "tableHeaderGoal": "Sasaran Induk",
+    "tableHeaderActions": "Aksi",
+    "analyzeDetailButton": "Analisis Detail",
+    "deleteCauseButton": "Hapus Penyebab",
+    "loadingData": "Memuat data analisis penyebab risiko...",
+    "totalCausesCard": "Total Penyebab Risiko",
+    "completeAnalysisCard": "Analisis Lengkap",
+    "incompleteAnalysisCard": "Analisis Belum Lengkap",
+    "showColumnsButton": "Kolom",
+    "showColumnsLabel": "Tampilkan Kolom",
+    "selectAllCauses": "Pilih Semua",
+    "deleteSelectedButton": "Hapus ({count}) yang Dipilih",
+    "deleteConfirmTitle": "Konfirmasi Hapus",
+    "deleteConfirmDescriptionSingle": "Apakah Anda yakin ingin menghapus penyebab risiko \"{description}\"? Tindakan ini tidak dapat dibatalkan.",
+    "deleteConfirmDescriptionMultiple": "Apakah Anda yakin ingin menghapus {count} penyebab risiko yang dipilih? Tindakan ini tidak dapat dibatalkan.",
+    "cancelButton": "Batal",
+    "deleteButton": "Hapus"
+  },
+  "RiskPriorityPage": {
+    "title": "Prioritas Risiko",
+    "description": "Visualisasi dan daftar penyebab risiko yang telah dianalisis untuk UPR: {uprId}, Periode: {period}.",
+    "matrixTitle": "Matriks Profil Risiko (Heatmap Penyebab Risiko)",
+    "noDataForMatrix": "Belum ada penyebab risiko yang dianalisis untuk ditampilkan di matriks.",
+    "tableTitle": "Daftar Penyebab Risiko Teranalisis ({count})",
+    "noAnalyzedCauses": "Tidak ada penyebab risiko yang telah dianalisis.",
+    "headerCause": "Penyebab Risiko",
+    "headerRiskLevel": "Tingkat Risiko",
+    "headerLikelihood": "Kemungkinan",
+    "headerImpact": "Dampak",
+    "headerParentPotentialRisk": "Potensi Risiko Induk",
+    "headerParentGoal": "Sasaran Induk",
+    "headerActions": "Aksi",
+    "analyzeControlButton": "Analisis/Kontrol",
+    "loadingData": "Memuat data prioritas risiko..."
+  },
+  "RiskControlModal": {
+    "addTitle": "Tambah Kontrol Baru",
+    "editTitle": "Edit Kontrol",
+    "description": "Definisikan tindakan kontrol untuk potensi risiko: {riskDescription}.",
+    "controlDescriptionLabel": "Deskripsi Kontrol",
+    "effectivenessLabel": "Efektivitas",
+    "selectEffectivenessPlaceholder": "Pilih efektivitas",
+    "statusLabel": "Status",
+    "selectStatusPlaceholder": "Pilih status",
+    "effectivenessLow": "Rendah",
+    "effectivenessMedium": "Sedang",
+    "effectivenessHigh": "Tinggi",
+    "statusPlanned": "Direncanakan",
+    "statusInProgress": "Sedang Berjalan",
+    "statusImplemented": "Diterapkan",
+    "statusIneffective": "Tidak Efektif",
+    "cancelButton": "Batal",
+    "addControlButton": "Tambah Kontrol",
+    "saveChangesButton": "Simpan Perubahan",
+    "savingButton": "Menyimpan..."
+  },
+  "ManageRiskCausesDialog": {
+    "title": "Kelola Penyebab Risiko untuk: {riskDescription}",
+    "description": "Identifikasi dan kelola potensi penyebab risiko ini. UPR: {uprId}, Periode: {period}.",
+    "addNewCauseTitle": "Tambah Penyebab Baru",
+    "causeDescriptionLabel": "Deskripsi Penyebab",
+    "causeDescriptionPlaceholder": "Jelaskan potensi penyebab...",
+    "sourceLabel": "Sumber",
+    "selectSourcePlaceholder": "Pilih sumber",
+    "addCauseButton": "Tambah Penyebab",
+    "existingCausesTitle": "Penyebab yang Ada ({count})",
+    "noCausesIdentified": "Belum ada penyebab yang teridentifikasi untuk potensi risiko ini.",
+    "deleteCauseAriaLabel": "Hapus penyebab",
+    "closeButton": "Tutup",
+    "toastCauseAdded": "Penyebab Risiko Ditambahkan",
+    "toastCauseAddedDescription": "Penyebab \"{description}\" ditambahkan.",
+    "toastCauseDeleted": "Penyebab Risiko Dihapus",
+    "toastCauseDeletedDescription": "Penyebab \"{description}\" dihapus."
+  },
+  "RiskListItem": {
+    "identifiedLabel": "Teridentifikasi",
+    "categoryLabel": "Kategori",
+    "ownerLabel": "Pemilik",
+    "na": "N/A",
+    "potentialCausesTitle": "Potensi Penyebab ({count}):",
+    "andMoreCauses": "...dan {count} lainnya.",
+    "viewManageAllCauses": "Lihat/Kelola Semua Penyebab",
+    "addManageCauses": "Tambah & Kelola Penyebab",
+    "controlsTitle": "Kontrol ({count}):",
+    "addControlMeasure": "Tambah Tindakan Kontrol",
+    "editDetailsCauses": "Edit Detail & Penyebab",
+    "addControl": "Tambah Kontrol",
+    "duplicateRisk": "Duplikat Risiko",
+    "deletePotentialRisk": "Hapus Potensi Risiko",
+    "editControlAriaLabel": "Edit kontrol",
+    "deleteControlAriaLabel": "Hapus kontrol",
+    "selectRiskAriaLabel": "Pilih potensi risiko {description}",
+    "optionsAriaLabel": "Opsi potensi risiko"
+  },
+  "LikelihoodCriteriaModal": {
+    "title": "Panduan Kriteria Kemungkinan Terjadinya Risiko",
+    "description": "Gunakan tabel ini sebagai panduan untuk menentukan level kemungkinan risiko.",
+    "levelHeader": "Level Kemungkinan",
+    "percentageHeader": "Persentase kemungkinan terjadi dalam 1 tahun",
+    "frequencyHeader": "Jumlah Frekuensi kemungkinan terjadi dalam 1 tahun",
+    "levelVeryLow": "Hampir tidak terjadi (1)",
+    "levelLow": "Jarang terjadi (2)",
+    "levelMedium": "Kadang terjadi (3)",
+    "levelHigh": "Sering terjadi (4)",
+    "levelVeryHigh": "Hampir pasti terjadi (5)",
+    "closeButton": "Tutup"
+  },
+  "ImpactCriteriaModal": {
+    "title": "Panduan Kriteria Dampak Risiko",
+    "description": "Gunakan tabel ini sebagai panduan untuk menentukan level dampak risiko.",
+    "headerNo": "No",
+    "headerImpactArea": "Area Dampak",
+    "headerInsignificant": "Tidak Signifikan (1)",
+    "headerMinor": "Minor (2)",
+    "headerModerate": "Moderat (3)",
+    "headerSignificant": "Signifikan (4)",
+    "headerVerySignificant": "Sangat Signifikan (5)",
+    "closeButton": "Tutup"
+  },
+  "RiskMatrixModal": {
+    "title": "Matriks Profil Risiko (Heatmap)",
+    "description": "Panduan visual untuk menentukan level risiko.",
+    "likelihoodAxisLabel": "Kemungkinan",
+    "impactAxisLabel": "Dampak Risiko",
+    "legendTitle": "Keterangan Level Risiko (Jumlah Penyebab):",
+    "levelVeryHigh": "Sangat Tinggi",
+    "levelHigh": "Tinggi",
+    "levelMedium": "Sedang",
+    "levelLow": "Rendah",
+    "levelVeryLow": "Sangat Rendah",
+    "rangeVeryHigh": "(Skor 20-25)",
+    "rangeHigh": "(Skor 16-19)",
+    "rangeMedium": "(Skor 12-15)",
+    "rangeLow": "(Skor 6-11)",
+    "rangeVeryLow": "(Skor 1-5)",
+    "closeButton": "Tutup"
+  },
+  "General": {
+    "loading": "Memuat...",
+    "error": "Kesalahan",
+    "success": "Sukses",
+    "na": "N/A"
   }
-};
-
-
-export function RiskListItem({ 
-  potentialRisk, 
-  controls, 
-  riskCauses,
-  onAnalyze, 
-  onAddControl, 
-  onEditControl, 
-  onDeletePotentialRisk, 
-  onDeleteControl,
-  onManageCauses,
-  onEditDetails
-}: RiskListItemProps) {
-  const riskLevel = getRiskLevel(potentialRisk.likelihood, potentialRisk.impact);
-
-  return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-start justify-between">
-          <CardTitle className="text-lg">{potentialRisk.description}</CardTitle>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon">
-                <Settings2 className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => onEditDetails(potentialRisk.id)}> 
-                <Edit className="mr-2 h-4 w-4" /> Edit Detail & Penyebab
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onManageCauses(potentialRisk)}>
-                <Zap className="mr-2 h-4 w-4" /> Kelola Penyebab (Cepat)
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onAnalyze(potentialRisk)}>
-                <BarChart3 className="mr-2 h-4 w-4" /> Analisis Level
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onAddControl(potentialRisk)}>
-                <PlusCircle className="mr-2 h-4 w-4" /> Tambah Kontrol
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => onDeletePotentialRisk(potentialRisk.id)} className="text-destructive focus:text-destructive focus:bg-destructive/10">
-                <Trash2 className="mr-2 h-4 w-4" /> Hapus Potensi Risiko
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-        <CardDescription>
-          Teridentifikasi: {new Date(potentialRisk.identifiedAt).toLocaleDateString()} <br />
-          Kategori: <Badge variant="outline" className="text-xs">{potentialRisk.category || 'N/A'}</Badge> | 
-          Pemilik: <Badge variant="outline" className="text-xs">{potentialRisk.owner || 'N/A'}</Badge>
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="flex items-center space-x-4">
-          <div>
-            <span className="text-sm font-medium">Probabilitas: </span>
-            <Badge variant={potentialRisk.likelihood ? "secondary" : "outline"}>{potentialRisk.likelihood || 'Belum diatur'}</Badge>
-          </div>
-          <div>
-            <span className="text-sm font-medium">Dampak: </span>
-            <Badge variant={potentialRisk.impact ? "secondary" : "outline"}>{potentialRisk.impact || 'Belum diatur'}</Badge>
-          </div>
-          <div>
-            <span className="text-sm font-medium">Level: </span>
-             <Badge className={`${getRiskLevelColor(riskLevel)} text-white`}>
-                {riskLevel}
-             </Badge>
-          </div>
-        </div>
-        
-        {riskCauses.length > 0 && (
-          <div>
-            <h4 className="text-sm font-semibold mb-1 flex items-center">
-              <ListChecks className="h-4 w-4 mr-1 text-muted-foreground" />
-              Potensi Penyebab ({riskCauses.length}):
-            </h4>
-            <ul className="list-disc list-inside space-y-1 pl-4">
-              {riskCauses.slice(0, 3).map(cause => (
-                <li key={cause.id} className="text-sm text-muted-foreground">
-                  {cause.description} <Badge variant="outline" className="ml-1 text-xs">{cause.source}</Badge>
-                </li>
-              ))}
-              {riskCauses.length > 3 && <li className="text-xs text-muted-foreground">...dan {riskCauses.length - 3} lainnya.</li>}
-            </ul>
-             <Button variant="link" size="sm" className="p-0 h-auto mt-1" onClick={() => onManageCauses(potentialRisk)}>
-                Lihat/Kelola Semua Penyebab
-            </Button>
-          </div>
-        )}
-        {riskCauses.length === 0 && (
-             <Button variant="outline" size="sm" onClick={() => onManageCauses(potentialRisk)}>
-                <Zap className="mr-2 h-4 w-4" /> Tambah/Kelola Penyebab
-            </Button>
-        )}
-        
-        {controls.length > 0 && (
-          <div className="mt-3">
-            <h4 className="text-sm font-semibold mb-1 flex items-center">
-                <ShieldCheck className="h-4 w-4 mr-1 text-muted-foreground" />
-                Kontrol ({controls.length}):
-            </h4>
-            <ul className="list-disc list-inside space-y-1 pl-4">
-              {controls.map(control => (
-                <li key={control.id} className="text-sm text-muted-foreground flex justify-between items-center group">
-                  <span>
-                    {control.description} <Badge variant="outline" className="ml-1 text-xs">{control.status}</Badge>
-                  </span>
-                  <div className="opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Button variant="ghost" size="icon-sm" onClick={() => onEditControl(control)} aria-label="Edit kontrol">
-                      <Edit className="h-3 w-3" />
-                    </Button>
-                     <Button variant="ghost" size="icon-sm" onClick={() => onDeleteControl(control.id)} aria-label="Hapus kontrol">
-                      <Trash2 className="h-3 w-3 text-destructive" />
-                    </Button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </CardContent>
-      <CardFooter>
-        {controls.length === 0 && (
-            <Button variant="outline" size="sm" onClick={() => onAddControl(potentialRisk)}>
-                <PlusCircle className="mr-2 h-4 w-4" /> Tambah Tindakan Kontrol
-            </Button>
-        )}
-      </CardFooter>
-    </Card>
-  );
 }
+
+    
