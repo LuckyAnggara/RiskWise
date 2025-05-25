@@ -18,7 +18,7 @@ import { RISK_CATEGORIES, RISK_SOURCES, LIKELIHOOD_LEVELS_MAP, IMPACT_LEVELS_MAP
 import { useForm, type SubmitHandler, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { ArrowLeft, PlusCircle, Trash2, Loader2, Save, BarChart3, Wand2, Settings2 } from 'lucide-react';
+import { ArrowLeft, PlusCircle, Trash2, Loader2, Save, BarChart3, Wand2, Settings2, LayoutGrid, List } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { getCurrentUprId, getCurrentPeriod, initializeAppContext } from '@/lib/upr-period-context';
 import { Separator } from '@/components/ui/separator';
@@ -30,7 +30,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { getCalculatedRiskLevel, getRiskLevelColor } from '@/app/risk-cause-analysis/[riskCauseId]/page'; // Import shared functions
+import { RiskCauseCardItem } from '@/components/risks/risk-cause-card-item'; // Import the new card item
 
 
 const potentialRiskFormSchema = z.object({
@@ -63,6 +63,39 @@ type AISuggestedCause = {
   source: RiskSource | null;
 };
 
+// Helper function from risk-cause-analysis page (or make it a shared util)
+export const getCalculatedRiskLevel = (likelihood: LikelihoodLevelDesc | null, impact: ImpactLevelDesc | null): { level: CalculatedRiskLevelCategory | 'N/A'; score: number | null } => {
+  if (!likelihood || !impact) return { level: 'N/A', score: null };
+  
+  const likelihoodValue = LIKELIHOOD_LEVELS_MAP[likelihood];
+  const impactValue = IMPACT_LEVELS_MAP[impact];
+
+  if (likelihoodValue === undefined || impactValue === undefined) return { level: 'N/A', score: null };
+
+  const score = likelihoodValue * impactValue;
+
+  let level: CalculatedRiskLevelCategory;
+  if (score >= 20) level = 'Sangat Tinggi';
+  else if (score >= 16) level = 'Tinggi';
+  else if (score >= 12) level = 'Sedang';
+  else if (score >= 6) level = 'Rendah';
+  else if (score >= 1) level = 'Sangat Rendah';
+  else level = 'Sangat Rendah'; 
+
+  return { level, score };
+};
+
+export const getRiskLevelColor = (level: CalculatedRiskLevelCategory | 'N/A') => {
+  switch (level?.toLowerCase()) {
+    case 'sangat tinggi': return 'bg-red-600 hover:bg-red-700 text-white';
+    case 'tinggi': return 'bg-orange-500 hover:bg-orange-600 text-white';
+    case 'sedang': return 'bg-yellow-400 hover:bg-yellow-500 text-black dark:bg-yellow-500 dark:text-black';
+    case 'rendah': return 'bg-blue-500 hover:bg-blue-600 text-white'; 
+    case 'sangat rendah': return 'bg-green-500 hover:bg-green-600 text-white';
+    default: return 'bg-gray-400 hover:bg-gray-500 text-white';
+  }
+};
+
 
 export default function ManagePotentialRiskPage() {
   const router = useRouter();
@@ -79,6 +112,7 @@ export default function ManagePotentialRiskPage() {
   const [goals, setGoals] = useState<Goal[]>([]);
   const [currentPotentialRisk, setCurrentPotentialRisk] = useState<PotentialRisk | null>(null);
   const [riskCauses, setRiskCauses] = useState<RiskCause[]>([]);
+  const [causeViewMode, setCauseViewMode] = useState<'table' | 'card'>('table'); // New state for cause view mode
 
   const [isBrainstormCausesContextModalOpen, setIsBrainstormCausesContextModalOpen] = useState(false);
   const [isBrainstormCausesSuggestionsModalOpen, setIsBrainstormCausesSuggestionsModalOpen] = useState(false);
@@ -450,19 +484,40 @@ export default function ManagePotentialRiskPage() {
           <Separator />
           <Card>
             <CardHeader>
-              <div className="flex justify-between items-center">
+              <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-2">
                 <div>
-                    <CardTitle>Penyebab Risiko untuk: ({potentialRiskCode}) {currentPotentialRisk.description} </CardTitle>
-                    <CardDescription>Identifikasi dan kelola penyebab spesifik yang berkontribusi pada potensi risiko ini.</CardDescription>
+                    <CardTitle>Penyebab Risiko untuk: ({potentialRiskCode})</CardTitle>
+                    <CardDescription className="mt-1">{currentPotentialRisk.description}</CardDescription>
                 </div>
-                <Button 
-                    variant="outline" 
-                    size="sm" 
-                    onClick={() => setIsBrainstormCausesContextModalOpen(true)}
-                    disabled={!currentPotentialRisk || !parentGoalForDisplay}
-                >
-                    <Wand2 className="mr-2 h-4 w-4" /> Brainstorm Penyebab (AI)
-                </Button>
+                <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                    <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => setIsBrainstormCausesContextModalOpen(true)}
+                        disabled={!currentPotentialRisk || !parentGoalForDisplay}
+                        className="text-xs"
+                    >
+                        <Wand2 className="mr-2 h-3 w-3" /> Brainstorm (AI)
+                    </Button>
+                    <div className="flex items-center space-x-1">
+                        <Button 
+                            variant={causeViewMode === 'table' ? 'default' : 'outline'} 
+                            size="icon-sm" 
+                            onClick={() => setCauseViewMode('table')}
+                            aria-label="Tampilan Tabel Penyebab"
+                        >
+                            <List className="h-4 w-4" />
+                        </Button>
+                        <Button 
+                            variant={causeViewMode === 'card' ? 'default' : 'outline'} 
+                            size="icon-sm" 
+                            onClick={() => setCauseViewMode('card')}
+                            aria-label="Tampilan Kartu Penyebab"
+                        >
+                            <LayoutGrid className="h-4 w-4" />
+                        </Button>
+                    </div>
+                </div>
               </div>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -515,26 +570,24 @@ export default function ManagePotentialRiskPage() {
                 <h3 className="text-lg font-semibold mb-2">Penyebab yang Ada ({riskCauses.length})</h3>
                 {riskCauses.length === 0 ? (
                   <p className="text-sm text-muted-foreground">Belum ada penyebab yang teridentifikasi untuk potensi risiko ini.</p>
-                ) : (
-                  <div className="border rounded-md">
+                ) : causeViewMode === 'table' ? (
+                  <div className="border rounded-md overflow-x-auto">
                     <Table>
                       <TableHeader>
                         <TableRow>
                           <TableHead className="w-[80px]">No.</TableHead>
-                          <TableHead className="w-[35%]">Deskripsi</TableHead>
-                          <TableHead>Sumber</TableHead>
+                          <TableHead className="w-[35%] min-w-[200px]">Deskripsi</TableHead>
+                          <TableHead className="min-w-[100px]">Sumber</TableHead>
                           <TableHead className="min-w-[100px]">KRI</TableHead>
                           <TableHead className="min-w-[100px]">Toleransi</TableHead>
-                          <TableHead className="min-w-[150px]">Kemungkinan</TableHead>
-                          <TableHead className="min-w-[150px]">Dampak</TableHead>
                           <TableHead className="min-w-[150px]">Tingkat Risiko</TableHead>
-                          <TableHead className="text-right">Aksi</TableHead>
+                          <TableHead className="text-right min-w-[100px]">Aksi</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {riskCauses.map(cause => {
                             const {level: causeRiskLevelText, score: causeRiskScore} = getCalculatedRiskLevel(cause.likelihood, cause.impact);
-                            const backToManagePage = `/all-risks/manage/${currentPotentialRisk.id}`;
+                            const returnPath = `/all-risks/manage/${currentPotentialRisk.id}`;
                             return (
                               <TableRow key={cause.id}>
                                 <TableCell>PC{cause.sequenceNumber}</TableCell>
@@ -542,16 +595,6 @@ export default function ManagePotentialRiskPage() {
                                 <TableCell><Badge variant="outline" className="text-xs">{cause.source}</Badge></TableCell>
                                 <TableCell className="text-xs max-w-[100px] truncate" title={cause.keyRiskIndicator || ''}>{cause.keyRiskIndicator || '-'}</TableCell>
                                 <TableCell className="text-xs max-w-[100px] truncate" title={cause.riskTolerance || ''}>{cause.riskTolerance || '-'}</TableCell>
-                                <TableCell className="text-xs">
-                                  <Badge variant={cause.likelihood ? "outline" : "ghost"} className={!cause.likelihood ? "text-muted-foreground" : ""}>
-                                     {cause.likelihood ? `${cause.likelihood} (${LIKELIHOOD_LEVELS_MAP[cause.likelihood]})` : 'N/A'}
-                                  </Badge>
-                                </TableCell>
-                                <TableCell className="text-xs">
-                                  <Badge variant={cause.impact ? "outline" : "ghost"} className={!cause.impact ? "text-muted-foreground" : ""}>
-                                    {cause.impact ? `${cause.impact} (${IMPACT_LEVELS_MAP[cause.impact]})` : 'N/A'}
-                                  </Badge>
-                                </TableCell>
                                 <TableCell>
                                    <Badge className={`${getRiskLevelColor(causeRiskLevelText)} text-xs`}>
                                       {causeRiskLevelText === 'N/A' ? 'N/A' : `${causeRiskLevelText} (${causeRiskScore})`}
@@ -566,7 +609,7 @@ export default function ManagePotentialRiskPage() {
                                     </DropdownMenuTrigger>
                                     <DropdownMenuContent align="end">
                                       <DropdownMenuItem asChild>
-                                        <Link href={`/risk-cause-analysis/${cause.id}?from=${encodeURIComponent(backToManagePage)}`}>
+                                        <Link href={`/risk-cause-analysis/${cause.id}?from=${encodeURIComponent(returnPath)}`}>
                                           <BarChart3 className="mr-2 h-4 w-4" />
                                           Analisis Detail
                                         </Link>
@@ -586,6 +629,19 @@ export default function ManagePotentialRiskPage() {
                         })}
                       </TableBody>
                     </Table>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {riskCauses.map(cause => (
+                      <RiskCauseCardItem
+                        key={cause.id}
+                        riskCause={cause}
+                        potentialRiskFullCode={potentialRiskCode}
+                        onAnalyze={(causeId) => router.push(`/risk-cause-analysis/${causeId}?from=${encodeURIComponent(`/all-risks/manage/${currentPotentialRisk.id}`)}`)}
+                        onDelete={handleDeleteRiskCause}
+                        returnPath={`/all-risks/manage/${currentPotentialRisk.id}`}
+                      />
+                    ))}
                   </div>
                 )}
               </div>
@@ -615,3 +671,4 @@ export default function ManagePotentialRiskPage() {
     </div>
   );
 }
+
