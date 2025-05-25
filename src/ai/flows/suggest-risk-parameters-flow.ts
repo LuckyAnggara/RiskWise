@@ -39,7 +39,7 @@ Level yang tersedia untuk Kemungkinan dan Dampak adalah: ${LIKELIHOOD_IMPACT_LEV
 Pastikan semua justifikasi dan penjelasan yang Anda berikan menggunakan Bahasa Indonesia yang baik dan benar.
 
 Konteks Risiko:
-- Potensi Risiko: {{{potentialRiskDescription}}}
+- Potensi Risiko: ${SuggestRiskParametersInputSchema.potentialRiskDescription}
 - Kategori Risiko: ${category || 'Tidak ditentukan'}
 - Sasaran Terkait: {{{goalDescription}}}`;
 
