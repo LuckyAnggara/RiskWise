@@ -16,6 +16,7 @@ import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, DropdownMenuCheckboxItem, DropdownMenuLabel } from "@/components/ui/dropdown-menu";
 import { getCurrentUprId, getCurrentPeriod, initializeAppContext } from '@/lib/upr-period-context';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { RiskCauseAnalysisModal } from '@/components/risks/risk-cause-analysis-modal';
 
 const getGoalsStorageKey = (uprId: string, period: string) => `riskwise-upr${uprId}-period${period}-goals`;
 const getPotentialRisksStorageKeyForGoal = (uprId: string, period: string, goalId: string) => `riskwise-upr${uprId}-period${period}-goal${goalId}-potentialRisks`;
@@ -25,7 +26,7 @@ interface EnrichedRiskCause extends RiskCause {
   potentialRiskDescription: string;
   potentialRiskCategory: RiskCategory | null;
   goalName: string;
-  goalCode: string; // Changed from goalSequenceNumber
+  goalCode: string; 
   potentialRiskSequenceNumber: number;
 }
 
@@ -83,7 +84,11 @@ export default function RiskAnalysisPage() {
       
       const goalsStorageKey = getGoalsStorageKey(currentUprId, currentPeriod);
       const storedGoalsData = localStorage.getItem(goalsStorageKey);
-      const loadedGoals: Goal[] = storedGoalsData ? JSON.parse(storedGoalsData).sort((a:Goal, b:Goal) => a.code.localeCompare(b.code, undefined, {numeric: true})) : [];
+      const loadedGoals: Goal[] = storedGoalsData ? JSON.parse(storedGoalsData).sort((a:Goal, b:Goal) => {
+        const codeA = typeof a.code === 'string' ? a.code : '';
+        const codeB = typeof b.code === 'string' ? b.code : '';
+        return codeA.localeCompare(codeB, undefined, {numeric: true});
+      }) : [];
       setAllGoals(loadedGoals);
 
       let collectedEnrichedRiskCauses: EnrichedRiskCause[] = [];
@@ -104,7 +109,7 @@ export default function RiskAnalysisPage() {
                 potentialRiskDescription: pRisk.description,
                 potentialRiskCategory: pRisk.category,
                 goalName: goal.name,
-                goalCode: goal.code, // Use goal.code
+                goalCode: goal.code, 
                 potentialRiskSequenceNumber: pRisk.sequenceNumber,
               }));
               collectedEnrichedRiskCauses = [...collectedEnrichedRiskCauses, ...enrichedCauses];
@@ -129,7 +134,7 @@ export default function RiskAnalysisPage() {
     if (currentUprId && currentPeriod) {
       loadData();
     }
-  }, [loadData, currentUprId, currentPeriod]); // Removed router from dependencies as it's not directly used in loadData for re-fetching. Re-fetching happens via state changes if needed.
+  }, [loadData, currentUprId, currentPeriod]);
 
 
   const toggleCategoryFilter = (category: RiskCategory) => {
@@ -185,15 +190,19 @@ export default function RiskAnalysisPage() {
     }
     
     if (selectedGoalIds.length > 0) {
-        const potentialRisksFromSelectedGoals = allGoals
-            .filter(g => selectedGoalIds.includes(g.id))
-            .flatMap(g => {
-                const prKey = getPotentialRisksStorageKeyForGoal(g.uprId, g.period, g.id);
-                const prData = typeof window !== 'undefined' ? localStorage.getItem(prKey) : null;
-                return prData ? (JSON.parse(prData) as PotentialRisk[]).map(pr => pr.id) : [];
-            });
-        tempCauses = tempCauses.filter(cause => potentialRisksFromSelectedGoals.includes(cause.potentialRiskId));
+        tempCauses = tempCauses.filter(cause => {
+          const parentGoal = allGoals.find(g => g.id === cause.potentialRiskId); // This logic might be flawed, cause.potentialRiskId is not goalId
+          // Correct approach: Find potential risk, then its goalId
+          const parentPotentialRisk = allGoals.flatMap(g => {
+            const prKey = getPotentialRisksStorageKeyForGoal(g.uprId, g.period, g.id);
+            const prData = typeof window !== 'undefined' ? localStorage.getItem(prKey) : null;
+            return prData ? JSON.parse(prData) as PotentialRisk[] : [];
+          }).find(pr => pr.id === cause.potentialRiskId);
+
+          return parentPotentialRisk && selectedGoalIds.includes(parentPotentialRisk.goalId);
+        });
     }
+
 
     if (selectedSources.length > 0) {
         tempCauses = tempCauses.filter(cause => selectedSources.includes(cause.source));
@@ -206,7 +215,6 @@ export default function RiskAnalysisPage() {
         });
     }
 
-    // Sort by the full constructed code
     return tempCauses.sort((a, b) => {
         const codeA = `${a.goalCode}.PR${a.potentialRiskSequenceNumber}.PC${a.sequenceNumber}`;
         const codeB = `${b.goalCode}.PR${b.potentialRiskSequenceNumber}.PC${b.sequenceNumber}`;
@@ -414,4 +422,4 @@ export default function RiskAnalysisPage() {
   );
 }
 
-
+    

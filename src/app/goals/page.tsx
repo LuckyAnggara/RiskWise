@@ -61,7 +61,11 @@ export default function GoalsPage() {
   const updateLocalStorage = (updatedGoals: Goal[]) => {
     if (typeof window !== 'undefined' && currentUprId && currentPeriod) {
       const storageKey = getGoalsStorageKey(currentUprId, currentPeriod);
-      localStorage.setItem(storageKey, JSON.stringify(updatedGoals.sort((a, b) => a.code.localeCompare(b.code))));
+      localStorage.setItem(storageKey, JSON.stringify(updatedGoals.sort((a, b) => {
+        const codeA = typeof a.code === 'string' ? a.code : '';
+        const codeB = typeof b.code === 'string' ? b.code : '';
+        return codeA.localeCompare(codeB, undefined, {numeric: true});
+      })));
     }
   };
 
@@ -78,15 +82,16 @@ export default function GoalsPage() {
         toast({ title: "Sasaran Diperbarui", description: `Sasaran "${editedGoal?.name}" (${editedGoal?.code}) telah berhasil diperbarui.` });
       } else { // Adding new goal
         const firstLetter = goalData.name.charAt(0).toUpperCase();
-        // Basic validation for a letter, default to 'X' if not.
         const prefix = /^[A-Z]$/.test(firstLetter) ? firstLetter : 'X';
         
-        const goalsWithSamePrefix = prevGoals.filter(g => g.code.startsWith(prefix));
+        const goalsWithSamePrefix = prevGoals.filter(g => g.code && g.code.startsWith(prefix));
         let maxNum = 0;
         goalsWithSamePrefix.forEach(g => {
-          const numPart = parseInt(g.code.substring(prefix.length), 10);
-          if (!isNaN(numPart) && numPart > maxNum) {
-            maxNum = numPart;
+          if (g.code) {
+            const numPart = parseInt(g.code.substring(prefix.length), 10);
+            if (!isNaN(numPart) && numPart > maxNum) {
+              maxNum = numPart;
+            }
           }
         });
         const newNumericPart = maxNum + 1;
@@ -135,14 +140,18 @@ export default function GoalsPage() {
   };
 
   const filteredGoals = useMemo(() => {
-    let sortedGoals = [...goals].sort((a, b) => a.code.localeCompare(b.code, undefined, {numeric: true}));
+    let sortedGoals = [...goals].sort((a, b) => {
+        const codeA = typeof a.code === 'string' ? a.code : '';
+        const codeB = typeof b.code === 'string' ? b.code : '';
+        return codeA.localeCompare(codeB, undefined, {numeric: true});
+    });
     if (!searchTerm) {
       return sortedGoals;
     }
     return sortedGoals.filter(goal => 
       goal.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       goal.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      goal.code.toLowerCase().includes(searchTerm.toLowerCase())
+      (goal.code && goal.code.toLowerCase().includes(searchTerm.toLowerCase()))
     );
   }, [goals, searchTerm]);
   
@@ -163,8 +172,6 @@ export default function GoalsPage() {
         actions={
           <AddGoalDialog 
             onGoalSave={handleGoalSave}
-            // Pass all current goals for code generation logic if it were inside the dialog
-            // For now, logic is in handleGoalSave here
             triggerButton={
               <Button>
                 <PlusCircle className="mr-2 h-4 w-4" /> Tambah Sasaran Baru
@@ -233,3 +240,4 @@ export default function GoalsPage() {
   );
 }
 
+    

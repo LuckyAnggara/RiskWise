@@ -120,7 +120,11 @@ export default function ManagePotentialRiskPage() {
     const goalsStorageKey = getGoalsStorageKey(uprId, period);
     const storedGoalsData = localStorage.getItem(goalsStorageKey);
     const loadedGoals: Goal[] = storedGoalsData ? JSON.parse(storedGoalsData) : [];
-    setGoals(loadedGoals.sort((a, b) => a.code.localeCompare(b.code, undefined, {numeric: true})));
+    setGoals(loadedGoals.sort((a, b) => {
+      const codeA = typeof a.code === 'string' ? a.code : '';
+      const codeB = typeof b.code === 'string' ? b.code : '';
+      return codeA.localeCompare(codeB, undefined, {numeric: true});
+    }));
     if (loadedGoals.length > 0 && isCreatingNew) {
         setPotentialRiskValue("goalId", loadedGoals[0].id);
     }
