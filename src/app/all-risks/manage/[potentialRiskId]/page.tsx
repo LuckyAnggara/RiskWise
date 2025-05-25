@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation'; 
 import Link from 'next/link'; 
 import { PageHeader } from '@/components/ui/page-header';
@@ -30,7 +30,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { RiskCauseCardItem } from '@/components/risks/risk-cause-card-item'; // Import the new card item
+import { RiskCauseCardItem } from '@/components/risks/risk-cause-card-item'; 
 
 
 const potentialRiskFormSchema = z.object({
@@ -112,7 +112,7 @@ export default function ManagePotentialRiskPage() {
   const [goals, setGoals] = useState<Goal[]>([]);
   const [currentPotentialRisk, setCurrentPotentialRisk] = useState<PotentialRisk | null>(null);
   const [riskCauses, setRiskCauses] = useState<RiskCause[]>([]);
-  const [causeViewMode, setCauseViewMode] = useState<'table' | 'card'>('table'); // New state for cause view mode
+  const [causeViewMode, setCauseViewMode] = useState<'table' | 'card'>('table'); 
 
   const [isBrainstormCausesContextModalOpen, setIsBrainstormCausesContextModalOpen] = useState(false);
   const [isBrainstormCausesSuggestionsModalOpen, setIsBrainstormCausesSuggestionsModalOpen] = useState(false);
@@ -489,35 +489,15 @@ export default function ManagePotentialRiskPage() {
                     <CardTitle>Penyebab Risiko untuk: ({potentialRiskCode})</CardTitle>
                     <CardDescription className="mt-1">{currentPotentialRisk.description}</CardDescription>
                 </div>
-                <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
-                    <Button 
-                        variant="outline" 
-                        size="sm" 
-                        onClick={() => setIsBrainstormCausesContextModalOpen(true)}
-                        disabled={!currentPotentialRisk || !parentGoalForDisplay}
-                        className="text-xs"
-                    >
-                        <Wand2 className="mr-2 h-3 w-3" /> Brainstorm (AI)
-                    </Button>
-                    <div className="flex items-center space-x-1">
-                        <Button 
-                            variant={causeViewMode === 'table' ? 'default' : 'outline'} 
-                            size="icon-sm" 
-                            onClick={() => setCauseViewMode('table')}
-                            aria-label="Tampilan Tabel Penyebab"
-                        >
-                            <List className="h-4 w-4" />
-                        </Button>
-                        <Button 
-                            variant={causeViewMode === 'card' ? 'default' : 'outline'} 
-                            size="icon-sm" 
-                            onClick={() => setCauseViewMode('card')}
-                            aria-label="Tampilan Kartu Penyebab"
-                        >
-                            <LayoutGrid className="h-4 w-4" />
-                        </Button>
-                    </div>
-                </div>
+                <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={() => setIsBrainstormCausesContextModalOpen(true)}
+                    disabled={!currentPotentialRisk || !parentGoalForDisplay}
+                    className="text-xs"
+                >
+                    <Wand2 className="mr-2 h-3 w-3" /> Brainstorm Penyebab (AI)
+                </Button>
               </div>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -567,7 +547,27 @@ export default function ManagePotentialRiskPage() {
               </form>
 
               <div>
-                <h3 className="text-lg font-semibold mb-2">Penyebab yang Ada ({riskCauses.length})</h3>
+                <div className="flex justify-between items-center mb-2">
+                    <h3 className="text-lg font-semibold">Penyebab yang Ada ({riskCauses.length})</h3>
+                    <div className="flex items-center space-x-1">
+                        <Button 
+                            variant={causeViewMode === 'table' ? 'default' : 'outline'} 
+                            size="icon-sm" 
+                            onClick={() => setCauseViewMode('table')}
+                            aria-label="Tampilan Tabel Penyebab"
+                        >
+                            <List className="h-4 w-4" />
+                        </Button>
+                        <Button 
+                            variant={causeViewMode === 'card' ? 'default' : 'outline'} 
+                            size="icon-sm" 
+                            onClick={() => setCauseViewMode('card')}
+                            aria-label="Tampilan Kartu Penyebab"
+                        >
+                            <LayoutGrid className="h-4 w-4" />
+                        </Button>
+                    </div>
+                </div>
                 {riskCauses.length === 0 ? (
                   <p className="text-sm text-muted-foreground">Belum ada penyebab yang teridentifikasi untuk potensi risiko ini.</p>
                 ) : causeViewMode === 'table' ? (
