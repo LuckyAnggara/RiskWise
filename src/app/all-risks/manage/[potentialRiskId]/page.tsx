@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, Link } from 'next/navigation';
 import { PageHeader } from '@/components/ui/page-header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,16 +12,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import type { PotentialRisk, Goal, RiskCategory, RiskCause, RiskSource, LikelihoodImpactLevel } from '@/lib/types';
+import type { PotentialRisk, Goal, RiskCategory, RiskCause, RiskSource } from '@/lib/types';
 import { RISK_CATEGORIES, RISK_SOURCES } from '@/lib/types';
 import { useForm, type SubmitHandler, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { ArrowLeft, PlusCircle, Trash2, Loader2, Save, Edit } from 'lucide-react';
+import { ArrowLeft, PlusCircle, Trash2, Loader2, Save, Edit3, BarChart3 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { getCurrentUprId, getCurrentPeriod, initializeAppContext } from '@/lib/upr-period-context';
 import { Separator } from '@/components/ui/separator';
-import { RiskCauseAnalysisModal } from '@/components/risks/risk-cause-analysis-modal';
 
 const potentialRiskFormSchema = z.object({
   description: z.string().min(10, "Deskripsi potensi risiko minimal 10 karakter."),
@@ -48,38 +47,6 @@ const getGoalsStorageKey = (uprId: string, period: string) => `riskwise-upr${upr
 const getPotentialRisksStorageKeyForGoal = (uprId: string, period: string, goalId: string) => `riskwise-upr${uprId}-period${period}-goal${goalId}-potentialRisks`;
 const getRiskCausesStorageKey = (uprId: string, period: string, potentialRiskId: string) => `riskwise-upr${uprId}-period${period}-potentialRisk${potentialRiskId}-causes`;
 
-const getRiskLevel = (likelihood: LikelihoodImpactLevel | null, impact: LikelihoodImpactLevel | null): string => {
-  if (!likelihood || !impact) return 'N/A';
-  const L: { [key in LikelihoodImpactLevel]: number } = { 'Sangat Rendah': 1, 'Rendah': 2, 'Sedang': 3, 'Tinggi': 4, 'Sangat Tinggi': 5 };
-  const I: { [key in LikelihoodImpactLevel]: number } = { 'Sangat Rendah': 1, 'Rendah': 2, 'Sedang': 3, 'Tinggi': 4, 'Sangat Tinggi': 5 };
-  
-  const likelihoodValue = L[likelihood];
-  const impactValue = I[impact];
-
-  if (!likelihoodValue || !impactValue) return 'N/A';
-
-  const score = likelihoodValue * impactValue;
-
-  if (score >= 20) return 'Sangat Tinggi';
-  if (score >= 16) return 'Tinggi';
-  if (score >= 12) return 'Sedang';
-  if (score >= 6) return 'Rendah';
-  if (score >= 1) return 'Sangat Rendah';
-  return 'N/A';
-};
-
-const getRiskLevelColor = (level: string) => {
-  switch (level.toLowerCase()) {
-    case 'sangat tinggi': return 'bg-red-600 hover:bg-red-700 text-white';
-    case 'tinggi': return 'bg-orange-500 hover:bg-orange-600 text-white';
-    case 'sedang': return 'bg-yellow-400 hover:bg-yellow-500 text-black dark:bg-yellow-500 dark:text-black';
-    case 'rendah': return 'bg-blue-500 hover:bg-blue-600 text-white';
-    case 'sangat rendah': return 'bg-green-500 hover:bg-green-600 text-white';
-    default: return 'bg-gray-400 hover:bg-gray-500 text-white';
-  }
-};
-
-
 export default function ManagePotentialRiskPage() {
   const router = useRouter();
   const params = useParams();
@@ -94,9 +61,6 @@ export default function ManagePotentialRiskPage() {
   const [goals, setGoals] = useState<Goal[]>([]);
   const [currentPotentialRisk, setCurrentPotentialRisk] = useState<PotentialRisk | null>(null);
   const [riskCauses, setRiskCauses] = useState<RiskCause[]>([]);
-
-  const [selectedCauseForAnalysis, setSelectedCauseForAnalysis] = useState<RiskCause | null>(null);
-  const [isCauseAnalysisModalOpen, setIsCauseAnalysisModalOpen] = useState(false);
 
   const { toast } = useToast();
 
@@ -127,7 +91,7 @@ export default function ManagePotentialRiskPage() {
     const goalsStorageKey = getGoalsStorageKey(uprId, period);
     const storedGoalsData = localStorage.getItem(goalsStorageKey);
     const loadedGoals: Goal[] = storedGoalsData ? JSON.parse(storedGoalsData) : [];
-    setGoals(loadedGoals);
+    setGoals(loadedGoals.sort((a, b) => a.sequenceNumber - b.sequenceNumber));
     if (loadedGoals.length > 0 && isCreatingNew) {
         setPotentialRiskValue("goalId", loadedGoals[0].id);
     }
@@ -171,7 +135,7 @@ export default function ManagePotentialRiskPage() {
       });
       const causesStorageKey = getRiskCausesStorageKey(parentGoalForRisk.uprId, parentGoalForRisk.period, foundPotentialRisk.id);
       const storedCausesData = localStorage.getItem(causesStorageKey);
-      setRiskCauses(storedCausesData ? JSON.parse(storedCausesData) : []);
+      setRiskCauses(storedCausesData ? JSON.parse(storedCausesData).sort((a: RiskCause, b: RiskCause) => a.sequenceNumber - b.sequenceNumber) : []);
     } else if (!isCreatingNew) {
       toast({ title: "Kesalahan", description: "Potensi Risiko tidak ditemukan.", variant: "destructive" });
       router.push('/all-risks');
@@ -188,7 +152,7 @@ export default function ManagePotentialRiskPage() {
       const loadedGoals = loadAllGoals(context.uprId, context.period);
       loadPotentialRiskAndCauses(context.uprId, context.period, loadedGoals);
     }
-  }, [loadAllGoals, loadPotentialRiskAndCauses]);
+  }, [loadAllGoals, loadPotentialRiskAndCauses]); // Removed potentialRiskIdParam dependency to prevent re-triggering on URL change by router.replace
 
 
   const onPotentialRiskSubmit: SubmitHandler<PotentialRiskFormData> = async (data) => {
@@ -202,6 +166,10 @@ export default function ManagePotentialRiskPage() {
 
     let pRiskToSave: PotentialRisk;
     let successMessage = "";
+    
+    const goalPotentialRisksKey = getPotentialRisksStorageKeyForGoal(parentGoal.uprId, parentGoal.period, parentGoal.id);
+    const storedPotentialRisks = localStorage.getItem(goalPotentialRisksKey);
+    let currentGoalPotentialRisks: PotentialRisk[] = storedPotentialRisks ? JSON.parse(storedPotentialRisks) : [];
 
     if (isCreatingNew) {
       pRiskToSave = {
@@ -213,17 +181,14 @@ export default function ManagePotentialRiskPage() {
         likelihood: null,
         impact: null,
         identifiedAt: new Date().toISOString(),
+        sequenceNumber: currentGoalPotentialRisks.length + 1,
       };
-      successMessage = `Potensi Risiko "${pRiskToSave.description}" dibuat. Anda sekarang dapat menambahkan penyebabnya.`;
-
-      const goalPotentialRisksKey = getPotentialRisksStorageKeyForGoal(parentGoal.uprId, parentGoal.period, parentGoal.id);
-      const storedPotentialRisks = localStorage.getItem(goalPotentialRisksKey);
-      const currentGoalPotentialRisks: PotentialRisk[] = storedPotentialRisks ? JSON.parse(storedPotentialRisks) : [];
+      successMessage = `Potensi Risiko "${pRiskToSave.description}" (PR${pRiskToSave.sequenceNumber}) dibuat. Anda sekarang dapat menambahkan penyebabnya.`;
       currentGoalPotentialRisks.push(pRiskToSave);
-      localStorage.setItem(goalPotentialRisksKey, JSON.stringify(currentGoalPotentialRisks.sort((a,b)=>a.description.localeCompare(b.description))));
+      localStorage.setItem(goalPotentialRisksKey, JSON.stringify(currentGoalPotentialRisks.sort((a,b)=>(a.sequenceNumber - b.sequenceNumber || a.description.localeCompare(b.description)))));
       
-      setCurrentPotentialRisk(pRiskToSave);
-      router.replace(`/all-risks/manage/${pRiskToSave.id}`);
+      setCurrentPotentialRisk(pRiskToSave); // Update state for the current page
+      router.replace(`/all-risks/manage/${pRiskToSave.id}`); // Change URL to edit mode for the new risk
 
     } else if (currentPotentialRisk) {
       pRiskToSave = {
@@ -234,27 +199,28 @@ export default function ManagePotentialRiskPage() {
       };
 
       if (currentPotentialRisk.goalId !== data.goalId) {
+        // Remove from old goal's list
         const oldParentGoal = goals.find(g => g.id === currentPotentialRisk.goalId);
         if (oldParentGoal) {
             const oldGoalPRKey = getPotentialRisksStorageKeyForGoal(oldParentGoal.uprId, oldParentGoal.period, oldParentGoal.id);
             let oldGoalPRs: PotentialRisk[] = JSON.parse(localStorage.getItem(oldGoalPRKey) || '[]');
             oldGoalPRs = oldGoalPRs.filter(pr => pr.id !== currentPotentialRisk.id);
-            localStorage.setItem(oldGoalPRKey, JSON.stringify(oldGoalPRs));
+            localStorage.setItem(oldGoalPRKey, JSON.stringify(oldGoalPRs.sort((a,b)=>(a.sequenceNumber - b.sequenceNumber || a.description.localeCompare(b.description)))));
         }
+        // Add to new goal's list
         const newGoalPRKey = getPotentialRisksStorageKeyForGoal(parentGoal.uprId, parentGoal.period, data.goalId);
         let newGoalPRs: PotentialRisk[] = JSON.parse(localStorage.getItem(newGoalPRKey) || '[]');
-        newGoalPRs.push({...pRiskToSave, goalId: data.goalId});
-        localStorage.setItem(newGoalPRKey, JSON.stringify(newGoalPRs.sort((a,b)=>a.description.localeCompare(b.description))));
-        pRiskToSave.goalId = data.goalId;
+        pRiskToSave.goalId = data.goalId; // Update the pRiskToSave object itself
+        pRiskToSave.sequenceNumber = newGoalPRs.length + 1; // Assign new sequence number in the new goal
+        newGoalPRs.push(pRiskToSave);
+        localStorage.setItem(newGoalPRKey, JSON.stringify(newGoalPRs.sort((a,b)=>(a.sequenceNumber - b.sequenceNumber || a.description.localeCompare(b.description)))));
       } else {
-        const goalPotentialRisksKey = getPotentialRisksStorageKeyForGoal(parentGoal.uprId, parentGoal.period, parentGoal.id);
-        const storedPotentialRisks = localStorage.getItem(goalPotentialRisksKey);
-        let currentGoalPotentialRisks: PotentialRisk[] = storedPotentialRisks ? JSON.parse(storedPotentialRisks) : [];
+        // GoalId hasn't changed, just update in its current list
         currentGoalPotentialRisks = currentGoalPotentialRisks.map(pr => pr.id === pRiskToSave.id ? pRiskToSave : pr);
-        localStorage.setItem(goalPotentialRisksKey, JSON.stringify(currentGoalPotentialRisks.sort((a,b)=>a.description.localeCompare(b.description))));
+        localStorage.setItem(goalPotentialRisksKey, JSON.stringify(currentGoalPotentialRisks.sort((a,b)=>(a.sequenceNumber - b.sequenceNumber || a.description.localeCompare(b.description)))));
       }
-      setCurrentPotentialRisk(pRiskToSave);
-      successMessage = `Potensi Risiko "${pRiskToSave.description}" diperbarui.`;
+      setCurrentPotentialRisk(pRiskToSave); // Update local state
+      successMessage = `Potensi Risiko "${pRiskToSave.description}" (PR${pRiskToSave.sequenceNumber}) diperbarui.`;
     } else {
       toast({ title: "Kesalahan", description: "Tidak dapat menyimpan. Data potensi risiko tidak lengkap.", variant: "destructive" });
       setIsSaving(false);
@@ -286,11 +252,12 @@ export default function ManagePotentialRiskPage() {
       likelihood: null,
       impact: null,
       createdAt: new Date().toISOString(),
+      sequenceNumber: riskCauses.length + 1,
     };
-    const updatedCauses = [...riskCauses, newCause];
+    const updatedCauses = [...riskCauses, newCause].sort((a,b) => a.sequenceNumber - b.sequenceNumber);
     setRiskCauses(updatedCauses);
     localStorage.setItem(getRiskCausesStorageKey(parentPotentialRiskGoal.uprId, parentPotentialRiskGoal.period, currentPotentialRisk.id), JSON.stringify(updatedCauses));
-    toast({ title: "Penyebab Risiko Ditambahkan", description: `Penyebab "${newCause.description}" ditambahkan.` });
+    toast({ title: "Penyebab Risiko Ditambahkan", description: `Penyebab "${newCause.description}" (PC${newCause.sequenceNumber}) ditambahkan.` });
     resetRiskCauseForm();
   };
 
@@ -302,29 +269,10 @@ export default function ManagePotentialRiskPage() {
     const causeToDelete = riskCauses.find(c => c.id === causeId);
     if (!causeToDelete) return;
     const updatedCauses = riskCauses.filter(c => c.id !== causeId);
-    setRiskCauses(updatedCauses);
+    setRiskCauses(updatedCauses); // No need to re-sort after delete, order maintained
     localStorage.setItem(getRiskCausesStorageKey(parentPotentialRiskGoal.uprId, parentPotentialRiskGoal.period, currentPotentialRisk.id), JSON.stringify(updatedCauses));
-    toast({ title: "Penyebab Risiko Dihapus", description: `Penyebab "${causeToDelete.description}" dihapus.`, variant: "destructive" });
+    toast({ title: "Penyebab Risiko Dihapus", description: `Penyebab "${causeToDelete.description}" (PC${causeToDelete.sequenceNumber}) dihapus.`, variant: "destructive" });
   };
-
-  const handleOpenCauseAnalysisModal = (cause: RiskCause) => {
-    setSelectedCauseForAnalysis(cause);
-    setIsCauseAnalysisModalOpen(true);
-  };
-
-  const handleSaveCauseAnalysis = (updatedCause: RiskCause) => {
-    if (!currentPotentialRisk) return;
-    const parentGoal = goals.find(g => g.id === currentPotentialRisk.goalId);
-    if (!parentGoal) return;
-
-    const newCauses = riskCauses.map(rc => rc.id === updatedCause.id ? updatedCause : rc);
-    setRiskCauses(newCauses);
-    localStorage.setItem(getRiskCausesStorageKey(parentGoal.uprId, parentGoal.period, currentPotentialRisk.id), JSON.stringify(newCauses));
-    
-    setSelectedCauseForAnalysis(null); // Close modal or clear selection after save
-    setIsCauseAnalysisModalOpen(false);
-  };
-
 
   if (pageIsLoading || !currentUprId || !currentPeriod) {
     return (
@@ -338,7 +286,7 @@ export default function ManagePotentialRiskPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title={isCreatingNew ? "Tambah Potensi Risiko Baru" : "Edit Potensi Risiko"}
+        title={isCreatingNew ? "Tambah Potensi Risiko Baru" : `Edit Potensi Risiko (PR${currentPotentialRisk?.sequenceNumber || '...'})`}
         description={`Kelola detail dan penyebab potensi risiko. UPR: ${currentUprId}, Periode: ${currentPeriod}.`}
         actions={
           <Button onClick={() => router.push('/all-risks')} variant="outline">
@@ -370,7 +318,7 @@ export default function ManagePotentialRiskPage() {
                         <SelectContent>
                         {goals.length > 0 ? (
                             goals.map(goal => (
-                            <SelectItem key={goal.id} value={goal.id}>{goal.name}</SelectItem>
+                            <SelectItem key={goal.id} value={goal.id}>S{goal.sequenceNumber} - {goal.name}</SelectItem>
                             ))
                         ) : (
                             <SelectItem value="no-goals" disabled>Tidak ada sasaran di UPR/Periode ini.</SelectItem>
@@ -450,7 +398,7 @@ export default function ManagePotentialRiskPage() {
           <Separator />
           <Card>
             <CardHeader>
-              <CardTitle>Penyebab Risiko untuk: {currentPotentialRisk.description}</CardTitle>
+              <CardTitle>Penyebab Risiko untuk: {currentPotentialRisk.description} (PR{currentPotentialRisk.sequenceNumber})</CardTitle>
               <CardDescription>Identifikasi dan kelola penyebab spesifik yang berkontribusi pada potensi risiko ini.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -508,45 +456,42 @@ export default function ManagePotentialRiskPage() {
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead className="w-[30%]">Deskripsi</TableHead>
+                          <TableHead className="w-[50px]">No.</TableHead>
+                          <TableHead className="w-[40%]">Deskripsi</TableHead>
                           <TableHead>Sumber</TableHead>
                           <TableHead>KRI</TableHead>
                           <TableHead>Toleransi</TableHead>
-                          <TableHead>Probabilitas</TableHead>
+                          <TableHead>Prob.</TableHead>
                           <TableHead>Dampak</TableHead>
-                          <TableHead>Level</TableHead>
                           <TableHead className="text-right">Aksi</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {riskCauses.map(cause => {
-                          const causeRiskLevel = getRiskLevel(cause.likelihood, cause.impact);
-                          return (
-                            <TableRow key={cause.id}>
-                              <TableCell className="text-xs max-w-xs truncate" title={cause.description}>{cause.description}</TableCell>
-                              <TableCell><Badge variant="outline" className="text-xs">{cause.source}</Badge></TableCell>
-                              <TableCell className="text-xs max-w-[100px] truncate" title={cause.keyRiskIndicator || ''}>{cause.keyRiskIndicator || '-'}</TableCell>
-                              <TableCell className="text-xs max-w-[100px] truncate" title={cause.riskTolerance || ''}>{cause.riskTolerance || '-'}</TableCell>
-                              <TableCell className="text-xs">
-                                <Badge variant={cause.likelihood ? "outline" : "ghost"} className={!cause.likelihood ? "text-muted-foreground" : ""}>{cause.likelihood || 'N/A'}</Badge>
-                              </TableCell>
-                              <TableCell className="text-xs">
-                                <Badge variant={cause.impact ? "outline" : "ghost"} className={!cause.impact ? "text-muted-foreground" : ""}>{cause.impact || 'N/A'}</Badge>
-                              </TableCell>
-                              <TableCell className="text-xs">
-                                <Badge className={`${getRiskLevelColor(causeRiskLevel)}`}>{causeRiskLevel}</Badge>
-                              </TableCell>
-                              <TableCell className="text-right space-x-1">
-                                <Button variant="outline" size="xs" onClick={() => handleOpenCauseAnalysisModal(cause)}>
-                                  <Edit className="h-3 w-3" />
+                        {riskCauses.map(cause => (
+                          <TableRow key={cause.id}>
+                            <TableCell>PC{cause.sequenceNumber}</TableCell>
+                            <TableCell className="text-xs max-w-xs truncate" title={cause.description}>{cause.description}</TableCell>
+                            <TableCell><Badge variant="outline" className="text-xs">{cause.source}</Badge></TableCell>
+                            <TableCell className="text-xs max-w-[100px] truncate" title={cause.keyRiskIndicator || ''}>{cause.keyRiskIndicator || '-'}</TableCell>
+                            <TableCell className="text-xs max-w-[100px] truncate" title={cause.riskTolerance || ''}>{cause.riskTolerance || '-'}</TableCell>
+                            <TableCell className="text-xs">
+                              <Badge variant={cause.likelihood ? "outline" : "ghost"} className={!cause.likelihood ? "text-muted-foreground" : ""}>{cause.likelihood || 'N/A'}</Badge>
+                            </TableCell>
+                            <TableCell className="text-xs">
+                              <Badge variant={cause.impact ? "outline" : "ghost"} className={!cause.impact ? "text-muted-foreground" : ""}>{cause.impact || 'N/A'}</Badge>
+                            </TableCell>
+                            <TableCell className="text-right space-x-1">
+                              <Link href={`/risk-cause-analysis/${cause.id}`}>
+                                <Button variant="outline" size="xs">
+                                  <BarChart3 className="h-3 w-3 mr-1" /> Analisis
                                 </Button>
-                                <Button variant="ghost" size="xs" onClick={() => handleDeleteRiskCause(cause.id)} aria-label="Hapus penyebab">
-                                  <Trash2 className="h-3 w-3 text-destructive" />
-                                </Button>
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })}
+                              </Link>
+                              <Button variant="ghost" size="xs" onClick={() => handleDeleteRiskCause(cause.id)} aria-label="Hapus penyebab">
+                                <Trash2 className="h-3 w-3 text-destructive" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
                       </TableBody>
                     </Table>
                   </div>
@@ -555,20 +500,6 @@ export default function ManagePotentialRiskPage() {
             </CardContent>
           </Card>
         </>
-      )}
-      {selectedCauseForAnalysis && currentPotentialRisk && (
-        <RiskCauseAnalysisModal
-            riskCause={selectedCauseForAnalysis}
-            potentialRisk={currentPotentialRisk}
-            goalUprId={currentUprId}
-            goalPeriod={currentPeriod}
-            isOpen={isCauseAnalysisModalOpen}
-            onOpenChange={(open) => {
-                setIsCauseAnalysisModalOpen(open);
-                if (!open) setSelectedCauseForAnalysis(null);
-            }}
-            onSave={handleSaveCauseAnalysis}
-        />
       )}
     </div>
   );

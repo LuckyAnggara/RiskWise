@@ -15,11 +15,12 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 interface RiskIdentificationCardProps {
   goal: Goal;
   onPotentialRisksIdentified: (newPotentialRisks: PotentialRisk[]) => void;
+  existingPotentialRisksCount: number;
 }
 
-export function RiskIdentificationCard({ goal, onPotentialRisksIdentified }: RiskIdentificationCardProps) {
+export function RiskIdentificationCard({ goal, onPotentialRisksIdentified, existingPotentialRisksCount }: RiskIdentificationCardProps) {
   const [goalDescriptionForAI, setGoalDescriptionForAI] = useState(
-    `${goal.description} (Konteks untuk sasaran ini: UPR ${goal.uprId}, Periode ${goal.period})`
+    `Sasaran S${goal.sequenceNumber}: ${goal.name} - ${goal.description} (Konteks untuk sasaran ini: UPR ${goal.uprId}, Periode ${goal.period})`
   );
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -28,19 +29,24 @@ export function RiskIdentificationCard({ goal, onPotentialRisksIdentified }: Ris
   const handleBrainstormPotentialRisks = async () => {
     setIsLoading(true);
     setError(null);
+    let currentPRSequence = existingPotentialRisksCount;
     try {
       const result = await brainstormPotentialRisksAction({ goalDescription: goalDescriptionForAI });
       if (result.success && result.data && result.data.potentialRisks) {
-        const newPotentialRisks: PotentialRisk[] = result.data.potentialRisks.map(desc => ({
-          id: `prisk_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-          goalId: goal.id,
-          description: desc,
-          category: null,
-          owner: null,
-          likelihood: null,
-          impact: null,
-          identifiedAt: new Date().toISOString(),
-        }));
+        const newPotentialRisks: PotentialRisk[] = result.data.potentialRisks.map(desc => {
+          currentPRSequence++;
+          return {
+            id: `prisk_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+            goalId: goal.id,
+            description: desc,
+            category: null,
+            owner: null,
+            likelihood: null,
+            impact: null,
+            identifiedAt: new Date().toISOString(),
+            sequenceNumber: currentPRSequence,
+          };
+        });
         onPotentialRisksIdentified(newPotentialRisks);
       } else {
         const errorMessage = result.error || "Terjadi kesalahan tidak diketahui saat brainstorming AI.";
@@ -70,7 +76,7 @@ export function RiskIdentificationCard({ goal, onPotentialRisksIdentified }: Ris
       <CardHeader>
         <CardTitle>Identifikasi Potensi Risiko dengan AI</CardTitle>
         <CardDescription>
-          Gunakan AI untuk brainstorming potensi risiko untuk sasaran: <span className="font-semibold">{goal.name}</span>.
+          Gunakan AI untuk brainstorming potensi risiko untuk sasaran: <span className="font-semibold">S{goal.sequenceNumber} - {goal.name}</span>.
           Sempurnakan deskripsi di bawah ini untuk hasil AI yang lebih baik.
         </CardDescription>
       </CardHeader>

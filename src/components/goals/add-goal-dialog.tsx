@@ -24,6 +24,7 @@ import { PlusCircle, Pencil } from 'lucide-react';
 const goalSchema = z.object({
   name: z.string().min(3, "Nama sasaran minimal 3 karakter."),
   description: z.string().min(10, "Deskripsi minimal 10 karakter."),
+  // sequenceNumber will be handled programmatically
 });
 
 type GoalFormData = z.infer<typeof goalSchema>;
@@ -34,9 +35,17 @@ interface AddGoalDialogProps {
   triggerButton?: React.ReactNode;
   currentUprId: string;
   currentPeriod: string;
+  existingGoalsCount: number; // To determine next sequence number
 }
 
-export function AddGoalDialog({ onGoalSave, existingGoal, triggerButton, currentUprId, currentPeriod }: AddGoalDialogProps) {
+export function AddGoalDialog({ 
+  onGoalSave, 
+  existingGoal, 
+  triggerButton, 
+  currentUprId, 
+  currentPeriod,
+  existingGoalsCount 
+}: AddGoalDialogProps) {
   const [open, setOpen] = useState(false);
   const {
     register,
@@ -71,6 +80,7 @@ export function AddGoalDialog({ onGoalSave, existingGoal, triggerButton, current
       createdAt: existingGoal?.createdAt || new Date().toISOString(),
       uprId: currentUprId,
       period: currentPeriod,
+      sequenceNumber: existingGoal?.sequenceNumber || (existingGoalsCount + 1),
     };
     onGoalSave(newGoal);
     setOpen(false);

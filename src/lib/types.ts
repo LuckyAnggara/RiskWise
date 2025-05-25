@@ -29,36 +29,39 @@ export interface Goal {
   createdAt: string; // ISO date string
   uprId: string; // Unit Pemilik Risiko ID
   period: string; // e.g., "2024", "2025"
+  sequenceNumber: number; // For codification e.g., G1, G2
 }
 
 export interface PotentialRisk {
   id: string;
-  goalId: string; // Will link to a Goal that has uprId and period
+  goalId: string; 
   description: string;
   category: RiskCategory | null;
-  owner: string | null; // Nama atau jabatan pemilik risiko
+  owner: string | null; 
   likelihood: LikelihoodImpactLevel | null; // Inherent likelihood of the potential risk
   impact: LikelihoodImpactLevel | null; // Inherent impact of the potential risk
   identifiedAt: string; // ISO date string
   analysisCompletedAt?: string; // ISO date string for the potential risk's inherent analysis
+  sequenceNumber: number; // For codification e.g., PR1, PR2 relative to Goal
 }
 
 export interface RiskCause {
   id: string;
-  potentialRiskId: string; // Links to PotentialRisk
+  potentialRiskId: string; 
   description: string;
   source: RiskSource;
   keyRiskIndicator: string | null;
   riskTolerance: string | null;
-  likelihood: LikelihoodImpactLevel | null; // Likelihood of this specific cause
-  impact: LikelihoodImpactLevel | null; // Impact if this specific cause occurs
+  likelihood: LikelihoodImpactLevel | null; 
+  impact: LikelihoodImpactLevel | null; 
   createdAt: string; // ISO date string
-  analysisUpdatedAt?: string; // ISO date string for when KRI/Tolerance/Likelihood/Impact of cause was last updated
+  analysisUpdatedAt?: string; 
+  sequenceNumber: number; // For codification e.g., RC1, RC2 relative to PotentialRisk
 }
 
 export interface Control {
   id:string;
-  potentialRiskId: string; // Links to PotentialRisk
+  potentialRiskId: string; 
   description: string;
   effectiveness: 'Low' | 'Medium' | 'High' | null;
   status: 'Planned' | 'In Progress' | 'Implemented' | 'Ineffective';
@@ -66,5 +69,4 @@ export interface Control {
   updatedAt?: string; // ISO date string
 }
 
-// Example: Combined Risk Level (can be calculated)
 export type RiskLevel = 'Sangat Rendah' | 'Rendah' | 'Sedang' | 'Tinggi' | 'Sangat Tinggi';
