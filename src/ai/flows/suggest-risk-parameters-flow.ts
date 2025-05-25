@@ -36,6 +36,7 @@ function getGuidanceText(category: RiskCategory | null, isCauseAnalysis: boolean
   let guidance = `
 Anda adalah seorang ahli manajemen risiko. Tugas Anda adalah memberikan saran level Kemungkinan dan Dampak beserta justifikasinya untuk sebuah risiko.
 Level yang tersedia untuk Kemungkinan dan Dampak adalah: ${LIKELIHOOD_IMPACT_LEVELS.join(', ')}.
+Pastikan semua justifikasi dan penjelasan yang Anda berikan menggunakan Bahasa Indonesia yang baik dan benar.
 
 Konteks Risiko:
 - Potensi Risiko: {{{potentialRiskDescription}}}
@@ -74,7 +75,7 @@ Panduan Penentuan Kemungkinan:
    - Sangat Tinggi (5): Sangat sering (>12 kali)
 
 Pertimbangkan semua informasi ini untuk memberikan saran yang paling relevan.
-Pastikan justifikasi Anda menjelaskan bagaimana Anda sampai pada kesimpulan tersebut berdasarkan panduan di atas dan konteks risiko yang diberikan.
+Pastikan justifikasi Anda menjelaskan bagaimana Anda sampai pada kesimpulan tersebut berdasarkan panduan di atas dan konteks risiko yang diberikan, dan sampaikan justifikasi tersebut dalam Bahasa Indonesia.
 Output harus dalam format JSON yang sesuai dengan skema output.
 Jika informasi kurang untuk membuat penentuan yang akurat, nyatakan hal tersebut dalam justifikasi dan berikan saran 'Sedang' atau 'N/A' (null).
 `;
