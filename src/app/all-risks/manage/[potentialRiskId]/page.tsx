@@ -13,12 +13,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import type { PotentialRisk, Goal, RiskCategory, RiskCause, RiskSource, LikelihoodLevelDesc, ImpactLevelDesc, CalculatedRiskLevelCategory } from '@/lib/types';
-import { RISK_CATEGORIES, RISK_SOURCES, LIKELIHOOD_LEVELS_MAP, IMPACT_LEVELS_MAP } from '@/lib/types';
+import type { PotentialRisk, Goal, RiskCategory, RiskCause, RiskSource, ControlMeasure } from '@/lib/types';
+import { RISK_CATEGORIES, RISK_SOURCES, LIKELIHOOD_LEVELS_MAP, IMPACT_LEVELS_MAP, CalculatedRiskLevelCategory } from '@/lib/types';
 import { useForm, type SubmitHandler, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { ArrowLeft, PlusCircle, Trash2, Loader2, Save, BarChart3, Wand2, Settings2, LayoutGrid, List } from 'lucide-react';
+import { ArrowLeft, PlusCircle, Trash2, Loader2, Save, BarChart3, Wand2, Settings2, LayoutGrid, List, Edit } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { getCurrentUprId, getCurrentPeriod, initializeAppContext } from '@/lib/upr-period-context';
 import { Separator } from '@/components/ui/separator';
@@ -31,6 +31,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { RiskCauseCardItem } from '@/components/risks/risk-cause-card-item'; 
+import { getCalculatedRiskLevel, getRiskLevelColor } from '@/app/risk-cause-analysis/[riskCauseId]/page';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 
 
 const potentialRiskFormSchema = z.object({
@@ -57,43 +59,13 @@ const NO_CATEGORY_SENTINEL = "__NONE__";
 const getGoalsStorageKey = (uprId: string, period: string) => `riskwise-upr${uprId}-period${period}-goals`;
 const getPotentialRisksStorageKeyForGoal = (uprId: string, period: string, goalId: string) => `riskwise-upr${uprId}-period${period}-goal${goalId}-potentialRisks`;
 const getRiskCausesStorageKey = (uprId: string, period: string, potentialRiskId: string) => `riskwise-upr${uprId}-period${period}-potentialRisk${potentialRiskId}-causes`;
+const getControlsForCauseStorageKey = (uprId: string, period: string, riskCauseId: string) => `riskwise-upr${uprId}-period${period}-riskCause${riskCauseId}-controls`;
+
 
 type AISuggestedCause = {
   description: string;
   source: RiskSource | null;
-};
-
-// Helper function from risk-cause-analysis page (or make it a shared util)
-export const getCalculatedRiskLevel = (likelihood: LikelihoodLevelDesc | null, impact: ImpactLevelDesc | null): { level: CalculatedRiskLevelCategory | 'N/A'; score: number | null } => {
-  if (!likelihood || !impact) return { level: 'N/A', score: null };
-  
-  const likelihoodValue = LIKELIHOOD_LEVELS_MAP[likelihood];
-  const impactValue = IMPACT_LEVELS_MAP[impact];
-
-  if (likelihoodValue === undefined || impactValue === undefined) return { level: 'N/A', score: null };
-
-  const score = likelihoodValue * impactValue;
-
-  let level: CalculatedRiskLevelCategory;
-  if (score >= 20) level = 'Sangat Tinggi';
-  else if (score >= 16) level = 'Tinggi';
-  else if (score >= 12) level = 'Sedang';
-  else if (score >= 6) level = 'Rendah';
-  else if (score >= 1) level = 'Sangat Rendah';
-  else level = 'Sangat Rendah'; 
-
-  return { level, score };
-};
-
-export const getRiskLevelColor = (level: CalculatedRiskLevelCategory | 'N/A') => {
-  switch (level?.toLowerCase()) {
-    case 'sangat tinggi': return 'bg-red-600 hover:bg-red-700 text-white';
-    case 'tinggi': return 'bg-orange-500 hover:bg-orange-600 text-white';
-    case 'sedang': return 'bg-yellow-400 hover:bg-yellow-500 text-black dark:bg-yellow-500 dark:text-black';
-    case 'rendah': return 'bg-blue-500 hover:bg-blue-600 text-white'; 
-    case 'sangat rendah': return 'bg-green-500 hover:bg-green-600 text-white';
-    default: return 'bg-gray-400 hover:bg-gray-500 text-white';
-  }
+  category: RiskCategory | null; // Added category for potential future use with cause AI
 };
 
 
@@ -113,6 +85,9 @@ export default function ManagePotentialRiskPage() {
   const [currentPotentialRisk, setCurrentPotentialRisk] = useState<PotentialRisk | null>(null);
   const [riskCauses, setRiskCauses] = useState<RiskCause[]>([]);
   const [causeViewMode, setCauseViewMode] = useState<'table' | 'card'>('table'); 
+  const [causeToDelete, setCauseToDelete] = useState<RiskCause | null>(null);
+  const [isDeleteCauseAlertOpen, setIsDeleteCauseAlertOpen] = useState(false);
+
 
   const [isBrainstormCausesContextModalOpen, setIsBrainstormCausesContextModalOpen] = useState(false);
   const [isBrainstormCausesSuggestionsModalOpen, setIsBrainstormCausesSuggestionsModalOpen] = useState(false);
@@ -258,7 +233,7 @@ export default function ManagePotentialRiskPage() {
             const oldGoalPRKey = getPotentialRisksStorageKeyForGoal(oldParentGoal.uprId, oldParentGoal.period, oldParentGoal.id);
             let oldGoalPRs: PotentialRisk[] = JSON.parse(localStorage.getItem(oldGoalPRKey) || '[]');
             oldGoalPRs = oldGoalPRs.filter(pr => pr.id !== currentPotentialRisk.id);
-            oldGoalPRs.forEach((pr, index) => pr.sequenceNumber = index + 1);
+            oldGoalPRs.forEach((pr, index) => pr.sequenceNumber = index + 1); // Resequence
             localStorage.setItem(oldGoalPRKey, JSON.stringify(oldGoalPRs.sort((a,b)=>(a.sequenceNumber || 0) - (b.sequenceNumber || 0) || a.description.localeCompare(b.description))));
         }
         const newGoalPRKey = getPotentialRisksStorageKeyForGoal(parentGoal.uprId, parentGoal.period, data.goalId);
@@ -312,20 +287,34 @@ export default function ManagePotentialRiskPage() {
     toast({ title: "Penyebab Risiko Ditambahkan", description: `Penyebab "${newCause.description}" (PC${newCause.sequenceNumber}) ditambahkan.` });
     resetRiskCauseForm();
   };
-
-  const handleDeleteRiskCause = (causeId: string) => {
-    if (!currentPotentialRisk || !currentUprId || !currentPeriod) return;
+  
+  const handleDeleteRiskCauseSubmit = () => {
+    if (!currentPotentialRisk || !currentUprId || !currentPeriod || !causeToDelete) return;
     const parentPotentialRiskGoal = goals.find(g => g.id === currentPotentialRisk.goalId);
     if (!parentPotentialRiskGoal) return;
 
-    const causeToDelete = riskCauses.find(c => c.id === causeId);
-    if (!causeToDelete) return;
-    let updatedCauses = riskCauses.filter(c => c.id !== causeId);
-    updatedCauses = updatedCauses.map((cause, index) => ({ ...cause, sequenceNumber: index + 1 }));
-    setRiskCauses(updatedCauses.sort((a,b) => (a.sequenceNumber || 0) - (b.sequenceNumber || 0))); 
+    let updatedCauses = riskCauses.filter(c => c.id !== causeToDelete.id);
+    // Resequence after deletion
+    updatedCauses = updatedCauses
+      .sort((a,b) => (a.sequenceNumber || 0) - (b.sequenceNumber || 0))
+      .map((cause, index) => ({ ...cause, sequenceNumber: index + 1 }));
+      
+    setRiskCauses(updatedCauses); 
     localStorage.setItem(getRiskCausesStorageKey(parentPotentialRiskGoal.uprId, parentPotentialRiskGoal.period, currentPotentialRisk.id), JSON.stringify(updatedCauses));
-    toast({ title: "Penyebab Risiko Dihapus", description: `Penyebab "${causeToDelete.description}" (PC${causeToDelete.sequenceNumber}) dihapus.`, variant: "destructive" });
+    
+    // Also delete associated controls for this cause
+    localStorage.removeItem(getControlsForCauseStorageKey(parentPotentialRiskGoal.uprId, parentPotentialRiskGoal.period, causeToDelete.id));
+
+    toast({ title: "Penyebab Risiko Dihapus", description: `Penyebab "${causeToDelete.description}" (PC${causeToDelete.sequenceNumber}) dan semua kontrol terkait telah dihapus.`, variant: "destructive" });
+    setIsDeleteCauseAlertOpen(false);
+    setCauseToDelete(null);
   };
+
+  const handleOpenDeleteCauseAlert = (cause: RiskCause) => {
+    setCauseToDelete(cause);
+    setIsDeleteCauseAlertOpen(true);
+  };
+
 
   const handleAISuggestionsReady = (suggestions: AISuggestedCause[]) => {
     if (suggestions.length === 0) {
@@ -365,8 +354,8 @@ export default function ManagePotentialRiskPage() {
   }
   
   const parentGoalForDisplay = goals.find(g => g.id === (currentPotentialRisk ? currentPotentialRisk.goalId : (isCreatingNew && goals.length > 0 ? goals[0].id : '')));
-  const parentGoalCode = parentGoalForDisplay?.code || 'S?';
-  const potentialRiskCode = parentGoalCode && currentPotentialRisk ? `${parentGoalCode}.PR${currentPotentialRisk.sequenceNumber}` : (isCreatingNew ? "PR Baru" : "PR...");
+  const goalCodeForPR = parentGoalForDisplay?.code || 'S?';
+  const potentialRiskCode = goalCodeForPR && currentPotentialRisk ? `${goalCodeForPR}.PR${currentPotentialRisk.sequenceNumber}` : (isCreatingNew ? "PR Baru" : "PR...");
 
 
   return (
@@ -489,15 +478,37 @@ export default function ManagePotentialRiskPage() {
                     <CardTitle>Penyebab Risiko untuk: ({potentialRiskCode})</CardTitle>
                     <CardDescription className="mt-1">{currentPotentialRisk.description}</CardDescription>
                 </div>
-                <Button 
-                    variant="outline" 
-                    size="sm" 
-                    onClick={() => setIsBrainstormCausesContextModalOpen(true)}
-                    disabled={!currentPotentialRisk || !parentGoalForDisplay}
-                    className="text-xs"
-                >
-                    <Wand2 className="mr-2 h-3 w-3" /> Brainstorm Penyebab (AI)
-                </Button>
+                <div className="flex items-center gap-2">
+                    <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => setIsBrainstormCausesContextModalOpen(true)}
+                        disabled={!currentPotentialRisk || !parentGoalForDisplay}
+                        className="text-xs"
+                    >
+                        <Wand2 className="mr-2 h-3 w-3" /> Brainstorm Penyebab (AI)
+                    </Button>
+                    <div className="flex items-center space-x-1 border p-0.5 rounded-md">
+                        <Button 
+                            variant={causeViewMode === 'table' ? 'secondary' : 'ghost'} 
+                            size="icon-sm" 
+                            onClick={() => setCauseViewMode('table')}
+                            aria-label="Tampilan Tabel Penyebab"
+                            className="h-6 w-6"
+                        >
+                            <List className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button 
+                            variant={causeViewMode === 'card' ? 'secondary' : 'ghost'} 
+                            size="icon-sm" 
+                            onClick={() => setCauseViewMode('card')}
+                            aria-label="Tampilan Kartu Penyebab"
+                            className="h-6 w-6"
+                        >
+                            <LayoutGrid className="h-3.5 w-3.5" />
+                        </Button>
+                    </div>
+                </div>
               </div>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -547,27 +558,7 @@ export default function ManagePotentialRiskPage() {
               </form>
 
               <div>
-                <div className="flex justify-between items-center mb-2">
-                    <h3 className="text-lg font-semibold">Penyebab yang Ada ({riskCauses.length})</h3>
-                    <div className="flex items-center space-x-1">
-                        <Button 
-                            variant={causeViewMode === 'table' ? 'default' : 'outline'} 
-                            size="icon-sm" 
-                            onClick={() => setCauseViewMode('table')}
-                            aria-label="Tampilan Tabel Penyebab"
-                        >
-                            <List className="h-4 w-4" />
-                        </Button>
-                        <Button 
-                            variant={causeViewMode === 'card' ? 'default' : 'outline'} 
-                            size="icon-sm" 
-                            onClick={() => setCauseViewMode('card')}
-                            aria-label="Tampilan Kartu Penyebab"
-                        >
-                            <LayoutGrid className="h-4 w-4" />
-                        </Button>
-                    </div>
-                </div>
+                <h3 className="text-lg font-semibold mb-2">Penyebab yang Ada ({riskCauses.length})</h3>
                 {riskCauses.length === 0 ? (
                   <p className="text-sm text-muted-foreground">Belum ada penyebab yang teridentifikasi untuk potensi risiko ini.</p>
                 ) : causeViewMode === 'table' ? (
@@ -576,10 +567,10 @@ export default function ManagePotentialRiskPage() {
                       <TableHeader>
                         <TableRow>
                           <TableHead className="w-[80px]">No.</TableHead>
-                          <TableHead className="w-[35%] min-w-[200px]">Deskripsi</TableHead>
+                          <TableHead className="min-w-[250px]">Deskripsi</TableHead>
                           <TableHead className="min-w-[100px]">Sumber</TableHead>
-                          <TableHead className="min-w-[100px]">KRI</TableHead>
-                          <TableHead className="min-w-[100px]">Toleransi</TableHead>
+                          <TableHead className="min-w-[150px]">KRI</TableHead>
+                          <TableHead className="min-w-[150px]">Toleransi</TableHead>
                           <TableHead className="min-w-[150px]">Tingkat Risiko</TableHead>
                           <TableHead className="text-right min-w-[100px]">Aksi</TableHead>
                         </TableRow>
@@ -590,14 +581,14 @@ export default function ManagePotentialRiskPage() {
                             const returnPath = `/all-risks/manage/${currentPotentialRisk.id}`;
                             return (
                               <TableRow key={cause.id}>
-                                <TableCell>PC{cause.sequenceNumber}</TableCell>
-                                <TableCell className="text-xs max-w-xs truncate" title={cause.description}>{cause.description}</TableCell>
+                                <TableCell className="font-mono text-xs">PC{cause.sequenceNumber}</TableCell>
+                                <TableCell className="text-xs max-w-sm truncate" title={cause.description}>{cause.description}</TableCell>
                                 <TableCell><Badge variant="outline" className="text-xs">{cause.source}</Badge></TableCell>
-                                <TableCell className="text-xs max-w-[100px] truncate" title={cause.keyRiskIndicator || ''}>{cause.keyRiskIndicator || '-'}</TableCell>
-                                <TableCell className="text-xs max-w-[100px] truncate" title={cause.riskTolerance || ''}>{cause.riskTolerance || '-'}</TableCell>
+                                <TableCell className="text-xs max-w-[150px] truncate" title={cause.keyRiskIndicator || ''}>{cause.keyRiskIndicator || '-'}</TableCell>
+                                <TableCell className="text-xs max-w-[150px] truncate" title={cause.riskTolerance || ''}>{cause.riskTolerance || '-'}</TableCell>
                                 <TableCell>
                                    <Badge className={`${getRiskLevelColor(causeRiskLevelText)} text-xs`}>
-                                      {causeRiskLevelText === 'N/A' ? 'N/A' : `${causeRiskLevelText} (${causeRiskScore})`}
+                                      {causeRiskLevelText === 'N/A' ? 'N/A' : `${causeRiskLevelText} (${causeRiskScore || 'N/A'})`}
                                    </Badge>
                                 </TableCell>
                                 <TableCell className="text-right">
@@ -615,7 +606,7 @@ export default function ManagePotentialRiskPage() {
                                         </Link>
                                       </DropdownMenuItem>
                                       <DropdownMenuItem
-                                        onClick={() => handleDeleteRiskCause(cause.id)}
+                                        onClick={() => handleOpenDeleteCauseAlert(cause)}
                                         className="text-destructive focus:text-destructive focus:bg-destructive/10"
                                       >
                                         <Trash2 className="mr-2 h-4 w-4" />
@@ -638,7 +629,7 @@ export default function ManagePotentialRiskPage() {
                         riskCause={cause}
                         potentialRiskFullCode={potentialRiskCode}
                         onAnalyze={(causeId) => router.push(`/risk-cause-analysis/${causeId}?from=${encodeURIComponent(`/all-risks/manage/${currentPotentialRisk.id}`)}`)}
-                        onDelete={handleDeleteRiskCause}
+                        onDelete={() => handleOpenDeleteCauseAlert(cause)}
                         returnPath={`/all-risks/manage/${currentPotentialRisk.id}`}
                       />
                     ))}
@@ -668,7 +659,20 @@ export default function ManagePotentialRiskPage() {
             onSaveSelectedCauses={handleSaveAISelectedCauses}
         />
       )}
+      <AlertDialog open={isDeleteCauseAlertOpen} onOpenChange={setIsDeleteCauseAlertOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Konfirmasi Hapus Penyebab</AlertDialogTitle>
+            <AlertDialogDescription>
+              Apakah Anda yakin ingin menghapus penyebab "{causeToDelete?.description}" (PC{causeToDelete?.sequenceNumber})? Semua rencana pengendalian terkait juga akan dihapus. Tindakan ini tidak dapat dibatalkan.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => { setIsDeleteCauseAlertOpen(false); setCauseToDelete(null); }}>Batal</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteRiskCauseSubmit} className="bg-destructive hover:bg-destructive/90">Hapus</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
-

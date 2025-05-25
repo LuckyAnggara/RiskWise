@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation';
 import { PageHeader } from '@/components/ui/page-header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import type { Goal, PotentialRisk, RiskCause, RiskCategory, LikelihoodLevelDesc, ImpactLevelDesc, RiskSource, CalculatedRiskLevelCategory } from '@/lib/types';
+import type { Goal, PotentialRisk, RiskCause, RiskCategory, LikelihoodLevelDesc, ImpactLevelDesc, RiskSource, CalculatedRiskLevelCategory, ControlMeasure } from '@/lib/types';
 import { RISK_CATEGORIES, LIKELIHOOD_LEVELS_MAP, IMPACT_LEVELS_MAP, RISK_SOURCES } from '@/lib/types';
 import { Loader2, ListChecks, Search, Filter, BarChart3, Settings2, Trash2, AlertTriangle, CheckCircle2, Columns } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,11 +19,13 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Checkbox } from '@/components/ui/checkbox';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useToast } from '@/hooks/use-toast';
-import { getCalculatedRiskLevel, getRiskLevelColor } from '@/app/risk-cause-analysis/[riskCauseId]/page'; // Import shared functions
+import { getCalculatedRiskLevel, getRiskLevelColor } from '@/app/risk-cause-analysis/[riskCauseId]/page'; 
 
 const getGoalsStorageKey = (uprId: string, period: string) => `riskwise-upr${uprId}-period${period}-goals`;
 const getPotentialRisksStorageKeyForGoal = (uprId: string, period: string, goalId: string) => `riskwise-upr${uprId}-period${period}-goal${goalId}-potentialRisks`;
 const getRiskCausesStorageKey = (uprId: string, period: string, potentialRiskId: string) => `riskwise-upr${uprId}-period${period}-potentialRisk${potentialRiskId}-causes`;
+const getControlsForCauseStorageKey = (uprId: string, period: string, riskCauseId: string) => `riskwise-upr${uprId}-period${period}-riskCause${riskCauseId}-controls`;
+
 
 interface EnrichedRiskCause extends RiskCause {
   potentialRiskDescription: string;
@@ -34,7 +36,6 @@ interface EnrichedRiskCause extends RiskCause {
   goalUprId: string; 
   goalPeriod: string;
   goalId: string;
-  goalSequenceNumber: number; 
 }
 
 
@@ -128,7 +129,6 @@ export default function RiskAnalysisPage() {
                 goalUprId: goal.uprId, 
                 goalPeriod: goal.period,
                 goalId: goal.id,
-                goalSequenceNumber: 0, // Placeholder, as Goal.sequenceNumber is not directly used in EnrichedRiskCause display logic
               }));
               collectedEnrichedRiskCauses = [...collectedEnrichedRiskCauses, ...enrichedCauses];
             }
@@ -264,6 +264,10 @@ export default function RiskAnalysisPage() {
                                           .map((rc, index) => ({ ...rc, sequenceNumber: index + 1 }));
           localStorage.setItem(storageKey, JSON.stringify(currentPRCauses));
         }
+        // Also delete associated controls for each deleted cause
+        causeIdsToDeleteForThisPR.forEach(causeId => {
+            localStorage.removeItem(getControlsForCauseStorageKey(parentContext.goalUprId, parentContext.goalPeriod, causeId));
+        });
       }
       updatedEnrichedCauses = updatedEnrichedCauses.filter(rc => !(rc.potentialRiskId === pRiskId && causeIdsToDeleteForThisPR.includes(rc.id)));
     }
@@ -331,7 +335,7 @@ export default function RiskAnalysisPage() {
     <div className="space-y-6">
       <PageHeader
         title={`Analisis Detail Penyebab Risiko`}
-        description={`Lakukan analisis KRI, Toleransi, Kemungkinan, dan Dampak untuk setiap penyebab risiko di UPR: ${currentUprId}, Periode: ${currentPeriod}.`}
+        description={`Lakukan analisis KRI, Toleransi, Kemungkinan, Dampak, dan Rencana Pengendalian untuk setiap penyebab risiko di UPR: ${currentUprId}, Periode: ${currentPeriod}.`}
       />
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
@@ -467,7 +471,7 @@ export default function RiskAnalysisPage() {
                     {level}
                     </DropdownMenuCheckboxItem>
                 ))}
-                 <DropdownMenuCheckboxItem /* For N/A */
+                 <DropdownMenuCheckboxItem 
                     key="N/A"
                     checked={selectedRiskLevels.includes("N/A")}
                     onCheckedChange={() => toggleRiskLevelFilter("N/A")}
@@ -537,15 +541,15 @@ export default function RiskAnalysisPage() {
                         />
                     </TableHead>
                     <TableHead className="min-w-[120px]">Kode</TableHead>
-                    <TableHead className="min-w-[250px]">Penyebab Potensi Risiko</TableHead>
+                    <TableHead className="min-w-[250px] max-w-xs">Penyebab Potensi Risiko</TableHead>
                     {columnVisibility.sumber && <TableHead className="min-w-[100px]">Sumber</TableHead>}
-                    {columnVisibility.kri && <TableHead className="min-w-[180px]">KRI</TableHead>}
-                    {columnVisibility.toleransi && <TableHead className="min-w-[180px]">Toleransi</TableHead>}
+                    {columnVisibility.kri && <TableHead className="min-w-[180px] max-w-xs">KRI</TableHead>}
+                    {columnVisibility.toleransi && <TableHead className="min-w-[180px] max-w-xs">Toleransi</TableHead>}
                     {columnVisibility.kemungkinan && <TableHead className="min-w-[150px]">Kemungkinan</TableHead>}
                     {columnVisibility.dampak && <TableHead className="min-w-[150px]">Dampak</TableHead>}
                     {columnVisibility.tingkatRisiko && <TableHead className="min-w-[150px]">Tingkat Risiko</TableHead>}
-                    {columnVisibility.potensiRisikoInduk && <TableHead className="min-w-[250px]">Potensi Risiko Induk</TableHead>}
-                    {columnVisibility.sasaranInduk && <TableHead className="min-w-[200px]">Sasaran Induk</TableHead>}
+                    {columnVisibility.potensiRisikoInduk && <TableHead className="min-w-[250px] max-w-xs">Potensi Risiko Induk</TableHead>}
+                    {columnVisibility.sasaranInduk && <TableHead className="min-w-[200px] max-w-sm">Sasaran Induk</TableHead>}
                     <TableHead className="text-right w-[100px]">Aksi</TableHead>
                     </TableRow>
                 </TableHeader>
@@ -567,11 +571,11 @@ export default function RiskAnalysisPage() {
                             <TableCell className="text-xs font-mono">{causeCode}</TableCell>
                             <TableCell className="font-medium text-xs max-w-xs truncate" title={cause.description}>{cause.description}</TableCell>
                             {columnVisibility.sumber && <TableCell className="text-xs"><Badge variant="outline">{cause.source}</Badge></TableCell>}
-                            {columnVisibility.kri && <TableCell className="text-xs max-w-[180px] truncate" title={cause.keyRiskIndicator || ''}>{cause.keyRiskIndicator || '-'}</TableCell>}
-                            {columnVisibility.toleransi && <TableCell className="text-xs max-w-[180px] truncate" title={cause.riskTolerance || ''}>{cause.riskTolerance || '-'}</TableCell>}
+                            {columnVisibility.kri && <TableCell className="text-xs max-w-xs truncate" title={cause.keyRiskIndicator || ''}>{cause.keyRiskIndicator || '-'}</TableCell>}
+                            {columnVisibility.toleransi && <TableCell className="text-xs max-w-xs truncate" title={cause.riskTolerance || ''}>{cause.riskTolerance || '-'}</TableCell>}
                             {columnVisibility.kemungkinan && <TableCell><Badge variant={cause.likelihood ? "outline" : "ghost"} className={`text-xs ${!cause.likelihood ? "text-muted-foreground" : ""}`}>{cause.likelihood ? `${cause.likelihood} (${LIKELIHOOD_LEVELS_MAP[cause.likelihood]})` : 'N/A'}</Badge></TableCell>}
                             {columnVisibility.dampak && <TableCell><Badge variant={cause.impact ? "outline" : "ghost"} className={`text-xs ${!cause.impact ? "text-muted-foreground" : ""}`}>{cause.impact ? `${cause.impact} (${IMPACT_LEVELS_MAP[cause.impact]})` : 'N/A'}</Badge></TableCell>}
-                            {columnVisibility.tingkatRisiko && <TableCell><Badge className={`${getRiskLevelColor(causeRiskLevelText)} text-xs`}>{causeRiskLevelText === 'N/A' ? 'N/A' : `${causeRiskLevelText} (${causeRiskScore})`}</Badge></TableCell>}
+                            {columnVisibility.tingkatRisiko && <TableCell><Badge className={`${getRiskLevelColor(causeRiskLevelText)} text-xs`}>{causeRiskLevelText === 'N/A' ? 'N/A' : `${causeRiskLevelText} (${causeRiskScore || 'N/A'})`}</Badge></TableCell>}
                             {columnVisibility.potensiRisikoInduk && 
                               <TableCell className="text-xs max-w-xs truncate" title={cause.potentialRiskDescription}>
                                 PR{cause.potentialRiskSequenceNumber || 'N/A'} - {cause.potentialRiskDescription} 
@@ -618,7 +622,7 @@ export default function RiskAnalysisPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Konfirmasi Hapus</AlertDialogTitle>
             <AlertDialogDescription>
-              Apakah Anda yakin ingin menghapus penyebab risiko "{causeToDelete?.description}"? Tindakan ini tidak dapat dibatalkan.
+              Apakah Anda yakin ingin menghapus penyebab risiko "{causeToDelete?.description}"? Semua rencana pengendalian terkait juga akan dihapus. Tindakan ini tidak dapat dibatalkan.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -633,7 +637,7 @@ export default function RiskAnalysisPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Konfirmasi Hapus Massal</AlertDialogTitle>
             <AlertDialogDescription>
-              Apakah Anda yakin ingin menghapus {selectedCauseIds.length} penyebab risiko yang dipilih? Tindakan ini tidak dapat dibatalkan.
+              Apakah Anda yakin ingin menghapus {selectedCauseIds.length} penyebab risiko yang dipilih? Semua rencana pengendalian terkait juga akan dihapus. Tindakan ini tidak dapat dibatalkan.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
