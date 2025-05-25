@@ -3,32 +3,31 @@
 
 import React, { useState, useEffect, useCallback, useMemo, Fragment } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import Link from 'next/link';
+import NextLink from 'next/link'; // Using NextLink alias for clarity
 import { PageHeader } from '@/components/ui/page-header';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input'; // Untuk pencarian
+import { Input } from '@/components/ui/input';
 import { RiskIdentificationCard } from '@/components/risks/risk-identification-card';
 import { RiskListItem } from '@/components/risks/risk-list-item';
 import { RiskControlModal } from '@/components/risks/risk-control-modal';
-import type { Goal, PotentialRisk, Control, RiskCause, RiskCategory, LikelihoodImpactLevel } from '@/lib/types';
-import { RISK_CATEGORIES } from '@/lib/types'; // Import RISK_CATEGORIES
-import { ArrowLeft, ShieldAlert, Loader2, Edit, Trash2, Settings2, PlusCircle, Copy, Search, Filter, CheckSquare, Square } from 'lucide-react';
+import type { Goal, PotentialRisk, Control, RiskCause, RiskCategory } from '@/lib/types';
+import { RISK_CATEGORIES } from '@/lib/types';
+import { ArrowLeft, ShieldAlert, Loader2, Edit, Trash2, Settings2, PlusCircle, Copy, Search, Filter, LayoutGrid, List, ChevronDown, ChevronUp } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuCheckboxItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Card, CardContent } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { getCurrentUprId, getCurrentPeriod, initializeAppContext } from '@/lib/upr-period-context';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Checkbox } from '@/components/ui/checkbox';
+import { Checkbox } from "@/components/ui/checkbox";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-
 
 const getGoalsStorageKey = (uprId: string, period: string) => `riskwise-upr${uprId}-period${period}-goals`;
 const getPotentialRisksStorageKey = (uprId: string, period: string, goalId: string) => `riskwise-upr${uprId}-period${period}-goal${goalId}-potentialRisks`;
 const getControlsStorageKey = (uprId: string, period: string, potentialRiskId: string) => `riskwise-upr${uprId}-period${period}-potentialRisk${potentialRiskId}-controls`;
 const getRiskCausesStorageKey = (uprId: string, period: string, potentialRiskId: string) => `riskwise-upr${uprId}-period${period}-potentialRisk${potentialRiskId}-causes`;
-
 
 export default function GoalRisksPage() {
   const router = useRouter();
@@ -42,16 +41,18 @@ export default function GoalRisksPage() {
   const [controls, setControls] = useState<Control[]>([]);
   const [riskCauses, setRiskCauses] = useState<RiskCause[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [viewMode, setViewMode] = useState<'card' | 'table'>('card');
+  const [expandedRiskId, setExpandedRiskId] = useState<string | null>(null);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategories, setSelectedCategories] = useState<RiskCategory[]>([]);
   const [allRiskOwnersForGoal, setAllRiskOwnersForGoal] = useState<string[]>([]);
   const [selectedOwners, setSelectedOwners] = useState<string[]>([]);
   const [selectedRiskIds, setSelectedRiskIds] = useState<string[]>([]);
+  
   const [isBulkDeleteDialogOpen, setIsBulkDeleteDialogOpen] = useState(false);
   const [riskToDelete, setRiskToDelete] = useState<PotentialRisk | null>(null);
   const [isSingleDeleteDialogOpen, setIsSingleDeleteDialogOpen] = useState(false);
-
 
   const [selectedPotentialRiskForControl, setSelectedPotentialRiskForControl] = useState<PotentialRisk | null>(null);
   const [selectedControlForEdit, setSelectedControlForEdit] = useState<Control | null>(null);
@@ -125,7 +126,7 @@ export default function GoalRisksPage() {
         setIsLoading(false);
         setGoal(null);
     }
-  }, [loadData, currentUprId, currentPeriod, goalId, router]);
+  }, [loadData, currentUprId, currentPeriod, goalId]);
 
   const updatePotentialRisksInStorage = (goalForPotentialRisks: Goal, updatedPRisks: PotentialRisk[]) => {
     if (typeof window !== 'undefined' && goalForPotentialRisks) {
@@ -221,7 +222,7 @@ export default function GoalRisksPage() {
     toast({ title: "Potensi Risiko Dihapus", description: `Potensi risiko "${riskToDelete.description}" dihapus.`, variant: "destructive" });
     setIsSingleDeleteDialogOpen(false);
     setRiskToDelete(null);
-    loadData(); // Refresh owners
+    loadData(); 
   };
 
   const handleDeleteControl = (controlIdToDelete: string) => {
@@ -246,6 +247,7 @@ export default function GoalRisksPage() {
 
     if (searchTerm) {
       tempRisks = tempRisks.filter(pr =>
+        (pr.code && `${goal?.code || ''}.PR${pr.sequenceNumber || ''}`.toLowerCase().includes(lowerSearchTerm)) ||
         pr.description.toLowerCase().includes(lowerSearchTerm) ||
         (pr.category && pr.category.toLowerCase().includes(lowerSearchTerm)) ||
         (pr.owner && pr.owner.toLowerCase().includes(lowerSearchTerm))
@@ -257,8 +259,8 @@ export default function GoalRisksPage() {
     if (selectedOwners.length > 0) {
       tempRisks = tempRisks.filter(pr => pr.owner && selectedOwners.includes(pr.owner));
     }
-    return tempRisks; // Already sorted on load
-  }, [potentialRisks, searchTerm, selectedCategories, selectedOwners]);
+    return tempRisks; 
+  }, [potentialRisks, searchTerm, selectedCategories, selectedOwners, goal?.code]);
 
   const handleSelectRisk = (riskId: string, checked: boolean) => {
     setSelectedRiskIds(prev =>
@@ -290,7 +292,6 @@ export default function GoalRisksPage() {
         const risk = updatedPRs.find(r => r.id === riskId);
         if (risk) {
             count++;
-            // Remove associated causes and controls
             if (typeof window !== 'undefined') {
                 localStorage.removeItem(getControlsStorageKey(goal.uprId, goal.period, riskId));
                 localStorage.removeItem(getRiskCausesStorageKey(goal.uprId, goal.period, riskId));
@@ -301,12 +302,13 @@ export default function GoalRisksPage() {
         updatedPRs = updatedPRs.filter(pr => pr.id !== riskId);
     });
     
-    setPotentialRisks(updatedPRs.sort((a,b)=>(a.sequenceNumber || 0) - (b.sequenceNumber || 0) || a.description.localeCompare(b.description)));
-    updatePotentialRisksInStorage(goal, updatedPRs);
+    const resequencedPRs = updatedPRs.sort((a,b) => (a.sequenceNumber || 0) - (b.sequenceNumber || 0)).map((pr, index) => ({...pr, sequenceNumber: index + 1}));
+    setPotentialRisks(resequencedPRs);
+    updatePotentialRisksInStorage(goal, resequencedPRs);
     toast({ title: "Hapus Massal Berhasil", description: `${count} potensi risiko telah dihapus.`, variant: "destructive" });
     setSelectedRiskIds([]);
     setIsBulkDeleteDialogOpen(false);
-    loadData(); // Refresh owners list
+    loadData(); 
   };
 
   const handleDuplicateRisk = (riskToDuplicate: PotentialRisk) => {
@@ -333,14 +335,14 @@ export default function GoalRisksPage() {
 
     const newCauses: RiskCause[] = originalCauses.map((cause, index) => ({
         ...cause,
-        id: `rcause_${newPotentialRisk.id}_${index}`,
+        id: `rcause_${newPotentialRisk.id}_${index}_${Date.now()}`,
         potentialRiskId: newPotentialRisk.id,
         createdAt: new Date().toISOString(),
     }));
 
     const newControls: Control[] = originalControls.map((control, index) => ({
         ...control,
-        id: `ctrl_${newPotentialRisk.id}_${index}`,
+        id: `ctrl_${newPotentialRisk.id}_${index}_${Date.now()}`,
         potentialRiskId: newPotentialRisk.id,
         createdAt: new Date().toISOString(),
     }));
@@ -360,7 +362,11 @@ export default function GoalRisksPage() {
     }
 
     toast({ title: "Risiko Diduplikasi", description: `Potensi risiko "${newPotentialRisk.description}" telah berhasil diduplikasi.`});
-    loadData(); // To refresh owner list if duplication adds new owners
+    loadData(); 
+  };
+
+  const toggleExpandRisk = (riskId: string) => {
+    setExpandedRiskId(currentId => (currentId === riskId ? null : riskId));
   };
 
 
@@ -387,6 +393,8 @@ export default function GoalRisksPage() {
   
   if (!goal) return null; 
 
+  const totalTableColumns = 8; // Checkbox, Expand, Kode, Deskripsi, Kategori, Pemilik, Penyebab, Kontrol, Aksi
+
   return (
     <div className="space-y-8">
       <PageHeader
@@ -405,12 +413,32 @@ export default function GoalRisksPage() {
 
       <div>
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-4 gap-4">
-            <h2 className="text-xl font-semibold whitespace-nowrap">Potensi Risiko Teridentifikasi ({filteredPotentialRisks.length} / {potentialRisks.length})</h2>
+            <div className="flex items-center gap-4">
+              <h2 className="text-xl font-semibold whitespace-nowrap">Potensi Risiko Teridentifikasi ({filteredPotentialRisks.length} / {potentialRisks.length})</h2>
+              <div className="flex items-center space-x-1">
+                  <Button 
+                      variant={viewMode === 'card' ? 'default' : 'outline'} 
+                      size="icon" 
+                      onClick={() => setViewMode('card')}
+                      aria-label="Tampilan Kartu"
+                  >
+                      <LayoutGrid className="h-4 w-4" />
+                  </Button>
+                  <Button 
+                      variant={viewMode === 'table' ? 'default' : 'outline'} 
+                      size="icon" 
+                      onClick={() => setViewMode('table')}
+                      aria-label="Tampilan Tabel"
+                  >
+                      <List className="h-4 w-4" />
+                  </Button>
+              </div>
+            </div>
             <div className="flex flex-col md:flex-row gap-2 w-full md:w-auto">
                 <div className="relative flex-grow md:flex-grow-0">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
-                        placeholder="Cari deskripsi, kategori, pemilik..."
+                        placeholder="Cari kode, deskripsi, kategori..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                         className="pl-10 w-full md:w-64"
@@ -471,12 +499,13 @@ export default function GoalRisksPage() {
              <div className="flex items-center justify-between mb-4 border-b pb-2">
                 <div className="flex items-center gap-2">
                     <Checkbox
-                        id="selectAllVisibleRisks"
+                        id="selectAllVisibleRisksGoalPage"
                         checked={selectedRiskIds.length === filteredPotentialRisks.length && filteredPotentialRisks.length > 0}
                         onCheckedChange={(checked) => handleSelectAllVisibleRisks(Boolean(checked))}
                         disabled={filteredPotentialRisks.length === 0}
+                        aria-label="Pilih Semua Risiko yang Terlihat"
                     />
-                    <label htmlFor="selectAllVisibleRisks" className="text-sm font-medium text-muted-foreground cursor-pointer">
+                    <label htmlFor="selectAllVisibleRisksGoalPage" className="text-sm font-medium text-muted-foreground cursor-pointer">
                         Pilih Semua ({selectedRiskIds.length} dipilih)
                     </label>
                 </div>
@@ -500,7 +529,7 @@ export default function GoalRisksPage() {
               {potentialRisks.length === 0 ? "Gunakan alat AI di atas untuk brainstorming potensi risiko untuk sasaran ini." : "Coba sesuaikan filter Anda."}
             </p>
           </div>
-        ) : (
+        ) : viewMode === 'card' ? (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {filteredPotentialRisks.map((pRisk) => (
               <RiskListItem
@@ -523,6 +552,103 @@ export default function GoalRisksPage() {
               />
             ))}
           </div>
+        ) : (
+           <Card>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[40px]">
+                      <Checkbox
+                          checked={selectedRiskIds.length === filteredPotentialRisks.length && filteredPotentialRisks.length > 0}
+                          onCheckedChange={(checked) => handleSelectAllVisibleRisks(Boolean(checked))}
+                          aria-label="Pilih semua risiko yang terlihat"
+                          disabled={filteredPotentialRisks.length === 0}
+                      />
+                    </TableHead>
+                    <TableHead className="w-[40px]"></TableHead> {/* For expand button */}
+                    <TableHead className="w-[100px]">Kode</TableHead>
+                    <TableHead className="min-w-[250px]">Deskripsi</TableHead>
+                    <TableHead>Kategori</TableHead>
+                    <TableHead>Pemilik</TableHead>
+                    <TableHead className="text-center">Penyebab</TableHead>
+                    <TableHead className="text-center">Kontrol</TableHead>
+                    <TableHead className="text-right w-[100px]">Aksi</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredPotentialRisks.map((pRisk) => {
+                    const riskControlsList = controls.filter(c => c.potentialRiskId === pRisk.id);
+                    const riskCausesList = riskCauses.filter(rc => rc.potentialRiskId === pRisk.id);
+                    const isExpanded = expandedRiskId === pRisk.id;
+                    const potentialRiskCodeDisplay = `${goal?.code || 'S?'}.PR${pRisk.sequenceNumber || 'N/A'}`;
+                    return (
+                      <Fragment key={pRisk.id}>
+                        <TableRow>
+                          <TableCell>
+                            <Checkbox
+                                checked={selectedRiskIds.includes(pRisk.id)}
+                                onCheckedChange={(checked) => handleSelectRisk(pRisk.id, Boolean(checked))}
+                                aria-label={`Pilih risiko ${pRisk.description}`}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Button variant="ghost" size="icon" onClick={() => toggleExpandRisk(pRisk.id)} aria-label={isExpanded ? "Sembunyikan deskripsi" : "Tampilkan deskripsi"}>
+                              {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                            </Button>
+                          </TableCell>
+                          <TableCell className="font-mono text-xs">{potentialRiskCodeDisplay}</TableCell>
+                          <TableCell className="font-medium text-xs max-w-xs truncate" title={pRisk.description}>
+                              {pRisk.description}
+                          </TableCell>
+                          <TableCell><Badge variant={pRisk.category ? "secondary" : "outline"} className="text-xs">{pRisk.category || 'N/A'}</Badge></TableCell>
+                          <TableCell className="text-xs truncate max-w-[100px]" title={pRisk.owner || ''}>{pRisk.owner || 'N/A'}</TableCell>
+                          <TableCell className="text-center text-xs">{riskCausesList.length}</TableCell>
+                          <TableCell className="text-center text-xs">{riskControlsList.length}</TableCell>
+                          <TableCell className="text-right">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon">
+                                  <Settings2 className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => router.push(`/all-risks/manage/${pRisk.id}`)}>
+                                  <Edit className="mr-2 h-4 w-4" /> Edit Detail & Penyebab
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleOpenControlModal(pRisk)}>
+                                  <PlusCircle className="mr-2 h-4 w-4" /> Tambah/Kelola Kontrol
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleDuplicateRisk(pRisk)}>
+                                  <Copy className="mr-2 h-4 w-4" /> Duplikat Risiko
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem onClick={() => handleDeleteSingleRisk(pRisk)} className="text-destructive focus:text-destructive focus:bg-destructive/10">
+                                  <Trash2 className="mr-2 h-4 w-4" /> Hapus Potensi Risiko
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </TableCell>
+                        </TableRow>
+                        {isExpanded && (
+                          <TableRow className="bg-muted/30 hover:bg-muted/40">
+                            <TableCell /> 
+                            <TableCell />
+                            <TableCell colSpan={totalTableColumns - 2} className="p-0">
+                              <div className="p-3 space-y-1 text-xs">
+                                <h4 className="font-semibold text-foreground">Deskripsi Lengkap:</h4>
+                                <p className="text-muted-foreground whitespace-pre-wrap">{pRisk.description}</p>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </Fragment>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
         )}
       </div>
 
@@ -540,38 +666,36 @@ export default function GoalRisksPage() {
         onSave={handleSaveControl}
       />}
 
-        <AlertDialog open={isSingleDeleteDialogOpen} onOpenChange={setIsSingleDeleteDialogOpen}>
-            <AlertDialogContent>
-                <AlertDialogHeader>
-                <AlertDialogTitle>Konfirmasi Hapus</AlertDialogTitle>
-                <AlertDialogDescription>
-                    Apakah Anda yakin ingin menghapus potensi risiko "{riskToDelete?.description}"? Semua penyebab dan kontrol terkait juga akan dihapus. Tindakan ini tidak dapat dibatalkan.
-                </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                <AlertDialogCancel onClick={() => {setIsSingleDeleteDialogOpen(false); setRiskToDelete(null);}}>Batal</AlertDialogCancel>
-                <AlertDialogAction onClick={confirmDeleteSingleRisk} className="bg-destructive hover:bg-destructive/90">Hapus</AlertDialogAction>
-                </AlertDialogFooter>
-            </AlertDialogContent>
-        </AlertDialog>
+      <AlertDialog open={isSingleDeleteDialogOpen} onOpenChange={setIsSingleDeleteDialogOpen}>
+        <AlertDialogContent>
+            <AlertDialogHeader>
+            <AlertDialogTitle>Konfirmasi Hapus</AlertDialogTitle>
+            <AlertDialogDescription>
+                Apakah Anda yakin ingin menghapus potensi risiko "{riskToDelete?.description}" ({riskToDelete?.code ? `${goal?.code || 'S?'}.PR${riskToDelete.sequenceNumber}` : 'Tanpa Kode'})? Semua penyebab dan kontrol terkait juga akan dihapus. Tindakan ini tidak dapat dibatalkan.
+            </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => {setIsSingleDeleteDialogOpen(false); setRiskToDelete(null);}}>Batal</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDeleteSingleRisk} className="bg-destructive hover:bg-destructive/90">Hapus</AlertDialogAction>
+            </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
-        <AlertDialog open={isBulkDeleteDialogOpen} onOpenChange={setIsBulkDeleteDialogOpen}>
-            <AlertDialogContent>
-                <AlertDialogHeader>
-                <AlertDialogTitle>Konfirmasi Hapus Massal</AlertDialogTitle>
-                <AlertDialogDescription>
-                    Apakah Anda yakin ingin menghapus {selectedRiskIds.length} potensi risiko yang dipilih? Semua penyebab dan kontrol terkait juga akan dihapus. Tindakan ini tidak dapat dibatalkan.
-                </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                <AlertDialogCancel>Batal</AlertDialogCancel>
-                <AlertDialogAction onClick={confirmDeleteSelectedRisks} className="bg-destructive hover:bg-destructive/90">Hapus ({selectedRiskIds.length})</AlertDialogAction>
-                </AlertDialogFooter>
-            </AlertDialogContent>
-        </AlertDialog>
+      <AlertDialog open={isBulkDeleteDialogOpen} onOpenChange={setIsBulkDeleteDialogOpen}>
+        <AlertDialogContent>
+            <AlertDialogHeader>
+            <AlertDialogTitle>Konfirmasi Hapus Massal</AlertDialogTitle>
+            <AlertDialogDescription>
+                Apakah Anda yakin ingin menghapus {selectedRiskIds.length} potensi risiko yang dipilih? Semua penyebab dan kontrol terkait juga akan dihapus. Tindakan ini tidak dapat dibatalkan.
+            </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+            <AlertDialogCancel>Batal</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDeleteSelectedRisks} className="bg-destructive hover:bg-destructive/90">Hapus ({selectedRiskIds.length})</AlertDialogAction>
+            </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
     </div>
   );
 }
-
-    

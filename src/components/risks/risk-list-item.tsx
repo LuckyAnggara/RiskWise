@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { ShieldCheck, Edit, Trash2, Settings2, PlusCircle, Zap, ListChecks, Copy } from 'lucide-react';
-import { Checkbox } from "@/components/ui/checkbox"; // Import Checkbox
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -22,7 +22,7 @@ interface RiskListItemProps {
   riskCauses: RiskCause[];
   onAddControl: (potentialRisk: PotentialRisk) => void;
   onEditControl: (control: Control) => void;
-  onDeletePotentialRisk: (potentialRisk: PotentialRisk) => void; // Pass full object for dialog
+  onDeletePotentialRisk: (potentialRisk: PotentialRisk) => void;
   onDeleteControl: (controlId: string) => void;
   onEditDetails: (potentialRiskId: string) => void;
   isSelected: boolean;
@@ -76,7 +76,7 @@ export function RiskListItem({
   const potentialRiskCodeDisplay = `${displayGoalCode}.PR${potentialRisk.sequenceNumber || '?'}`;
 
   return (
-    <Card className="flex flex-col">
+    <Card className="flex flex-col h-full">
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between">
             <div className="flex items-center space-x-2 flex-grow min-w-0">
@@ -141,7 +141,7 @@ export function RiskListItem({
               <ListChecks className="h-4 w-4 mr-2 text-primary" />
               Potensi Penyebab ({riskCauses.length}):
             </h4>
-            <div className="pl-1 space-y-1 max-h-20 overflow-y-auto scroll-smooth border-l-2 border-border ml-2">
+            <div className="pl-1 space-y-1 max-h-24 overflow-y-auto scroll-smooth border-l-2 border-border ml-2">
               {riskCauses.slice(0, 3).map(cause => (
                 <div key={cause.id} className="text-xs text-muted-foreground p-1.5 rounded hover:bg-muted/40 ml-2">
                   <span className="font-medium">PC{cause.sequenceNumber || '?'} - {cause.description}</span>
@@ -150,7 +150,7 @@ export function RiskListItem({
               ))}
               {riskCauses.length > 3 && <div className="text-xs text-muted-foreground pl-3 pt-1">...dan {riskCauses.length - 3} lainnya.</div>}
             </div>
-             <Button variant="link" size="sm" className="p-0 h-auto mt-1 text-primary hover:underline text-xs" onClick={() => onEditDetails(potentialRisk.id)}>
+             <Button variant="link" size="sm" className="p-0 h-auto mt-1.5 text-primary hover:underline text-xs" onClick={() => onEditDetails(potentialRisk.id)}>
                 Lihat/Kelola Semua Penyebab
             </Button>
           </div>
@@ -167,7 +167,7 @@ export function RiskListItem({
                 <ShieldCheck className="h-4 w-4 mr-2 text-primary" />
                 Kontrol ({controls.length}):
             </h4>
-            <div className="pl-1 space-y-1 max-h-20 overflow-y-auto scroll-smooth border-l-2 border-border ml-2">
+            <div className="pl-1 space-y-1 max-h-24 overflow-y-auto scroll-smooth border-l-2 border-border ml-2">
               {controls.map(control => (
                 <div key={control.id} className="text-xs text-muted-foreground p-1.5 rounded hover:bg-muted/40 group ml-2">
                   <div className="flex justify-between items-center">
@@ -187,14 +187,24 @@ export function RiskListItem({
                 </div>
               ))}
             </div>
-             <Button variant="link" size="sm" className="p-0 h-auto mt-1 text-primary hover:underline text-xs" onClick={() => onAddControl(potentialRisk)}>
+             <Button variant="link" size="sm" className="p-0 h-auto mt-1.5 text-primary hover:underline text-xs" onClick={() => onAddControl(potentialRisk)}>
                 Tambah Kontrol
             </Button>
           </div>
         )}
       </CardContent>
-      {controls.length === 0 && (
+      {controls.length === 0 && riskCauses.length > 0 && ( // Only show if causes exist but controls don't
         <CardFooter className="pt-0">
+            <Button variant="outline" size="sm" onClick={() => onAddControl(potentialRisk)} className="w-full text-xs">
+                <PlusCircle className="mr-2 h-3 w-3" /> Tambah Tindakan Kontrol
+            </Button>
+        </CardFooter>
+      )}
+       {controls.length === 0 && riskCauses.length === 0 && ( // Show both if neither exist
+         <CardFooter className="pt-0 flex-col space-y-2 items-stretch">
+            <Button variant="outline" size="sm" onClick={() => onEditDetails(potentialRisk.id)} className="w-full text-xs">
+                <Zap className="mr-2 h-3 w-3" /> Tambah & Kelola Penyebab
+            </Button>
             <Button variant="outline" size="sm" onClick={() => onAddControl(potentialRisk)} className="w-full text-xs">
                 <PlusCircle className="mr-2 h-3 w-3" /> Tambah Tindakan Kontrol
             </Button>
