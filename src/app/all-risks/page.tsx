@@ -109,7 +109,12 @@ export default function AllRisksPage() {
   const updatePotentialRisksInStorageForGoal = (uprId: string, period: string, goalId: string, updatedPotentialRisksForGoal: PotentialRisk[]) => {
     if (typeof window !== 'undefined') {
       const key = getPotentialRisksStorageKey(uprId, period, goalId);
-      localStorage.setItem(key, JSON.stringify(updatedPotentialRisksForGoal.sort((a,b) => a.description.localeCompare(b.description))));
+      const sortedRisks = updatedPotentialRisksForGoal.sort((a, b) => {
+        const codeA = a.sequenceNumber?.toString() || '';
+        const codeB = b.sequenceNumber?.toString() || '';
+        return codeA.localeCompare(codeB, undefined, { numeric: true }) || a.description.localeCompare(b.description);
+      });
+      localStorage.setItem(key, JSON.stringify(sortedRisks));
     }
   };
   
@@ -269,12 +274,15 @@ export default function AllRisksPage() {
 
     if (searchTerm) {
       tempRisks = tempRisks.filter(pRisk => {
-        const goalName = goals.find(g => g.id === pRisk.goalId)?.name.toLowerCase() || '';
+        const goal = goals.find(g => g.id === pRisk.goalId);
+        const goalName = goal?.name.toLowerCase() || '';
+        const goalCode = goal?.code?.toLowerCase() || '';
         return (
           pRisk.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
           (pRisk.category && pRisk.category.toLowerCase().includes(searchTerm.toLowerCase())) ||
           (pRisk.owner && pRisk.owner.toLowerCase().includes(searchTerm.toLowerCase())) ||
-          goalName.includes(searchTerm.toLowerCase())
+          goalName.includes(searchTerm.toLowerCase()) ||
+          goalCode.includes(searchTerm.toLowerCase())
         );
       });
     }
@@ -289,7 +297,21 @@ export default function AllRisksPage() {
       tempRisks = tempRisks.filter(pRisk => selectedGoalIds.includes(pRisk.goalId));
     }
 
-    return tempRisks.sort((a, b) => a.description.localeCompare(b.description));
+    return tempRisks.sort((a, b) => {
+        const goalA = goals.find(g => g.id === a.goalId);
+        const goalB = goals.find(g => g.id === b.goalId);
+        const codeA = goalA?.code || '';
+        const codeB = goalB?.code || '';
+        
+        const codeComparison = codeA.localeCompare(codeB, undefined, {numeric: true});
+        if (codeComparison !== 0) return codeComparison;
+
+        const seqA = a.sequenceNumber || 0;
+        const seqB = b.sequenceNumber || 0;
+        if (seqA !== seqB) return seqA - seqB;
+        
+        return a.description.localeCompare(b.description);
+    });
   }, [allPotentialRisks, searchTerm, selectedCategories, selectedGoalIds, goals]);
 
 
@@ -303,7 +325,7 @@ export default function AllRisksPage() {
   }
 
   const relevantGoals = goals.filter(g => g.uprId === currentUprId && g.period === currentPeriod);
-  const totalTableColumns = 7; // Expand, Deskripsi, Kategori, Pemilik, Sasaran, Penyebab, Kontrol, Aksi
+  const totalTableColumns = 8; // Expand, Kode, Deskripsi, Kategori, Pemilik, Sasaran, Penyebab, Kontrol, Aksi
 
   return (
     <div className="space-y-6">
@@ -322,7 +344,7 @@ export default function AllRisksPage() {
         <div className="relative flex-grow md:flex-grow-0 md:max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Cari deskripsi, kategori, pemilik, sasaran..."
+            placeholder="Cari kode, deskripsi, kategori..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="pl-10 w-full"
@@ -334,7 +356,6 @@ export default function AllRisksPage() {
               <Button variant="outline">
                 <Filter className="mr-2 h-4 w-4" />
                 Filter Kategori {selectedCategories.length > 0 ? `(${selectedCategories.length})` : ''}
-                <ChevronDown className="ml-2 h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-[250px]">
@@ -359,7 +380,6 @@ export default function AllRisksPage() {
               <Button variant="outline">
                 <Filter className="mr-2 h-4 w-4" />
                 Filter Sasaran {selectedGoalIds.length > 0 ? `(${selectedGoalIds.length})` : ''}
-                <ChevronDown className="ml-2 h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-[300px]">
@@ -367,13 +387,13 @@ export default function AllRisksPage() {
               <DropdownMenuSeparator />
               {relevantGoals.length > 0 ? (
                 <ScrollArea className="h-[200px]">
-                  {relevantGoals.map((goal) => (
+                  {relevantGoals.sort((a,b) => (a.code || '').localeCompare(b.code || '', undefined, {numeric: true})).map((goal) => (
                     <DropdownMenuCheckboxItem
                       key={goal.id}
                       checked={selectedGoalIds.includes(goal.id)}
                       onCheckedChange={() => toggleGoalFilter(goal.id)}
                     >
-                      {goal.name}
+                      {goal.code || '[Tanpa Kode]'} - {goal.name}
                     </DropdownMenuCheckboxItem>
                   ))}
                 </ScrollArea>
@@ -406,12 +426,13 @@ export default function AllRisksPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[40px]"></TableHead> 
-                  <TableHead className="w-[30%] min-w-[250px]">Deskripsi</TableHead>
-                  <TableHead className="min-w-[150px]">Kategori</TableHead>
-                  <TableHead className="min-w-[150px]">Pemilik</TableHead>
-                  <TableHead className="min-w-[200px]">Sasaran Terkait</TableHead>
-                  <TableHead className="min-w-[100px] text-center">Penyebab</TableHead>
-                  <TableHead className="min-w-[100px] text-center">Kontrol</TableHead>
+                  <TableHead className="w-[100px]">Kode PR</TableHead>
+                  <TableHead className="w-[30%] min-w-[200px]">Deskripsi</TableHead>
+                  <TableHead className="min-w-[120px]">Kategori</TableHead>
+                  <TableHead className="min-w-[120px]">Pemilik</TableHead>
+                  <TableHead className="min-w-[180px]">Sasaran Terkait</TableHead>
+                  <TableHead className="min-w-[80px] text-center">Penyebab</TableHead>
+                  <TableHead className="min-w-[80px] text-center">Kontrol</TableHead>
                   <TableHead className="text-right w-[100px]">Aksi</TableHead>
                 </TableRow>
               </TableHeader>
@@ -421,7 +442,16 @@ export default function AllRisksPage() {
                   const riskCausesList = allRiskCauses.filter(rc => rc.potentialRiskId === pRisk.id);
                   const associatedGoal = goals.find(g => g.id === pRisk.goalId);
                   const isExpanded = expandedRiskId === pRisk.id;
-                  const associatedGoalName = associatedGoal?.name || 'N/A';
+                  
+                  const goalCodeDisplay = associatedGoal?.code && associatedGoal.code.trim() !== '' ? associatedGoal.code : '[Tanpa Kode]';
+                  const potentialRiskCodeDisplay = `${goalCodeDisplay}.PR${pRisk.sequenceNumber || 'N/A'}`;
+                  
+                  const associatedGoalText = associatedGoal 
+                    ? `${goalCodeDisplay} - ${associatedGoal.name}`
+                    : 'N/A';
+                  const associatedGoalTitle = associatedGoal
+                    ? `Sasaran ${goalCodeDisplay}: ${associatedGoal.name} - ${associatedGoal.description}`
+                    : 'Sasaran tidak ditemukan';
 
                   return (
                     <Fragment key={pRisk.id}>
@@ -431,18 +461,22 @@ export default function AllRisksPage() {
                             {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                           </Button>
                         </TableCell>
-                        <TableCell className="font-medium max-w-xs truncate" title={pRisk.description}>
+                        <TableCell className="font-mono text-xs">{potentialRiskCodeDisplay}</TableCell>
+                        <TableCell className="font-medium text-xs max-w-xs truncate" title={pRisk.description}>
                             {pRisk.description}
                         </TableCell>
-                        <TableCell className="text-xs max-w-[150px] truncate" title={pRisk.category || ''}>
+                        <TableCell className="text-xs max-w-[120px] truncate" title={pRisk.category || ''}>
                           <Badge variant={pRisk.category ? "secondary" : "outline"}>{pRisk.category || 'N/A'}</Badge>
                         </TableCell>
-                        <TableCell className="text-xs max-w-[150px] truncate" title={pRisk.owner || ''}>{pRisk.owner || 'N/A'}</TableCell>
-                        <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate" title={associatedGoalName}>
-                          {associatedGoalName}
+                        <TableCell className="text-xs max-w-[120px] truncate" title={pRisk.owner || ''}>{pRisk.owner || 'N/A'}</TableCell>
+                        <TableCell 
+                          className="text-xs text-muted-foreground max-w-[180px] truncate" 
+                          title={associatedGoalTitle}
+                        >
+                          {associatedGoalText}
                         </TableCell>
-                        <TableCell className="text-center">{riskCausesList.length}</TableCell>
-                        <TableCell className="text-center">{riskControlsList.length}</TableCell>
+                        <TableCell className="text-center text-xs">{riskCausesList.length}</TableCell>
+                        <TableCell className="text-center text-xs">{riskControlsList.length}</TableCell>
                         <TableCell className="text-right">
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
@@ -453,9 +487,6 @@ export default function AllRisksPage() {
                             <DropdownMenuContent align="end">
                               <DropdownMenuItem onClick={() => handleOpenEditPotentialRiskPage(pRisk.id)}>
                                 <Edit className="mr-2 h-4 w-4" /> Edit Detail & Penyebab
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleOpenManageCausesModal(pRisk)}>
-                                <Zap className="mr-2 h-4 w-4" /> Kelola Penyebab (Cepat)
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => handleOpenAnalysisModal(pRisk)}>
                                 <BarChart3 className="mr-2 h-4 w-4" /> Analisis Level (Inheren)
@@ -473,9 +504,10 @@ export default function AllRisksPage() {
                       </TableRow>
                       {isExpanded && (
                         <TableRow className="bg-muted/30 hover:bg-muted/40">
-                          <TableCell colSpan={totalTableColumns} className="p-0">
-                            <div className="p-3 space-y-1 text-sm">
-                              <h4 className="font-semibold text-foreground">Deskripsi Lengkap:</h4>
+                          <TableCell /> 
+                          <TableCell colSpan={totalTableColumns -1} className="p-0">
+                            <div className="p-3 space-y-1 text-xs">
+                              <h4 className="font-semibold text-foreground">Deskripsi Lengkap Potensi Risiko:</h4>
                               <p className="text-muted-foreground whitespace-pre-wrap">{pRisk.description}</p>
                             </div>
                           </TableCell>
@@ -528,5 +560,6 @@ export default function AllRisksPage() {
     </div>
   );
 }
+    
 
     

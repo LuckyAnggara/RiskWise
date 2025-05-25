@@ -16,7 +16,6 @@ import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, DropdownMenuCheckboxItem, DropdownMenuLabel } from "@/components/ui/dropdown-menu";
 import { getCurrentUprId, getCurrentPeriod, initializeAppContext } from '@/lib/upr-period-context';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { RiskCauseAnalysisModal } from '@/components/risks/risk-cause-analysis-modal';
 
 const getGoalsStorageKey = (uprId: string, period: string) => `riskwise-upr${uprId}-period${period}-goals`;
 const getPotentialRisksStorageKeyForGoal = (uprId: string, period: string, goalId: string) => `riskwise-upr${uprId}-period${period}-goal${goalId}-potentialRisks`;
@@ -28,6 +27,7 @@ interface EnrichedRiskCause extends RiskCause {
   goalName: string;
   goalCode: string; 
   potentialRiskSequenceNumber: number;
+  goalSequenceNumber: string; 
 }
 
 const getRiskLevel = (likelihood: LikelihoodImpactLevel | null, impact: LikelihoodImpactLevel | null): string => {
@@ -85,8 +85,8 @@ export default function RiskAnalysisPage() {
       const goalsStorageKey = getGoalsStorageKey(currentUprId, currentPeriod);
       const storedGoalsData = localStorage.getItem(goalsStorageKey);
       const loadedGoals: Goal[] = storedGoalsData ? JSON.parse(storedGoalsData).sort((a:Goal, b:Goal) => {
-        const codeA = typeof a.code === 'string' ? a.code : '';
-        const codeB = typeof b.code === 'string' ? b.code : '';
+        const codeA = a.code || '';
+        const codeB = b.code || '';
         return codeA.localeCompare(codeB, undefined, {numeric: true});
       }) : [];
       setAllGoals(loadedGoals);
@@ -97,20 +97,21 @@ export default function RiskAnalysisPage() {
         const potentialRisksStorageKey = getPotentialRisksStorageKeyForGoal(goal.uprId, goal.period, goal.id);
         const storedPotentialRisksData = localStorage.getItem(potentialRisksStorageKey);
         if (storedPotentialRisksData) {
-          const goalPotentialRisks: PotentialRisk[] = JSON.parse(storedPotentialRisksData).sort((a:PotentialRisk, b:PotentialRisk) => a.sequenceNumber - b.sequenceNumber);
+          const goalPotentialRisks: PotentialRisk[] = JSON.parse(storedPotentialRisksData).sort((a:PotentialRisk, b:PotentialRisk) => (a.sequenceNumber || 0) - (b.sequenceNumber || 0));
           
           goalPotentialRisks.forEach(pRisk => {
             const causesStorageKey = getRiskCausesStorageKey(goal.uprId, goal.period, pRisk.id);
             const storedCausesData = localStorage.getItem(causesStorageKey);
             if (storedCausesData) {
-              const pRiskCauses: RiskCause[] = JSON.parse(storedCausesData).sort((a:RiskCause, b:RiskCause) => a.sequenceNumber - b.sequenceNumber);
+              const pRiskCauses: RiskCause[] = JSON.parse(storedCausesData).sort((a:RiskCause, b:RiskCause) => (a.sequenceNumber || 0) - (b.sequenceNumber || 0));
               const enrichedCauses = pRiskCauses.map(cause => ({
                 ...cause,
                 potentialRiskDescription: pRisk.description,
                 potentialRiskCategory: pRisk.category,
                 goalName: goal.name,
-                goalCode: goal.code, 
+                goalCode: goal.code || "", 
                 potentialRiskSequenceNumber: pRisk.sequenceNumber,
+                goalSequenceNumber: goal.code || "", 
               }));
               collectedEnrichedRiskCauses = [...collectedEnrichedRiskCauses, ...enrichedCauses];
             }
@@ -135,6 +136,15 @@ export default function RiskAnalysisPage() {
       loadData();
     }
   }, [loadData, currentUprId, currentPeriod]);
+
+  const handleRiskCauseUpdated = (updatedCause: RiskCause) => {
+     setAllEnrichedRiskCauses(prevCauses => 
+        prevCauses.map(cause => cause.id === updatedCause.id ? {
+            ...cause, 
+            ...updatedCause 
+        } : cause)
+     );
+  };
 
 
   const toggleCategoryFilter = (category: RiskCategory) => {
@@ -179,7 +189,7 @@ export default function RiskAnalysisPage() {
         (cause.keyRiskIndicator && cause.keyRiskIndicator.toLowerCase().includes(lowerSearchTerm)) ||
         cause.potentialRiskDescription.toLowerCase().includes(lowerSearchTerm) ||
         cause.goalName.toLowerCase().includes(lowerSearchTerm) ||
-        `${cause.goalCode}.PR${cause.potentialRiskSequenceNumber}.PC${cause.sequenceNumber}`.toLowerCase().includes(lowerSearchTerm)
+        `${cause.goalCode || ''}.PR${cause.potentialRiskSequenceNumber || ''}.PC${cause.sequenceNumber || ''}`.toLowerCase().includes(lowerSearchTerm)
       );
     }
 
@@ -191,15 +201,18 @@ export default function RiskAnalysisPage() {
     
     if (selectedGoalIds.length > 0) {
         tempCauses = tempCauses.filter(cause => {
-          const parentGoal = allGoals.find(g => g.id === cause.potentialRiskId); // This logic might be flawed, cause.potentialRiskId is not goalId
-          // Correct approach: Find potential risk, then its goalId
+          // Find the goalId associated with this cause's potential risk
           const parentPotentialRisk = allGoals.flatMap(g => {
             const prKey = getPotentialRisksStorageKeyForGoal(g.uprId, g.period, g.id);
             const prData = typeof window !== 'undefined' ? localStorage.getItem(prKey) : null;
-            return prData ? JSON.parse(prData) as PotentialRisk[] : [];
+            if (prData) {
+                const potentialRisks: PotentialRisk[] = JSON.parse(prData);
+                return potentialRisks.filter(pr => pr.id === cause.potentialRiskId).map(pr => ({...pr, originalGoalId: g.id}));
+            }
+            return [];
           }).find(pr => pr.id === cause.potentialRiskId);
-
-          return parentPotentialRisk && selectedGoalIds.includes(parentPotentialRisk.goalId);
+          
+          return parentPotentialRisk && selectedGoalIds.includes(parentPotentialRisk.originalGoalId);
         });
     }
 
@@ -216,9 +229,9 @@ export default function RiskAnalysisPage() {
     }
 
     return tempCauses.sort((a, b) => {
-        const codeA = `${a.goalCode}.PR${a.potentialRiskSequenceNumber}.PC${a.sequenceNumber}`;
-        const codeB = `${b.goalCode}.PR${b.potentialRiskSequenceNumber}.PC${b.sequenceNumber}`;
-        return codeA.localeCompare(codeB, undefined, {numeric: true});
+        const codeA = `${a.goalCode || ''}.PR${a.potentialRiskSequenceNumber || 0}.PC${a.sequenceNumber || 0}`;
+        const codeB = `${b.goalCode || ''}.PR${b.potentialRiskSequenceNumber || 0}.PC${b.sequenceNumber || 0}`;
+        return codeA.localeCompare(codeB, undefined, {numeric: true, sensitivity: 'base'});
     });
   }, [allEnrichedRiskCauses, searchTerm, selectedCategories, selectedGoalIds, selectedSources, selectedRiskLevels, allGoals, currentUprId, currentPeriod]);
 
@@ -238,7 +251,7 @@ export default function RiskAnalysisPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title={`Analisis Penyebab Risiko`}
+        title={`Analisis Detail Penyebab Risiko`}
         description={`Lakukan analisis KRI, Toleransi, Probabilitas, dan Dampak untuk setiap penyebab risiko di UPR: ${currentUprId}, Periode: ${currentPeriod}.`}
       />
 
@@ -295,7 +308,7 @@ export default function RiskAnalysisPage() {
                       checked={selectedGoalIds.includes(goal.id)}
                       onCheckedChange={() => toggleGoalFilter(goal.id)}
                     >
-                      {goal.code} - {goal.name}
+                      {goal.code || '[Tanpa Kode]'} - {goal.name}
                     </DropdownMenuCheckboxItem>
                   ))}
                 </ScrollArea>
@@ -385,7 +398,8 @@ export default function RiskAnalysisPage() {
               <TableBody>
                 {filteredAndSortedCauses.map((cause) => {
                   const causeRiskLevel = getRiskLevel(cause.likelihood, cause.impact);
-                  const causeCode = `${cause.goalCode}.PR${cause.potentialRiskSequenceNumber}.PC${cause.sequenceNumber}`;
+                  const goalCodeDisplay = (cause.goalCode && cause.goalCode.trim() !== '') ? cause.goalCode : '[Tanpa Kode]';
+                  const causeCode = `${goalCodeDisplay}.PR${cause.potentialRiskSequenceNumber || 'N/A'}.PC${cause.sequenceNumber || 'N/A'}`;
                   return (
                     <Fragment key={cause.id}>
                       <TableRow>
@@ -398,10 +412,12 @@ export default function RiskAnalysisPage() {
                         <TableCell><Badge variant={cause.impact ? "outline" : "ghost"} className={`text-xs ${!cause.impact ? "text-muted-foreground" : ""}`}>{cause.impact || 'N/A'}</Badge></TableCell>
                         <TableCell><Badge className={`${getRiskLevelColor(causeRiskLevel)} text-xs`}>{causeRiskLevel}</Badge></TableCell>
                         <TableCell className="text-xs max-w-[200px] truncate" title={cause.potentialRiskDescription}>
-                          PR{cause.potentialRiskSequenceNumber} - {cause.potentialRiskDescription} 
+                          PR{cause.potentialRiskSequenceNumber || 'N/A'} - {cause.potentialRiskDescription} 
                           {cause.potentialRiskCategory && <Badge variant="secondary" className="ml-1 text-[10px]">{cause.potentialRiskCategory}</Badge>}
                         </TableCell>
-                        <TableCell className="text-xs max-w-[180px] truncate text-muted-foreground" title={cause.goalName}>{cause.goalCode} - {cause.goalName}</TableCell>
+                        <TableCell className="text-xs max-w-[180px] truncate text-muted-foreground" title={cause.goalName}>
+                           {goalCodeDisplay} - {cause.goalName}
+                        </TableCell>
                         <TableCell className="text-right">
                           <Link href={`/risk-cause-analysis/${cause.id}`}>
                             <Button variant="outline" size="sm">
@@ -421,5 +437,6 @@ export default function RiskAnalysisPage() {
     </div>
   );
 }
+    
 
     

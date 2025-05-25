@@ -17,11 +17,11 @@ const getPotentialRisksStorageKey = (uprId: string, period: string, goalId: stri
 const getControlsStorageKey = (uprId: string, period: string, potentialRiskId: string) => `riskwise-upr${uprId}-period${period}-potentialRisk${potentialRiskId}-controls`;
 
 const MOCK_GOALS_TEMPLATE: Omit<Goal, 'uprId' | 'period'>[] = [
-  { id: 'g1', name: 'Luncurkan Produk Baru (Mock)', description: 'Berhasil diluncurkan pada Q4', createdAt: new Date().toISOString() },
-  { id: 'g2', name: 'Perluas Pangsa Pasar (Mock)', description: 'Tingkatkan pangsa pasar sebesar 5%', createdAt: new Date().toISOString() },
+  { id: 'g1', code: 'P1', name: 'Luncurkan Produk Baru (Mock)', description: 'Berhasil diluncurkan pada Q4', createdAt: new Date().toISOString() },
+  { id: 'g2', code: 'M1', name: 'Perluas Pangsa Pasar (Mock)', description: 'Tingkatkan pangsa pasar sebesar 5%', createdAt: new Date().toISOString() },
 ];
 
-const MOCK_POTENTIAL_RISKS_TEMPLATE: Omit<PotentialRisk, 'goalId'>[] = [ 
+const MOCK_POTENTIAL_RISKS_TEMPLATE: Omit<PotentialRisk, 'goalId' | 'sequenceNumber'>[] = [ 
   { id: 'pr1', description: 'Gangguan rantai pasok (Mock)', category: 'Operasional', owner: 'Kepala Rantai Pasok', likelihood: 'Tinggi', impact: 'Sangat Tinggi', identifiedAt: new Date().toISOString() },
   { id: 'pr2', description: 'Pesaing meluncurkan produk serupa (Mock)', category: 'Strategis', owner: 'Tim Produk', likelihood: 'Sedang', impact: 'Tinggi', identifiedAt: new Date().toISOString() },
   { id: 'pr3', description: 'Perubahan regulasi (Mock)', category: 'Kepatuhan', owner: 'Departemen Legal', likelihood: 'Rendah', impact: 'Sedang', identifiedAt: new Date().toISOString() },
@@ -115,7 +115,14 @@ export default function DashboardPage() {
         if (goalPRisksData) {
           goalPRisks = JSON.parse(goalPRisksData);
         } else if (MOCK_POTENTIAL_RISKS_TEMPLATE.length > 0 && goalIndex < MOCK_POTENTIAL_RISKS_TEMPLATE.length) {
-            goalPRisks = [ { ...MOCK_POTENTIAL_RISKS_TEMPLATE[goalIndex % MOCK_POTENTIAL_RISKS_TEMPLATE.length], goalId: goal.id, id: `mpr-${goal.id}-${goalIndex}` } ];
+            // Assign sequenceNumber when creating mock potential risks
+            const mockRiskTemplate = MOCK_POTENTIAL_RISKS_TEMPLATE[goalIndex % MOCK_POTENTIAL_RISKS_TEMPLATE.length];
+            goalPRisks = [ { 
+                ...mockRiskTemplate, 
+                goalId: goal.id, 
+                id: `mpr-${goal.id}-${goalIndex}`,
+                sequenceNumber: (goalIndex % MOCK_POTENTIAL_RISKS_TEMPLATE.length) + 1 // Simple sequence
+            } ];
             localStorage.setItem(pRisksStorageKey, JSON.stringify(goalPRisks));
         }
         
@@ -272,6 +279,7 @@ export default function DashboardPage() {
                   {highPriorityPotentialRisks.map((pRisk) => {
                     const goal = goals.find(g => g.id === pRisk.goalId);
                     const level = getRiskLevel(pRisk.likelihood, pRisk.impact);
+                    const goalCodeDisplay = (goal?.code && goal.code.trim() !== '') ? goal.code : '[Tanpa Kode]';
                     return (
                       <TableRow key={pRisk.id}>
                         <TableCell className="font-medium max-w-xs truncate" title={pRisk.description}>{pRisk.description}</TableCell>
@@ -284,7 +292,9 @@ export default function DashboardPage() {
                             {level}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-sm text-muted-foreground truncate" title={goal?.name}>{goal?.name || 'N/A'}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground truncate" title={goal?.name}>
+                          {goalCodeDisplay}: {goal?.name || 'N/A'}
+                        </TableCell>
                       </TableRow>
                     );
                   })}
@@ -300,3 +310,5 @@ export default function DashboardPage() {
   );
 }
 
+
+    
