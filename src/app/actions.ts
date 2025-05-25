@@ -18,7 +18,7 @@ import { RISK_CATEGORIES } from "@/lib/types";
 
 const BrainstormPotentialRisksActionInputSchema = z.object({
   goalDescription: z.string().min(10, "Deskripsi sasaran minimal 10 karakter."),
-  desiredCount: z.number().optional().positive("Jumlah harus lebih dari 0").max(10, "Maksimal 10 saran."),
+  desiredCount: z.number().positive("Jumlah harus lebih dari 0").max(10, "Maksimal 10 saran.").optional(),
 });
 
 export async function brainstormPotentialRisksAction(
@@ -100,3 +100,4 @@ export async function suggestRiskParametersAction(
     };
   }
 }
+
