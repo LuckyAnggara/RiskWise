@@ -29,7 +29,7 @@ interface EnrichedRiskCause extends RiskCause {
   potentialRiskCategory: RiskCategory | null;
   goalName: string;
   goalCode: string; 
-  potentialRiskSequenceNumber: number;
+  potentialRiskSequenceNumber: number; // sequenceNumber dari PotentialRisk
   goalUprId: string; 
   goalPeriod: string;
 }
@@ -113,9 +113,9 @@ export default function RiskAnalysisPage() {
                 ...cause,
                 potentialRiskDescription: pRisk.description,
                 potentialRiskCategory: pRisk.category,
+                potentialRiskSequenceNumber: pRisk.sequenceNumber,
                 goalName: goal.name,
                 goalCode: goal.code || "", 
-                potentialRiskSequenceNumber: pRisk.sequenceNumber,
                 goalUprId: goal.uprId, 
                 goalPeriod: goal.period,
               }));
@@ -199,11 +199,13 @@ export default function RiskAnalysisPage() {
     if (selectedGoalIds.length > 0) {
         const goalIdMap = new Map<string, string>(); 
         allGoals.forEach(g => {
-            const prKey = getPotentialRisksStorageKeyForGoal(g.uprId, g.period, g.id);
-            const prData = typeof window !== 'undefined' ? localStorage.getItem(prKey) : null;
+            // This mapping assumes potentialRiskId is unique across goals or we have a way to map it back
+            // For simplicity, we find the goal for the cause via its potentialRisk's goalId
+            const potentialRisksStorageKey = getPotentialRisksStorageKeyForGoal(g.uprId, g.period, g.id);
+            const prData = typeof window !== 'undefined' ? localStorage.getItem(potentialRisksStorageKey) : null;
             if (prData) {
                 const potentialRisks: PotentialRisk[] = JSON.parse(prData);
-                potentialRisks.forEach(pr => goalIdMap.set(pr.id, g.id));
+                potentialRisks.forEach(pr => goalIdMap.set(pr.id, g.id)); // Map PotentialRisk ID to its Goal ID
             }
         });
         tempCauses = tempCauses.filter(cause => {
@@ -515,7 +517,7 @@ export default function RiskAnalysisPage() {
                   <TableHead className="min-w-[120px]">Kemungkinan</TableHead>
                   <TableHead className="min-w-[120px]">Dampak</TableHead>
                   <TableHead className="min-w-[120px]">Tingkat Risiko</TableHead>
-                  <TableHead className="min-w-[200px] w-[20%]">Potensi Risiko Induk</TableHead>
+                  <TableHead className="min-w-[200px]">Potensi Risiko Induk</TableHead>
                   <TableHead className="min-w-[200px]">Sasaran Induk</TableHead>
                   <TableHead className="text-right w-[100px]">Aksi</TableHead>
                 </TableRow>
@@ -536,18 +538,18 @@ export default function RiskAnalysisPage() {
                           />
                         </TableCell>
                         <TableCell className="text-xs font-mono">{causeCode}</TableCell>
-                        <TableCell className="font-medium text-xs max-w-[250px] truncate" title={cause.description}>{cause.description}</TableCell>
+                        <TableCell className="font-medium text-xs max-w-xs truncate" title={cause.description}>{cause.description}</TableCell>
                         <TableCell className="text-xs"><Badge variant="outline">{cause.source}</Badge></TableCell>
                         <TableCell className="text-xs max-w-[180px] truncate" title={cause.keyRiskIndicator || ''}>{cause.keyRiskIndicator || '-'}</TableCell>
                         <TableCell className="text-xs max-w-[180px] truncate" title={cause.riskTolerance || ''}>{cause.riskTolerance || '-'}</TableCell>
                         <TableCell><Badge variant={cause.likelihood ? "outline" : "ghost"} className={`text-xs ${!cause.likelihood ? "text-muted-foreground" : ""}`}>{cause.likelihood || 'N/A'}</Badge></TableCell>
                         <TableCell><Badge variant={cause.impact ? "outline" : "ghost"} className={`text-xs ${!cause.impact ? "text-muted-foreground" : ""}`}>{cause.impact || 'N/A'}</Badge></TableCell>
                         <TableCell><Badge className={`${getRiskLevelColor(causeRiskLevel)} text-xs`}>{causeRiskLevel}</Badge></TableCell>
-                        <TableCell className="text-xs truncate" title={cause.potentialRiskDescription}> {/* Removed max-w for more flexible width */}
+                        <TableCell className="text-xs truncate" title={cause.potentialRiskDescription}>
                           PR{cause.potentialRiskSequenceNumber || 'N/A'} - {cause.potentialRiskDescription} 
                           {cause.potentialRiskCategory && <Badge variant="secondary" className="ml-1 text-[10px]">{cause.potentialRiskCategory}</Badge>}
                         </TableCell>
-                        <TableCell className="text-xs max-w-[200px] truncate text-muted-foreground" title={cause.goalName}>
+                        <TableCell className="text-xs max-w-sm truncate text-muted-foreground" title={cause.goalName}>
                           {goalCodeDisplay} - {cause.goalName}
                         </TableCell>
                         <TableCell className="text-right">
@@ -611,5 +613,7 @@ export default function RiskAnalysisPage() {
     </div>
   );
 }
+
+    
 
     
