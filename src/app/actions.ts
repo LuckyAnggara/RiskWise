@@ -7,7 +7,7 @@ import {
   type BrainstormPotentialRisksOutput 
 } from "@/ai/flows/brainstorm-risks";
 import { 
-  suggestRiskParameters as suggestRiskParametersFlow, // Changed from suggestRiskParametersFlow
+  suggestRiskParameters as suggestRiskParametersFlow,
   type SuggestRiskParametersInput, 
   type SuggestRiskParametersOutput 
 } from "@/ai/flows/suggest-risk-parameters-flow";
@@ -18,6 +18,7 @@ import { RISK_CATEGORIES } from "@/lib/types";
 
 const BrainstormPotentialRisksActionInputSchema = z.object({
   goalDescription: z.string().min(10, "Deskripsi sasaran minimal 10 karakter."),
+  desiredCount: z.number().optional().positive("Jumlah harus lebih dari 0").max(10, "Maksimal 10 saran."),
 });
 
 export async function brainstormPotentialRisksAction(
@@ -26,15 +27,22 @@ export async function brainstormPotentialRisksAction(
   const validatedFields = BrainstormPotentialRisksActionInputSchema.safeParse(values);
 
   if (!validatedFields.success) {
+    let errorMessages = "";
+    for (const fieldError of Object.values(validatedFields.error.flatten().fieldErrors)) {
+        if (fieldError && fieldError.length > 0) {
+            errorMessages += fieldError.join(", ") + " ";
+        }
+    }
     return {
       success: false,
-      error: validatedFields.error.flatten().fieldErrors.goalDescription?.[0] || "Input tidak valid.",
+      error: errorMessages.trim() || "Input tidak valid.",
     };
   }
 
   try {
     const input: BrainstormPotentialRisksInput = {
       goalDescription: validatedFields.data.goalDescription,
+      desiredCount: validatedFields.data.desiredCount,
     };
     const output = await brainstormPotentialRisksFlow(input);
     return { success: true, data: output };
@@ -81,7 +89,7 @@ export async function suggestRiskParametersAction(
       riskCauseDescription: validatedFields.data.riskCauseDescription,
       goalDescription: validatedFields.data.goalDescription,
     };
-    const output = await suggestRiskParametersFlow(input); // Directly call the renamed function
+    const output = await suggestRiskParametersFlow(input);
     return { success: true, data: output };
   } catch (error) {
     console.error("Error in suggestRiskParametersAction:", error);
