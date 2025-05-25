@@ -183,7 +183,6 @@ export default function RiskCauseAnalysisPage() {
     setCurrentRiskCause(updatedRiskCause); // Update local state
     toast({ title: "Sukses", description: `Analisis untuk penyebab risiko PC${updatedRiskCause.sequenceNumber} telah disimpan.` });
     setIsSaving(false);
-    // router.push(`/all-risks/manage/${parentPotentialRisk.id}`); // Option: Navigate back to potential risk management
   };
 
   if (pageIsLoading || !currentRiskCause || !parentPotentialRisk || !grandParentGoal) {
@@ -219,12 +218,12 @@ export default function RiskCauseAnalysisPage() {
             <CardTitle>Konteks Risiko</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2 text-sm">
-            <p><strong>Sasaran Terkait ({goalCode}):</strong> {grandParentGoal.name}</p>
-            <p><strong>Potensi Risiko ({potentialRiskCode}):</strong> {parentPotentialRisk.description}</p>
-            <p><strong>Kategori Risiko:</strong> <Badge variant="secondary">{parentPotentialRisk.category || 'N/A'}</Badge></p>
-            <p><strong>Pemilik Potensi Risiko:</strong> {parentPotentialRisk.owner || 'N/A'}</p>
-            <p><strong>Deskripsi Penyebab (PC{currentRiskCause.sequenceNumber}):</strong> {currentRiskCause.description}</p>
-            <p><strong>Sumber Penyebab:</strong> <Badge variant="outline">{currentRiskCause.source}</Badge></p>
+            <div><strong>Sasaran Terkait ({goalCode}):</strong> {grandParentGoal.name}</div>
+            <div><strong>Potensi Risiko ({potentialRiskCode}):</strong> {parentPotentialRisk.description}</div>
+            <div><strong>Kategori Risiko:</strong> <Badge variant="secondary">{parentPotentialRisk.category || 'N/A'}</Badge></div>
+            <div><strong>Pemilik Potensi Risiko:</strong> {parentPotentialRisk.owner || 'N/A'}</div>
+            <div><strong>Deskripsi Penyebab (PC{currentRiskCause.sequenceNumber}):</strong> {currentRiskCause.description}</div>
+            <div><strong>Sumber Penyebab:</strong> <Badge variant="outline">{currentRiskCause.source}</Badge></div>
         </CardContent>
       </Card>
 
@@ -336,3 +335,6 @@ export default function RiskCauseAnalysisPage() {
     </div>
   );
 }
+
+
+    
