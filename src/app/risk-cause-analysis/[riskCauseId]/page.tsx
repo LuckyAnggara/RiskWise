@@ -2,14 +2,14 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { PageHeader } from '@/components/ui/page-header';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import type { PotentialRisk, Goal, RiskCause, LikelihoodImpactLevel } from '@/lib/types';
+import type { PotentialRisk, Goal, RiskCause, LikelihoodImpactLevel, RiskCategory, RiskSource } from '@/lib/types';
 import { LIKELIHOOD_IMPACT_LEVELS } from '@/lib/types';
 import { useForm, type SubmitHandler, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -37,7 +37,7 @@ const getGoalsStorageKey = (uprId: string, period: string) => `riskwise-upr${upr
 const getPotentialRisksStorageKeyForGoal = (uprId: string, period: string, goalId: string) => `riskwise-upr${uprId}-period${period}-goal${goalId}-potentialRisks`;
 const getRiskCausesStorageKey = (uprId: string, period: string, potentialRiskId: string) => `riskwise-upr${uprId}-period${period}-potentialRisk${potentialRiskId}-causes`;
 
-const getRiskLevel = (likelihood: LikelihoodImpactLevel | null, impact: LikelihoodImpactLevel | null): RiskLevel => {
+const getRiskLevel = (likelihood: LikelihoodImpactLevel | null, impact: LikelihoodImpactLevel | null): string => {
   if (!likelihood || !impact) return 'N/A';
   const L: { [key in LikelihoodImpactLevel]: number } = { 'Sangat Rendah': 1, 'Rendah': 2, 'Sedang': 3, 'Tinggi': 4, 'Sangat Tinggi': 5 };
   const I: { [key in LikelihoodImpactLevel]: number } = { 'Sangat Rendah': 1, 'Rendah': 2, 'Sedang': 3, 'Tinggi': 4, 'Sangat Tinggi': 5 };
@@ -53,7 +53,7 @@ const getRiskLevel = (likelihood: LikelihoodImpactLevel | null, impact: Likeliho
   return 'N/A';
 };
 
-const getRiskLevelColor = (level: RiskLevel) => {
+const getRiskLevelColor = (level: string) => {
   switch (level.toLowerCase()) {
     case 'sangat tinggi': return 'bg-red-600 hover:bg-red-700 text-white';
     case 'tinggi': return 'bg-orange-500 hover:bg-orange-600 text-white';
@@ -67,6 +67,7 @@ const getRiskLevelColor = (level: RiskLevel) => {
 export default function RiskCauseAnalysisPage() {
   const router = useRouter();
   const params = useParams();
+  const searchParams = useSearchParams();
   const riskCauseId = params.riskCauseId as string;
 
   const [currentUprId, setCurrentUprId] = useState('');
@@ -99,7 +100,7 @@ export default function RiskCauseAnalysisPage() {
     reset,
     control,
     watch,
-    setValue, // Added setValue
+    setValue, 
     formState: { errors },
   } = useForm<RiskCauseAnalysisFormData>({
     resolver: zodResolver(riskCauseAnalysisSchema),
@@ -145,7 +146,7 @@ export default function RiskCauseAnalysisPage() {
     setCurrentRiskCause(foundCause);
     setParentPotentialRisk(foundPotentialRisk);
     setGrandParentGoal(foundGoal);
-    setAiSuggestion(null); // Reset AI suggestion
+    setAiSuggestion(null); 
 
     if (foundCause) {
       reset({
@@ -215,7 +216,6 @@ export default function RiskCauseAnalysisPage() {
           impact: result.data.suggestedImpact as LikelihoodImpactLevel | null,
           impactJustification: result.data.impactJustification,
         });
-        // Auto-apply if suggestions are present
         if (result.data.suggestedLikelihood) setValue('likelihood', result.data.suggestedLikelihood as LikelihoodImpactLevel);
         if (result.data.suggestedImpact) setValue('impact', result.data.suggestedImpact as LikelihoodImpactLevel);
 
@@ -229,6 +229,13 @@ export default function RiskCauseAnalysisPage() {
       setIsAISuggestionLoading(false);
     }
   };
+
+  const getReturnPath = () => {
+    const fromQuery = searchParams.get('from');
+    if (fromQuery) return fromQuery;
+    if (parentPotentialRisk) return `/all-risks/manage/${parentPotentialRisk.id}`;
+    return '/risk-analysis'; // Default fallback
+  }
 
 
   if (pageIsLoading || !currentRiskCause || !parentPotentialRisk || !grandParentGoal) {
@@ -251,10 +258,10 @@ export default function RiskCauseAnalysisPage() {
         description={`Input KRI, Toleransi, Kemungkinan, dan Dampak untuk penyebab: "${currentRiskCause.description}"`}
         actions={
           <Button 
-            onClick={() => router.push(`/all-risks/manage/${parentPotentialRisk.id}`)} 
+            onClick={() => router.push(getReturnPath())} 
             variant="outline"
           >
-            <ArrowLeft className="mr-2 h-4 w-4" /> Kembali ke Detail Potensi Risiko
+            <ArrowLeft className="mr-2 h-4 w-4" /> Kembali
           </Button>
         }
       />
@@ -311,7 +318,7 @@ export default function RiskCauseAnalysisPage() {
                            <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-primary" onClick={handleGetAISuggestion} disabled={isAISuggestionLoading} aria-label="Dapatkan Saran AI untuk Kemungkinan" type="button">
                              {isAISuggestionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
                            </Button>
-                           <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-primary" onClick={() => setIsLikelihoodCriteriaModalOpen(true)} type="button"><Info className="h-4 w-4" /></Button>
+                           <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-primary" onClick={() => setIsLikelihoodCriteriaModalOpen(true)} type="button" aria-label="Lihat Kriteria Kemungkinan"><Info className="h-4 w-4" /></Button>
                         </div>
                     </div>
                     <Controller
@@ -345,7 +352,7 @@ export default function RiskCauseAnalysisPage() {
                            <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-primary" onClick={handleGetAISuggestion} disabled={isAISuggestionLoading} aria-label="Dapatkan Saran AI untuk Dampak" type="button">
                              {isAISuggestionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
                            </Button>
-                           <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-primary" onClick={() => setIsImpactCriteriaModalOpen(true)} type="button"><Info className="h-4 w-4" /></Button>
+                           <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-primary" onClick={() => setIsImpactCriteriaModalOpen(true)} type="button" aria-label="Lihat Kriteria Dampak"><Info className="h-4 w-4" /></Button>
                         </div>
                     </div>
                     <Controller

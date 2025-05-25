@@ -33,6 +33,7 @@ interface EnrichedRiskCause extends RiskCause {
   goalUprId: string; 
   goalPeriod: string;
   goalId: string;
+  goalSequenceNumber: number; // Added for consistent coding
 }
 
 const getRiskLevel = (likelihood: LikelihoodImpactLevel | null, impact: LikelihoodImpactLevel | null): string => {
@@ -154,6 +155,7 @@ export default function RiskAnalysisPage() {
                 goalUprId: goal.uprId, 
                 goalPeriod: goal.period,
                 goalId: goal.id,
+                goalSequenceNumber: goal.sequenceNumber || 0, // Add goal sequence number
               }));
               collectedEnrichedRiskCauses = [...collectedEnrichedRiskCauses, ...enrichedCauses];
             }
@@ -248,8 +250,8 @@ export default function RiskAnalysisPage() {
     }
 
     return tempCauses.sort((a, b) => {
-        const codeA = `${a.goalCode || ''}.PR${a.potentialRiskSequenceNumber || 0}.PC${a.sequenceNumber || 0}`;
-        const codeB = `${b.goalCode || ''}.PR${b.potentialRiskSequenceNumber || 0}.PC${b.sequenceNumber || 0}`;
+        const codeA = `${a.goalCode || 'S?'}.PR${a.potentialRiskSequenceNumber || 0}.PC${a.sequenceNumber || 0}`;
+        const codeB = `${b.goalCode || 'S?'}.PR${b.potentialRiskSequenceNumber || 0}.PC${b.sequenceNumber || 0}`;
         return codeA.localeCompare(codeB, undefined, {numeric: true, sensitivity: 'base'});
     });
   }, [allEnrichedRiskCauses, searchTerm, selectedCategories, selectedGoalIds, selectedSources, selectedRiskLevels]);
@@ -307,6 +309,7 @@ export default function RiskAnalysisPage() {
     }
     setIsSingleDeleteDialogOpen(false);
     setCauseToDelete(null);
+    setSelectedCauseIds(prev => prev.filter(id => id !== causeToDelete?.id)); // Also remove from selection
   };
 
   const handleDeleteSelectedCauses = () => {
@@ -609,7 +612,7 @@ export default function RiskAnalysisPage() {
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
                                 <DropdownMenuItem asChild>
-                                    <Link href={`/risk-cause-analysis/${cause.id}`}>
+                                    <Link href={`/risk-cause-analysis/${cause.id}?from=/risk-analysis`}>
                                     <BarChart3 className="mr-2 h-4 w-4" /> Analisis Detail
                                     </Link>
                                 </DropdownMenuItem>
@@ -662,4 +665,3 @@ export default function RiskAnalysisPage() {
     </div>
   );
 }
-

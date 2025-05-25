@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { useParams, useRouter } from 'next/navigation'; 
+import { useParams, useRouter, useSearchParams } from 'next/navigation'; 
 import Link from 'next/link'; 
 import { PageHeader } from '@/components/ui/page-header';
 import { Button } from '@/components/ui/button';
@@ -18,7 +18,7 @@ import { RISK_CATEGORIES, RISK_SOURCES, LIKELIHOOD_IMPACT_LEVELS } from '@/lib/t
 import { useForm, type SubmitHandler, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { ArrowLeft, PlusCircle, Trash2, Loader2, Save, BarChart3, Wand2, Settings2, Edit } from 'lucide-react';
+import { ArrowLeft, PlusCircle, Trash2, Loader2, Save, BarChart3, Wand2, Settings2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { getCurrentUprId, getCurrentPeriod, initializeAppContext } from '@/lib/upr-period-context';
 import { Separator } from '@/components/ui/separator';
@@ -93,6 +93,7 @@ const getRiskLevelColor = (level: string) => {
 export default function ManagePotentialRiskPage() {
   const router = useRouter();
   const params = useParams();
+  const searchParams = useSearchParams();
   const potentialRiskIdParam = params.potentialRiskId as string;
   const isCreatingNew = potentialRiskIdParam === 'new';
 
@@ -230,7 +231,7 @@ export default function ManagePotentialRiskPage() {
       };
       successMessage = `Potensi Risiko "${pRiskToSave.description}" (PR${pRiskToSave.sequenceNumber}) dibuat. Anda sekarang dapat menambahkan penyebabnya.`;
       currentGoalPotentialRisks.push(pRiskToSave);
-      localStorage.setItem(goalPotentialRisksKey, JSON.stringify(currentGoalPotentialRisks.sort((a,b)=>(a.sequenceNumber - b.sequenceNumber || a.description.localeCompare(b.description)))));
+      localStorage.setItem(goalPotentialRisksKey, JSON.stringify(currentGoalPotentialRisks.sort((a,b)=>(a.sequenceNumber || 0) - (b.sequenceNumber || 0) || a.description.localeCompare(b.description))));
       
       setCurrentPotentialRisk(pRiskToSave); 
       router.replace(`/all-risks/manage/${pRiskToSave.id}`);
@@ -250,17 +251,17 @@ export default function ManagePotentialRiskPage() {
             let oldGoalPRs: PotentialRisk[] = JSON.parse(localStorage.getItem(oldGoalPRKey) || '[]');
             oldGoalPRs = oldGoalPRs.filter(pr => pr.id !== currentPotentialRisk.id);
             oldGoalPRs.forEach((pr, index) => pr.sequenceNumber = index + 1);
-            localStorage.setItem(oldGoalPRKey, JSON.stringify(oldGoalPRs.sort((a,b)=>(a.sequenceNumber - b.sequenceNumber || a.description.localeCompare(b.description)))));
+            localStorage.setItem(oldGoalPRKey, JSON.stringify(oldGoalPRs.sort((a,b)=>(a.sequenceNumber || 0) - (b.sequenceNumber || 0) || a.description.localeCompare(b.description))));
         }
         const newGoalPRKey = getPotentialRisksStorageKeyForGoal(parentGoal.uprId, parentGoal.period, data.goalId);
         let newGoalPRs: PotentialRisk[] = JSON.parse(localStorage.getItem(newGoalPRKey) || '[]');
         pRiskToSave.goalId = data.goalId; 
         pRiskToSave.sequenceNumber = newGoalPRs.length + 1; 
         newGoalPRs.push(pRiskToSave);
-        localStorage.setItem(newGoalPRKey, JSON.stringify(newGoalPRs.sort((a,b)=>(a.sequenceNumber - b.sequenceNumber || a.description.localeCompare(b.description)))));
+        localStorage.setItem(newGoalPRKey, JSON.stringify(newGoalPRs.sort((a,b)=>(a.sequenceNumber || 0) - (b.sequenceNumber || 0) || a.description.localeCompare(b.description))));
       } else {
         currentGoalPotentialRisks = currentGoalPotentialRisks.map(pr => pr.id === pRiskToSave.id ? pRiskToSave : pr);
-        localStorage.setItem(goalPotentialRisksKey, JSON.stringify(currentGoalPotentialRisks.sort((a,b)=>(a.sequenceNumber - b.sequenceNumber || a.description.localeCompare(b.description)))));
+        localStorage.setItem(goalPotentialRisksKey, JSON.stringify(currentGoalPotentialRisks.sort((a,b)=>(a.sequenceNumber || 0) - (b.sequenceNumber || 0) || a.description.localeCompare(b.description))));
       }
       setCurrentPotentialRisk(pRiskToSave); 
       successMessage = `Potensi Risiko "${pRiskToSave.description}" (PR${pRiskToSave.sequenceNumber}) diperbarui.`;
@@ -344,6 +345,8 @@ export default function ManagePotentialRiskPage() {
     setIsBrainstormCausesSuggestionsModalOpen(false);
   };
 
+  const defaultBackPath = searchParams.get('from') || `/all-risks`;
+
 
   if (pageIsLoading || !currentUprId || !currentPeriod) {
     return (
@@ -365,8 +368,8 @@ export default function ManagePotentialRiskPage() {
         title={isCreatingNew ? "Tambah Potensi Risiko Baru" : `Edit Potensi Risiko (${potentialRiskCode})`}
         description={`Kelola detail dan penyebab potensi risiko. UPR: ${currentUprId}, Periode: ${currentPeriod}.`}
         actions={
-          <Button onClick={() => router.push('/all-risks')} variant="outline">
-            <ArrowLeft className="mr-2 h-4 w-4" /> Kembali ke Identifikasi Risiko
+          <Button onClick={() => router.push(defaultBackPath)} variant="outline">
+            <ArrowLeft className="mr-2 h-4 w-4" /> Kembali
           </Button>
         }
       />
@@ -394,7 +397,7 @@ export default function ManagePotentialRiskPage() {
                         <SelectContent>
                         {goals.length > 0 ? (
                             goals.map(goal => (
-                            <SelectItem key={goal.id} value={goal.id}>{goal.code} - {goal.name}</SelectItem>
+                            <SelectItem key={goal.id} value={goal.id}>{(goal.code || '[Tanpa Kode]') + ' - ' + goal.name}</SelectItem>
                             ))
                         ) : (
                             <SelectItem value="no-goals" disabled>Tidak ada sasaran di UPR/Periode ini.</SelectItem>
@@ -476,7 +479,7 @@ export default function ManagePotentialRiskPage() {
             <CardHeader>
               <div className="flex justify-between items-center">
                 <div>
-                    <CardTitle>({potentialRiskCode}) {currentPotentialRisk.description} </CardTitle>
+                    <CardTitle>Penyebab Risiko untuk: ({potentialRiskCode}) {currentPotentialRisk.description} </CardTitle>
                     <CardDescription>Identifikasi dan kelola penyebab spesifik yang berkontribusi pada potensi risiko ini.</CardDescription>
                 </div>
                 <Button 
@@ -558,6 +561,7 @@ export default function ManagePotentialRiskPage() {
                       <TableBody>
                         {riskCauses.map(cause => {
                             const causeRiskLevel = getRiskLevel(cause.likelihood, cause.impact);
+                            const backToManagePage = `/all-risks/manage/${currentPotentialRisk.id}`;
                             return (
                               <TableRow key={cause.id}>
                                 <TableCell>PC{cause.sequenceNumber}</TableCell>
@@ -583,7 +587,7 @@ export default function ManagePotentialRiskPage() {
                                     </DropdownMenuTrigger>
                                     <DropdownMenuContent align="end">
                                       <DropdownMenuItem asChild>
-                                        <Link href={`/risk-cause-analysis/${cause.id}`}>
+                                        <Link href={`/risk-cause-analysis/${cause.id}?from=${encodeURIComponent(backToManagePage)}`}>
                                           <BarChart3 className="mr-2 h-4 w-4" />
                                           Analisis Detail
                                         </Link>
@@ -632,4 +636,3 @@ export default function ManagePotentialRiskPage() {
     </div>
   );
 }
-
