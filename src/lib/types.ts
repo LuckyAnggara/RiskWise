@@ -27,9 +27,9 @@ export interface Goal {
   name: string;
   description: string;
   createdAt: string; // ISO date string
-  uprId: string; // Unit Pemilik Risiko ID
-  period: string; // e.g., "2024", "2025"
-  code: string; // e.g., "A1", "B12" - New codification
+  uprId: string; 
+  period: string; 
+  code: string; // e.g., "A1", "B12"
 }
 
 export interface PotentialRisk {
@@ -38,11 +38,11 @@ export interface PotentialRisk {
   description: string;
   category: RiskCategory | null;
   owner: string | null; 
-  likelihood: LikelihoodImpactLevel | null; // Inherent likelihood of the potential risk
-  impact: LikelihoodImpactLevel | null; // Inherent impact of the potential risk
+  likelihood: LikelihoodImpactLevel | null; // Inherent likelihood
+  impact: LikelihoodImpactLevel | null; // Inherent impact
   identifiedAt: string; // ISO date string
-  analysisCompletedAt?: string; // ISO date string for the potential risk's inherent analysis
-  sequenceNumber: number; // For codification e.g., PR1, PR2 relative to Goal
+  analysisCompletedAt?: string; 
+  sequenceNumber: number; 
 }
 
 export interface RiskCause {
@@ -52,11 +52,11 @@ export interface RiskCause {
   source: RiskSource;
   keyRiskIndicator: string | null;
   riskTolerance: string | null;
-  likelihood: LikelihoodImpactLevel | null; 
-  impact: LikelihoodImpactLevel | null; 
+  likelihood: LikelihoodImpactLevel | null; // Likelihood of the cause
+  impact: LikelihoodImpactLevel | null; // Impact if the cause occurs
   createdAt: string; // ISO date string
   analysisUpdatedAt?: string; 
-  sequenceNumber: number; // For codification e.g., RC1, RC2 relative to PotentialRisk
+  sequenceNumber: number; 
 }
 
 export interface Control {
@@ -69,5 +69,4 @@ export interface Control {
   updatedAt?: string; // ISO date string
 }
 
-export type RiskLevel = 'Sangat Rendah' | 'Rendah' | 'Sedang' | 'Tinggi' | 'Sangat Tinggi';
-
+export type RiskLevel = 'Sangat Rendah' | 'Rendah' | 'Sedang' | 'Tinggi' | 'Sangat Tinggi' | 'N/A';

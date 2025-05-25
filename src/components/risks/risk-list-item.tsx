@@ -1,7 +1,7 @@
 
 "use client";
 
-import type { PotentialRisk, Control, RiskCause, LikelihoodImpactLevel } from '@/lib/types';
+import type { PotentialRisk, Control, RiskCause, LikelihoodImpactLevel, RiskLevel } from '@/lib/types';
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,6 +16,7 @@ import {
 
 interface RiskListItemProps {
   potentialRisk: PotentialRisk;
+  goalCode: string;
   controls: Control[];
   riskCauses: RiskCause[];
   onAnalyze: (potentialRisk: PotentialRisk) => void;
@@ -46,7 +47,7 @@ const getCauseSourceColorClasses = (source: RiskCause['source']) => {
   switch (source) {
     case 'Internal':
       return "bg-sky-100 text-sky-800 border-sky-300 dark:bg-sky-900/50 dark:text-sky-300 dark:border-sky-700";
-    case 'Eksternal':
+    case 'Eksternal': // Assuming Eksternal is the Indonesian term
       return "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/50 dark:text-amber-300 dark:border-amber-700";
     default:
       return "border-transparent bg-secondary text-secondary-foreground";
@@ -56,6 +57,7 @@ const getCauseSourceColorClasses = (source: RiskCause['source']) => {
 
 export function RiskListItem({ 
   potentialRisk, 
+  goalCode,
   controls, 
   riskCauses,
   onAnalyze, 
@@ -63,15 +65,17 @@ export function RiskListItem({
   onEditControl, 
   onDeletePotentialRisk, 
   onDeleteControl,
-  onManageCauses,
+  // onManageCauses, // Replaced by onEditDetails
   onEditDetails
 }: RiskListItemProps) {
+  
+  const potentialRiskCodeDisplay = `${goalCode || 'S?'}.PR${potentialRisk.sequenceNumber || '?'}`;
 
   return (
     <Card>
       <CardHeader>
         <div className="flex items-start justify-between">
-          <CardTitle className="text-base">{potentialRisk.description}</CardTitle> {/* Adjusted font size */}
+          <CardTitle className="text-base">{potentialRiskCodeDisplay} - {potentialRisk.description}</CardTitle>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" aria-label="Opsi potensi risiko">
@@ -82,9 +86,9 @@ export function RiskListItem({
               <DropdownMenuItem onClick={() => onEditDetails(potentialRisk.id)}> 
                 <Edit className="mr-2 h-4 w-4" /> Edit Detail & Penyebab
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onManageCauses(potentialRisk)}>
-                <Zap className="mr-2 h-4 w-4" /> Kelola Penyebab (Cepat)
-              </DropdownMenuItem>
+              {/* <DropdownMenuItem onClick={() => onManageCauses(potentialRisk)}>
+                <Zap className="mr-2 h-4 w-4" /> Kelola Penyebab (Cepat) 
+              </DropdownMenuItem> */}
               <DropdownMenuItem onClick={() => onAnalyze(potentialRisk)}>
                 <BarChart3 className="mr-2 h-4 w-4" /> Analisis Level (Inheren)
               </DropdownMenuItem>
@@ -116,8 +120,7 @@ export function RiskListItem({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
-        {/* Likelihood, Impact, and Level for PotentialRisk itself are removed from here to avoid confusion */}
-        {/* Analysis is now focused on RiskCause level */}
+        {/* Analysis of Potential Risk itself is now primarily via the modal, not displayed directly here to reduce clutter */}
         
         {riskCauses.length > 0 && (
           <div>
@@ -128,19 +131,19 @@ export function RiskListItem({
             <div className="pl-1 space-y-1 max-h-24 overflow-y-auto scroll-smooth border-l-2 border-border ml-2">
               {riskCauses.slice(0, 3).map(cause => (
                 <div key={cause.id} className="text-sm text-muted-foreground p-1.5 rounded hover:bg-muted/40 ml-2">
-                  <span className="font-medium">{cause.description}</span>
+                  <span className="font-medium">{potentialRiskCodeDisplay}.PC{cause.sequenceNumber || '?'} - {cause.description}</span>
                   <Badge className={`ml-2 text-xs font-normal ${getCauseSourceColorClasses(cause.source)}`}>{cause.source}</Badge>
                 </div>
               ))}
               {riskCauses.length > 3 && <div className="text-xs text-muted-foreground pl-3 pt-1">...dan {riskCauses.length - 3} lainnya.</div>}
             </div>
-             <Button variant="link" size="sm" className="p-0 h-auto mt-1.5 text-primary hover:underline" onClick={() => onManageCauses(potentialRisk)}>
+             <Button variant="link" size="sm" className="p-0 h-auto mt-1.5 text-primary hover:underline" onClick={() => onEditDetails(potentialRisk.id)}>
                 Lihat/Kelola Semua Penyebab
             </Button>
           </div>
         )}
         {riskCauses.length === 0 && (
-             <Button variant="outline" size="sm" onClick={() => onManageCauses(potentialRisk)} className="w-full">
+             <Button variant="outline" size="sm" onClick={() => onEditDetails(potentialRisk.id)} className="w-full">
                 <Zap className="mr-2 h-4 w-4" /> Tambah & Kelola Penyebab
             </Button>
         )}
@@ -171,6 +174,9 @@ export function RiskListItem({
                 </div>
               ))}
             </div>
+             <Button variant="link" size="sm" className="p-0 h-auto mt-1.5 text-primary hover:underline" onClick={() => onAddControl(potentialRisk)}>
+                Tambah Kontrol
+            </Button>
           </div>
         )}
       </CardContent>
@@ -184,4 +190,3 @@ export function RiskListItem({
     </Card>
   );
 }
-    

@@ -3,15 +3,16 @@
 
 import React, { useState, useEffect, useCallback, useMemo, Fragment } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { PageHeader } from '@/components/ui/page-header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { RiskAnalysisModal } from '@/components/risks/risk-analysis-modal';
 import { RiskControlModal } from '@/components/risks/risk-control-modal';
-import { ManageRiskCausesDialog } from '@/components/risks/manage-risk-causes-dialog';
-import type { Goal, PotentialRisk, Control, RiskCause, RiskCategory, LikelihoodImpactLevel } from '@/lib/types';
-import { RISK_CATEGORIES, LIKELIHOOD_IMPACT_LEVELS } from '@/lib/types';
-import { PlusCircle, Loader2, Settings2, BarChart3, Trash2, Edit, ListChecks, Zap, ChevronDown, ChevronUp, Search, Filter } from 'lucide-react';
+// import { ManageRiskCausesDialog } from '@/components/risks/manage-risk-causes-dialog'; // Manage causes directly on edit page now
+import type { Goal, PotentialRisk, Control, RiskCause, RiskCategory, LikelihoodImpactLevel, RiskLevel } from '@/lib/types';
+import { RISK_CATEGORIES } from '@/lib/types';
+import { PlusCircle, Loader2, Settings2, BarChart3, Trash2, Edit, ListChecks, ChevronDown, ChevronUp, Search, Filter, Zap } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -48,8 +49,8 @@ export default function AllRisksPage() {
   const [selectedControlForEdit, setSelectedControlForEdit] = useState<Control | null>(null);
   const [isControlModalOpen, setIsControlModalOpen] = useState(false);
 
-  const [selectedPotentialRiskForCauses, setSelectedPotentialRiskForCauses] = useState<PotentialRisk | null>(null);
-  const [isManageCausesModalOpen, setIsManageCausesModalOpen] = useState(false);
+  // const [selectedPotentialRiskForCauses, setSelectedPotentialRiskForCauses] = useState<PotentialRisk | null>(null);
+  // const [isManageCausesModalOpen, setIsManageCausesModalOpen] = useState(false);
 
   const { toast } = useToast();
 
@@ -237,18 +238,6 @@ export default function AllRisksPage() {
     toast({ title: "Kontrol Dihapus", description: `Kontrol "${controlToDelete.description}" dihapus.`, variant: "destructive" });
   };
 
-  const handleOpenManageCausesModal = (pRisk: PotentialRisk) => {
-    setSelectedPotentialRiskForCauses(pRisk);
-    setIsManageCausesModalOpen(true);
-  };
-
-  const handleCausesUpdate = (potentialRiskId: string, updatedCauses: RiskCause[]) => {
-    setAllRiskCauses(prevCauses => {
-      const remainingCauses = prevCauses.filter(rc => rc.potentialRiskId !== potentialRiskId);
-      return [...remainingCauses, ...updatedCauses];
-    });
-  };
-
   const toggleExpandRisk = (riskId: string) => {
     setExpandedRiskId(currentId => (currentId === riskId ? null : riskId));
   };
@@ -300,9 +289,9 @@ export default function AllRisksPage() {
     return tempRisks.sort((a, b) => {
         const goalA = goals.find(g => g.id === a.goalId);
         const goalB = goals.find(g => g.id === b.goalId);
+        
         const codeA = goalA?.code || '';
         const codeB = goalB?.code || '';
-        
         const codeComparison = codeA.localeCompare(codeB, undefined, {numeric: true});
         if (codeComparison !== 0) return codeComparison;
 
@@ -426,8 +415,8 @@ export default function AllRisksPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[40px]"></TableHead> 
-                  <TableHead className="w-[100px]">Kode PR</TableHead>
-                  <TableHead className="w-[30%] min-w-[200px]">Deskripsi</TableHead>
+                  <TableHead className="w-[100px]">Kode</TableHead>
+                  <TableHead className="w-[30%] min-w-[200px]">Potensi Risiko</TableHead>
                   <TableHead className="min-w-[120px]">Kategori</TableHead>
                   <TableHead className="min-w-[120px]">Pemilik</TableHead>
                   <TableHead className="min-w-[180px]">Sasaran Terkait</TableHead>
@@ -522,12 +511,16 @@ export default function AllRisksPage() {
         </Card>
       )}
 
-      {selectedPotentialRiskForAnalysis && <RiskAnalysisModal
-        potentialRisk={selectedPotentialRiskForAnalysis}
-        isOpen={isAnalysisModalOpen}
-        onOpenChange={setIsAnalysisModalOpen}
-        onSave={handleSaveRiskAnalysis}
-      />}
+      {selectedPotentialRiskForAnalysis && goals.find(g => g.id === selectedPotentialRiskForAnalysis.goalId) && (
+        <RiskAnalysisModal
+            potentialRisk={selectedPotentialRiskForAnalysis}
+            goalDescription={goals.find(g => g.id === selectedPotentialRiskForAnalysis!.goalId)?.description || ""}
+            isOpen={isAnalysisModalOpen}
+            onOpenChange={setIsAnalysisModalOpen}
+            onSave={handleSaveRiskAnalysis}
+        />
+      )}
+
 
       {selectedPotentialRiskForControl && <RiskControlModal
         potentialRisk={selectedPotentialRiskForControl}
@@ -543,7 +536,8 @@ export default function AllRisksPage() {
         onSave={handleSaveControl}
       />}
 
-      {selectedPotentialRiskForCauses && (
+      {/* ManageRiskCausesDialog is no longer needed here as causes are managed on the detail page */}
+      {/* {selectedPotentialRiskForCauses && (
         <ManageRiskCausesDialog
             potentialRisk={selectedPotentialRiskForCauses}
             goalUprId={goals.find(g => g.id === selectedPotentialRiskForCauses.goalId)?.uprId || currentUprId}
@@ -556,10 +550,7 @@ export default function AllRisksPage() {
             onCausesUpdate={handleCausesUpdate}
             initialCauses={allRiskCauses.filter(rc => rc.potentialRiskId === selectedPotentialRiskForCauses.id)}
         />
-      )}
+      )} */}
     </div>
   );
 }
-    
-
-    

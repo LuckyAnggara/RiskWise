@@ -27,27 +27,27 @@ interface LikelihoodCriteriaModalProps {
 
 const criteriaData = [
   {
-    level: "Hampir tidak terjadi (1)",
+    level: "Sangat Rendah (1)", // Changed from "Hampir tidak terjadi" for consistency
     percentage: "x ≤ 5%",
     frequency: "Sangat Jarang: <2 kali",
   },
   {
-    level: "Jarang terjadi (2)",
+    level: "Rendah (2)", // Changed from "Jarang terjadi"
     percentage: "5% < x ≤ 10%",
     frequency: "Jarang: 2–5 kali",
   },
   {
-    level: "Kadang terjadi (3)",
+    level: "Sedang (3)", // Changed from "Kadang terjadi"
     percentage: "10% < x ≤ 20%",
     frequency: "Cukup sering: 6–9 kali",
   },
   {
-    level: "Sering terjadi (4)",
+    level: "Tinggi (4)", // Changed from "Sering terjadi"
     percentage: "20% < x ≤ 50%",
     frequency: "Sering: 10–12 kali",
   },
   {
-    level: "Hampir pasti terjadi (5)",
+    level: "Sangat Tinggi (5)", // Changed from "Hampir pasti terjadi"
     percentage: "x > 50%",
     frequency: "Sangat sering: >12 kali",
   },
@@ -60,7 +60,7 @@ export function LikelihoodCriteriaModal({ isOpen, onOpenChange }: LikelihoodCrit
         <DialogHeader>
           <DialogTitle>Panduan Kriteria Kemungkinan Terjadinya Risiko</DialogTitle>
           <DialogDescription>
-            Gunakan tabel ini sebagai panduan untuk menentukan level kemungkinan (probabilitas) risiko.
+            Gunakan tabel ini sebagai panduan untuk menentukan level kemungkinan (sebelumnya probabilitas) risiko.
           </DialogDescription>
         </DialogHeader>
         <div className="py-4">

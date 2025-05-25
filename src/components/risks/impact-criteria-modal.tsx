@@ -38,7 +38,7 @@ const impactCriteriaData = [
   },
   {
     no: "",
-    areaDampak: "Kerugian Keuangan Negara",
+    areaDampak: "Fraud Kerugian Keuangan Negara",
     tidakSignifikan: "≤0,01% dari total anggaran non belanja Pegawai pada UPR",
     minor: ">0,01% s.d 0,1% dari total anggaran non belanja Pegawai pada UPR",
     moderat: ">0,1% s.d 1% dari total anggaran non belanja Pegawai pada UPR",
@@ -86,16 +86,16 @@ const impactCriteriaData = [
 export function ImpactCriteriaModal({ isOpen, onOpenChange }: ImpactCriteriaModalProps) {
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl">
+      <DialogContent className="max-w-4xl text-xs">
         <DialogHeader>
           <DialogTitle>Panduan Kriteria Dampak Risiko</DialogTitle>
           <DialogDescription>
             Gunakan tabel ini sebagai panduan untuk menentukan level dampak risiko.
           </DialogDescription>
         </DialogHeader>
-        <ScrollArea className="h-[70vh] w-full whitespace-nowrap rounded-md border"> {/* Added whitespace-nowrap for horizontal scroll */}
-          <div className="py-4">
-            <Table className="min-w-max"> {/* Added min-w-max to allow table to expand */}
+        <div className="h-[70vh] w-full overflow-auto rounded-md border text-xs">
+          <div className="py-4 "> {/* Added min-w-max here */}
+            <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[5%] font-semibold">No</TableHead>
@@ -122,7 +122,7 @@ export function ImpactCriteriaModal({ isOpen, onOpenChange }: ImpactCriteriaModa
               </TableBody>
             </Table>
           </div>
-        </ScrollArea>
+        </div>
         <DialogFooter>
           <Button onClick={() => onOpenChange(false)}>Tutup</Button>
         </DialogFooter>

@@ -383,13 +383,13 @@ export default function RiskAnalysisPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[100px]">Kode</TableHead>
-                  <TableHead className="min-w-[200px]">Deskripsi Penyebab</TableHead>
+                  <TableHead className="min-w-[200px]">Penyebab Potensi Risiko</TableHead>
                   <TableHead className="min-w-[100px]">Sumber</TableHead>
                   <TableHead className="min-w-[150px]">KRI</TableHead>
                   <TableHead className="min-w-[150px]">Toleransi</TableHead>
-                  <TableHead className="min-w-[120px]">Prob.</TableHead>
+                  <TableHead className="min-w-[120px]">Kemungkinan</TableHead>
                   <TableHead className="min-w-[120px]">Dampak</TableHead>
-                  <TableHead className="min-w-[120px]">Tingkat</TableHead>
+                  <TableHead className="min-w-[120px]">Tingkat Risiko</TableHead>
                   <TableHead className="min-w-[200px]">Potensi Risiko</TableHead>
                   <TableHead className="min-w-[180px]">Sasaran</TableHead>
                   <TableHead className="text-right w-[150px]">Aksi</TableHead>

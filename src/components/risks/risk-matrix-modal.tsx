@@ -82,7 +82,7 @@ const getRiskLevelColorClass = (level: string): string => {
 export function RiskMatrixModal({ isOpen, onOpenChange }: RiskMatrixModalProps) {
   return (
     <ShadCnDialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-xl p-3 sm:p-4">
+      <DialogContent className="max-w-3xl p-4">
         <DialogHeader>
           <DialogTitle>Matriks Profil Risiko (Heatmap)</DialogTitle>
           <DialogDescription className="text-xs">
@@ -94,15 +94,15 @@ export function RiskMatrixModal({ isOpen, onOpenChange }: RiskMatrixModalProps) 
             <div className="flex items-stretch">
               <div 
                 className="w-12 shrink-0 text-[9px] font-medium text-center self-stretch flex items-center justify-center transform -rotate-90 origin-center whitespace-nowrap -ml-3 mr-0.5">
-                Probabilitas
+                Probabilitas Risiko
               </div>
               <div className="flex-1">
                 <table className="w-full border-collapse table-fixed">
                   <thead>
                     <tr>
-                      <th className="p-0.5 border border-muted w-6 h-6"></th> 
+                      <th className="p-1 border border-muted w-12 h-10"></th>
                       {Object.values(impactLabels).map(label => (
-                        <th key={label} className="p-0.5 border border-muted text-[8px] font-semibold h-7 break-words leading-tight align-bottom w-[18%]">{label}</th>
+                        <th key={label} className="p-1 border border-muted text-[10px] font-semibold h-10 break-words leading-tight align-bottom w-[18%]">{label}</th>
                       ))}
                     </tr>
                   </thead>
@@ -110,12 +110,12 @@ export function RiskMatrixModal({ isOpen, onOpenChange }: RiskMatrixModalProps) 
                     {Object.keys(likelihoodLabels).reverse().map(lkKeyStr => {
                       const lkKey = parseInt(lkKeyStr);
                       return (
-                        <tr key={lkKey}>
-                          <td className="p-0.5 border border-muted text-[8px] font-semibold h-6 w-6 leading-tight align-middle">{likelihoodLabels[lkKey]}</td>
+                        <tr key={lkKey} className="h-10">
+                          <td className="p-1 border border-muted text-[10px] font-semibold w-12 leading-tight align-middle">{likelihoodLabels[lkKey]}</td>
                           {Array.from({ length: 5 }, (_, i) => i + 1).map(imKey => {
                             const cell = matrixData.find(d => d.likelihood === lkKey && d.impact === imKey);
                             return (
-                              <td key={`${lkKey}-${imKey}`} className={`p-0.5 border border-muted text-center text-[9px] font-bold h-6 ${cell ? getRiskLevelColorClass(cell.level) : 'bg-gray-100'}`}>
+                              <td key={`${lkKey}-${imKey}`} className={`p-1 border border-muted text-center text-[12px] font-bold h-10 ${cell ? getRiskLevelColorClass(cell.level) : 'bg-gray-100'}`}>
                                 {cell ? cell.score : ''}
                               </td>
                             );
@@ -124,7 +124,7 @@ export function RiskMatrixModal({ isOpen, onOpenChange }: RiskMatrixModalProps) 
                       );
                     })}
                      <tr>
-                        <td className="p-0.5 pt-1 border-t border-muted text-center font-medium text-[9px] h-7 leading-tight" colSpan={6}>Dampak Risiko</td>
+                        <td className="p-1 pt-2 border-t border-muted text-center font-medium text-[10px] h-10 leading-tight" colSpan={6}>Dampak Risiko</td>
                     </tr>
                   </tbody>
                 </table>
