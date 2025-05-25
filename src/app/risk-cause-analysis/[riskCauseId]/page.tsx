@@ -27,8 +27,8 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 const riskCauseAnalysisSchema = z.object({
   keyRiskIndicator: z.string().nullable(),
   riskTolerance: z.string().nullable(),
-  likelihood: z.custom<LikelihoodLevelDesc>((val) => LIKELIHOOD_LEVELS_DESC.includes(val as LikelihoodLevelDesc)).nullable(),
-  impact: z.custom<ImpactLevelDesc>((val) => IMPACT_LEVELS_DESC.includes(val as ImpactLevelDesc)).nullable(),
+  likelihood: z.custom<LikelihoodLevelDesc>((val): val is LikelihoodLevelDesc => LIKELIHOOD_LEVELS_DESC.includes(val as LikelihoodLevelDesc)).nullable(),
+  impact: z.custom<ImpactLevelDesc>((val): val is ImpactLevelDesc => IMPACT_LEVELS_DESC.includes(val as ImpactLevelDesc)).nullable(),
 });
 
 type RiskCauseAnalysisFormData = z.infer<typeof riskCauseAnalysisSchema>;
@@ -53,7 +53,7 @@ export const getCalculatedRiskLevel = (likelihood: LikelihoodLevelDesc | null, i
   else if (score >= 12) level = 'Sedang';
   else if (score >= 6) level = 'Rendah';
   else if (score >= 1) level = 'Sangat Rendah';
-  else level = 'Sangat Rendah'; // Default for score 0 or less, though should be >= 1
+  else level = 'Sangat Rendah'; 
 
   return { level, score };
 };
@@ -110,6 +110,12 @@ export default function RiskCauseAnalysisPage() {
     formState: { errors },
   } = useForm<RiskCauseAnalysisFormData>({
     resolver: zodResolver(riskCauseAnalysisSchema),
+    defaultValues: {
+        keyRiskIndicator: null,
+        riskTolerance: null,
+        likelihood: null,
+        impact: null,
+    }
   });
 
   const watchedLikelihood = watch("likelihood");
@@ -178,6 +184,7 @@ export default function RiskCauseAnalysisPage() {
       router.push(getReturnPath()); 
     }
     setPageIsLoading(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [riskCauseId, reset, router, toast, getReturnPath]); 
 
 
@@ -185,7 +192,8 @@ export default function RiskCauseAnalysisPage() {
     if (typeof window !== 'undefined') {
       loadData();
     }
-  }, [loadData]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadData, riskCauseId]);
 
   const onSubmit: SubmitHandler<RiskCauseAnalysisFormData> = async (data) => {
     if (!currentRiskCause || !parentPotentialRisk || !grandParentGoal) {
@@ -210,7 +218,7 @@ export default function RiskCauseAnalysisPage() {
     localStorage.setItem(causesStorageKey, JSON.stringify(currentRiskCauses.sort((a,b) => (a.sequenceNumber || 0) - (b.sequenceNumber || 0))));
     
     setCurrentRiskCause(updatedRiskCause); 
-    toast({ title: "Sukses", description: `Analisis untuk penyebab risiko PC${updatedRiskCause.sequenceNumber || '?'} telah disimpan.` });
+    toast({ title: "Sukses", description: `Analisis untuk penyebab risiko ${riskCauseCodeDisplay(grandParentGoal, parentPotentialRisk, updatedRiskCause)} telah disimpan.` });
     setIsSaving(false);
   };
 
@@ -227,13 +235,13 @@ export default function RiskCauseAnalysisPage() {
       });
       if (result.success && result.data) {
         setAiSuggestion({
-          likelihood: result.data.suggestedLikelihood as LikelihoodLevelDesc | null,
+          likelihood: result.data.suggestedLikelihood,
           likelihoodJustification: result.data.likelihoodJustification,
-          impact: result.data.suggestedImpact as ImpactLevelDesc | null,
+          impact: result.data.suggestedImpact,
           impactJustification: result.data.impactJustification,
         });
-        if (result.data.suggestedLikelihood) setValue('likelihood', result.data.suggestedLikelihood as LikelihoodLevelDesc);
-        if (result.data.suggestedImpact) setValue('impact', result.data.suggestedImpact as ImpactLevelDesc);
+        if (result.data.suggestedLikelihood) setValue('likelihood', result.data.suggestedLikelihood);
+        if (result.data.suggestedImpact) setValue('impact', result.data.suggestedImpact);
 
       } else {
         toast({ title: "Kesalahan Saran AI", description: result.error || "Gagal mendapatkan saran dari AI.", variant: "destructive" });
@@ -246,6 +254,13 @@ export default function RiskCauseAnalysisPage() {
     }
   };
 
+  const riskCauseCodeDisplay = (goal: Goal | null, pRisk: PotentialRisk | null, cause: RiskCause | null) => {
+    if (!goal || !pRisk || !cause) return 'PC?';
+    const goalCode = `${goal.code || '[Tanpa S]'}`;
+    const potentialRiskCode = `${goalCode}•PR${pRisk.sequenceNumber || '?'}`;
+    return `${potentialRiskCode}•PC${cause.sequenceNumber || '?'}`;
+  };
+
   if (pageIsLoading || !currentRiskCause || !parentPotentialRisk || !grandParentGoal) {
     return (
       <div className="flex flex-col items-center justify-center h-screen">
@@ -255,14 +270,15 @@ export default function RiskCauseAnalysisPage() {
     );
   }
   
-  const goalCode = `${grandParentGoal.code || '[Tanpa Kode]'}`;
-  const potentialRiskCode = `${goalCode} • PR${parentPotentialRisk.sequenceNumber || '?'}`;
-  const riskCauseCode = `${potentialRiskCode} • PC${currentRiskCause.sequenceNumber || '?'}`;
+  const currentRiskCauseFullCode = riskCauseCodeDisplay(grandParentGoal, parentPotentialRisk, currentRiskCause);
+  const goalCodeDisplay = `${grandParentGoal.code || '[Tanpa S]'}`;
+  const potentialRiskCodeDisplay = `${goalCodeDisplay}•PR${parentPotentialRisk.sequenceNumber || '?'}`;
+
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title={`Analisis Detail Penyebab Risiko: ${riskCauseCode}`}
+        title={`Analisis Detail Penyebab Risiko: ${currentRiskCauseFullCode}`}
         description={`Input KRI, Toleransi, Kemungkinan, dan Dampak untuk penyebab: "${currentRiskCause.description}"`}
         actions={
           <Button 
@@ -279,8 +295,8 @@ export default function RiskCauseAnalysisPage() {
             <CardTitle>Konteks Risiko</CardTitle>
         </CardHeader>
         <CardContent className="space-y-1 text-sm">
-            <div><strong>Sasaran Terkait ({goalCode}):</strong> {grandParentGoal.name}</div>
-            <div><strong>Potensi Risiko ({potentialRiskCode}):</strong> {parentPotentialRisk.description}</div>
+            <div><strong>Sasaran Terkait ({goalCodeDisplay}):</strong> {grandParentGoal.name}</div>
+            <div><strong>Potensi Risiko ({potentialRiskCodeDisplay}):</strong> {parentPotentialRisk.description}</div>
             <div><strong>Kategori Risiko:</strong> <Badge variant="secondary">{parentPotentialRisk.category || 'N/A'}</Badge></div>
             <div><strong>Pemilik Potensi Risiko:</strong> {parentPotentialRisk.owner || 'N/A'}</div>
             <div><strong>Deskripsi Penyebab (PC{currentRiskCause.sequenceNumber || '?' }):</strong> {currentRiskCause.description}</div>
@@ -295,7 +311,7 @@ export default function RiskCauseAnalysisPage() {
         <CardContent>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-6">
+              <div className="space-y-6"> {/* Kolom Kiri */}
                 <div className="space-y-1.5">
                   <Label htmlFor="keyRiskIndicator">Key Risk Indicator (KRI)</Label>
                   <Textarea
@@ -321,7 +337,7 @@ export default function RiskCauseAnalysisPage() {
                 </div>
               </div>
 
-              <div className="space-y-6">
+              <div className="space-y-6"> {/* Kolom Kanan */}
                 <div className="space-y-1.5">
                     <div className="flex items-center justify-between">
                         <Label htmlFor="likelihood">Kemungkinan</Label>
@@ -336,7 +352,13 @@ export default function RiskCauseAnalysisPage() {
                         name="likelihood"
                         control={control}
                         render={({ field }) => (
-                        <Select value={field.value || ""} onValueChange={field.onChange} disabled={isSaving}>
+                        <Select 
+                            value={field.value || ""} 
+                            onValueChange={(value) => {
+                                field.onChange(value as LikelihoodLevelDesc);
+                            }} 
+                            disabled={isSaving}
+                        >
                             <SelectTrigger id="likelihood" className={errors.likelihood ? "border-destructive" : ""}>
                                 <SelectValue placeholder="Pilih kemungkinan" />
                             </SelectTrigger>
@@ -370,7 +392,13 @@ export default function RiskCauseAnalysisPage() {
                         name="impact"
                         control={control}
                         render={({ field }) => (
-                        <Select value={field.value || ""} onValueChange={field.onChange} disabled={isSaving}>
+                        <Select 
+                            value={field.value || ""} 
+                            onValueChange={(value) => {
+                                field.onChange(value as ImpactLevelDesc);
+                            }} 
+                            disabled={isSaving}
+                        >
                             <SelectTrigger id="impact" className={errors.impact ? "border-destructive" : ""}>
                                 <SelectValue placeholder="Pilih dampak" />
                             </SelectTrigger>
@@ -424,3 +452,4 @@ export default function RiskCauseAnalysisPage() {
     </div>
   );
 }
+
