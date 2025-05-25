@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import type { Goal, PotentialRisk, RiskCause, RiskCategory, LikelihoodImpactLevel, RiskSource } from '@/lib/types';
 import { RISK_CATEGORIES, LIKELIHOOD_IMPACT_LEVELS, RISK_SOURCES } from '@/lib/types';
 import { Loader2, ListChecks, Search, Filter, BarChart3, Settings2, Trash2, AlertTriangle, CheckCircle2 } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"; // Removed CardDescription as it's not used
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, DropdownMenuCheckboxItem, DropdownMenuLabel } from "@/components/ui/dropdown-menu";
@@ -494,7 +494,7 @@ export default function RiskAnalysisPage() {
           </p>
         </div>
       ) : (
-        <Card>
+        <Card className="w-full">
           <CardContent className="p-0">
             <Table>
               <TableHeader>
@@ -515,7 +515,7 @@ export default function RiskAnalysisPage() {
                   <TableHead className="min-w-[120px]">Kemungkinan</TableHead>
                   <TableHead className="min-w-[120px]">Dampak</TableHead>
                   <TableHead className="min-w-[120px]">Tingkat Risiko</TableHead>
-                  <TableHead className="min-w-[250px]">Potensi Risiko Induk</TableHead>
+                  <TableHead className="min-w-[200px] w-[20%]">Potensi Risiko Induk</TableHead>
                   <TableHead className="min-w-[200px]">Sasaran Induk</TableHead>
                   <TableHead className="text-right w-[100px]">Aksi</TableHead>
                 </TableRow>
@@ -543,7 +543,7 @@ export default function RiskAnalysisPage() {
                         <TableCell><Badge variant={cause.likelihood ? "outline" : "ghost"} className={`text-xs ${!cause.likelihood ? "text-muted-foreground" : ""}`}>{cause.likelihood || 'N/A'}</Badge></TableCell>
                         <TableCell><Badge variant={cause.impact ? "outline" : "ghost"} className={`text-xs ${!cause.impact ? "text-muted-foreground" : ""}`}>{cause.impact || 'N/A'}</Badge></TableCell>
                         <TableCell><Badge className={`${getRiskLevelColor(causeRiskLevel)} text-xs`}>{causeRiskLevel}</Badge></TableCell>
-                        <TableCell className="text-xs max-w-[250px] truncate" title={cause.potentialRiskDescription}>
+                        <TableCell className="text-xs truncate" title={cause.potentialRiskDescription}> {/* Removed max-w for more flexible width */}
                           PR{cause.potentialRiskSequenceNumber || 'N/A'} - {cause.potentialRiskDescription} 
                           {cause.potentialRiskCategory && <Badge variant="secondary" className="ml-1 text-[10px]">{cause.potentialRiskCategory}</Badge>}
                         </TableCell>
