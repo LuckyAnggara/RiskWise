@@ -11,9 +11,14 @@ import {
   type SuggestRiskParametersInput, 
   type SuggestRiskParametersOutput 
 } from "@/ai/flows/suggest-risk-parameters-flow";
+import {
+  brainstormRiskCauses as brainstormRiskCausesFlow,
+  type BrainstormRiskCausesInput, // Only import the type
+  type BrainstormRiskCausesOutput,
+} from "@/ai/flows/brainstorm-risk-causes-flow";
 import { z } from "zod";
-import type { RiskCategory } from "@/lib/types";
-import { RISK_CATEGORIES } from "@/lib/types";
+import type { RiskCategory, RiskSource } from "@/lib/types"; // Import RiskSource as well
+import { RISK_CATEGORIES, RISK_SOURCES } from "@/lib/types"; // Import RISK_SOURCES
 
 
 const BrainstormPotentialRisksActionInputSchema = z.object({
@@ -101,3 +106,48 @@ export async function suggestRiskParametersAction(
   }
 }
 
+// Re-define Zod schema for BrainstormRiskCauses action input validation here
+const BrainstormRiskCausesActionInputZodSchema = z.object({
+  potentialRiskDescription: z.string().min(5, "Deskripsi potensi risiko minimal 5 karakter untuk brainstorming penyebab."),
+  potentialRiskCategory: z.custom<RiskCategory>().nullable().refine(val => val === null || RISK_CATEGORIES.includes(val as RiskCategory), {
+    message: "Kategori risiko tidak valid untuk konteks brainstorming penyebab.",
+  }),
+  goalDescription: z.string().min(5, "Deskripsi sasaran minimal 5 karakter untuk konteks brainstorming penyebab."),
+  desiredCount: z.number().positive("Jumlah harus lebih dari 0").max(7, "Maksimal 7 saran penyebab.").optional(),
+});
+
+
+// Action for brainstorming risk causes
+export async function brainstormRiskCausesAction(
+  values: z.infer<typeof BrainstormRiskCausesActionInputZodSchema>
+): Promise<{ success: boolean; data?: BrainstormRiskCausesOutput; error?: string }> {
+  const validatedFields = BrainstormRiskCausesActionInputZodSchema.safeParse(values);
+
+  if (!validatedFields.success) {
+    let errorMessages = "";
+    for (const fieldError of Object.values(validatedFields.error.flatten().fieldErrors)) {
+        if (fieldError && fieldError.length > 0) {
+            errorMessages += fieldError.join(", ") + " ";
+        }
+    }
+    return {
+      success: false,
+      error: errorMessages.trim() || "Input tidak valid untuk brainstorming penyebab risiko.",
+    };
+  }
+
+  try {
+    // Type assertion is safe here because we just validated with an equivalent schema
+    const input: BrainstormRiskCausesInput = {
+      potentialRiskDescription: validatedFields.data.potentialRiskDescription,
+      potentialRiskCategory: validatedFields.data.potentialRiskCategory,
+      goalDescription: validatedFields.data.goalDescription,
+      desiredCount: validatedFields.data.desiredCount,
+    };
+    const output = await brainstormRiskCausesFlow(input);
+    return { success: true, data: output };
+  } catch (error) {
+    console.error("Error in brainstormRiskCausesAction:", error);
+    return { success: false, error: "Gagal melakukan brainstorming penyebab risiko. Silakan coba lagi." };
+  }
+}

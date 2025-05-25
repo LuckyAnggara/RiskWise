@@ -18,10 +18,12 @@ import { RISK_CATEGORIES, RISK_SOURCES, LIKELIHOOD_IMPACT_LEVELS } from '@/lib/t
 import { useForm, type SubmitHandler, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { ArrowLeft, PlusCircle, Trash2, Loader2, Save, BarChart3 } from 'lucide-react';
+import { ArrowLeft, PlusCircle, Trash2, Loader2, Save, BarChart3, Wand2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { getCurrentUprId, getCurrentPeriod, initializeAppContext } from '@/lib/upr-period-context';
 import { Separator } from '@/components/ui/separator';
+import { BrainstormCausesContextModal } from '@/components/risks/brainstorm-causes-context-modal';
+import { BrainstormCausesSuggestionsModal } from '@/components/risks/brainstorm-causes-suggestions-modal';
 
 const potentialRiskFormSchema = z.object({
   description: z.string().min(10, "Deskripsi potensi risiko minimal 10 karakter."),
@@ -47,6 +49,12 @@ const NO_CATEGORY_SENTINEL = "__NONE__";
 const getGoalsStorageKey = (uprId: string, period: string) => `riskwise-upr${uprId}-period${period}-goals`;
 const getPotentialRisksStorageKeyForGoal = (uprId: string, period: string, goalId: string) => `riskwise-upr${uprId}-period${period}-goal${goalId}-potentialRisks`;
 const getRiskCausesStorageKey = (uprId: string, period: string, potentialRiskId: string) => `riskwise-upr${uprId}-period${period}-potentialRisk${potentialRiskId}-causes`;
+
+type AISuggestedCause = {
+  description: string;
+  source: RiskSource | null;
+};
+
 
 const getRiskLevel = (likelihood: LikelihoodImpactLevel | null, impact: LikelihoodImpactLevel | null): string => {
   if (!likelihood || !impact) return 'N/A';
@@ -91,6 +99,10 @@ export default function ManagePotentialRiskPage() {
   const [currentPotentialRisk, setCurrentPotentialRisk] = useState<PotentialRisk | null>(null);
   const [riskCauses, setRiskCauses] = useState<RiskCause[]>([]);
 
+  const [isBrainstormCausesContextModalOpen, setIsBrainstormCausesContextModalOpen] = useState(false);
+  const [isBrainstormCausesSuggestionsModalOpen, setIsBrainstormCausesSuggestionsModalOpen] = useState(false);
+  const [aiSuggestedCauses, setAISuggestedCauses] = useState<AISuggestedCause[]>([]);
+
   const { toast } = useToast();
 
   const {
@@ -119,12 +131,8 @@ export default function ManagePotentialRiskPage() {
   const loadAllGoals = useCallback((uprId: string, period: string) => {
     const goalsStorageKey = getGoalsStorageKey(uprId, period);
     const storedGoalsData = localStorage.getItem(goalsStorageKey);
-    const loadedGoals: Goal[] = storedGoalsData ? JSON.parse(storedGoalsData) : [];
-    setGoals(loadedGoals.sort((a, b) => {
-      const codeA = typeof a.code === 'string' ? a.code : '';
-      const codeB = typeof b.code === 'string' ? b.code : '';
-      return codeA.localeCompare(codeB, undefined, {numeric: true, sensitivity: 'base'});
-    }));
+    const loadedGoals: Goal[] = storedGoalsData ? JSON.parse(storedGoalsData).sort((a:Goal, b:Goal) => (a.code || '').localeCompare(b.code || '', undefined, {numeric: true, sensitivity: 'base'})) : [];
+    setGoals(loadedGoals);
     if (loadedGoals.length > 0 && isCreatingNew) {
         setPotentialRiskValue("goalId", loadedGoals[0].id);
     }
@@ -235,7 +243,6 @@ export default function ManagePotentialRiskPage() {
             const oldGoalPRKey = getPotentialRisksStorageKeyForGoal(oldParentGoal.uprId, oldParentGoal.period, oldParentGoal.id);
             let oldGoalPRs: PotentialRisk[] = JSON.parse(localStorage.getItem(oldGoalPRKey) || '[]');
             oldGoalPRs = oldGoalPRs.filter(pr => pr.id !== currentPotentialRisk.id);
-            // Re-sequence PRs in old goal
             oldGoalPRs.forEach((pr, index) => pr.sequenceNumber = index + 1);
             localStorage.setItem(oldGoalPRKey, JSON.stringify(oldGoalPRs.sort((a,b)=>(a.sequenceNumber - b.sequenceNumber || a.description.localeCompare(b.description)))));
         }
@@ -305,6 +312,33 @@ export default function ManagePotentialRiskPage() {
     toast({ title: "Penyebab Risiko Dihapus", description: `Penyebab "${causeToDelete.description}" (PC${causeToDelete.sequenceNumber}) dihapus.`, variant: "destructive" });
   };
 
+  const handleAISuggestionsReady = (suggestions: AISuggestedCause[]) => {
+    if (suggestions.length === 0) {
+      toast({ title: "Tidak Ada Saran Penyebab", description: "AI tidak menghasilkan saran penyebab risiko untuk konteks ini.", variant: "default" });
+      setIsBrainstormCausesContextModalOpen(false);
+      return;
+    }
+    setAISuggestedCauses(suggestions);
+    setIsBrainstormCausesContextModalOpen(false);
+    setIsBrainstormCausesSuggestionsModalOpen(true);
+  };
+
+  const handleSaveAISelectedCauses = (newCauses: RiskCause[]) => {
+    if (!currentPotentialRisk || !currentUprId || !currentPeriod) return;
+    const parentPotentialRiskGoal = goals.find(g => g.id === currentPotentialRisk.goalId);
+    if (!parentPotentialRiskGoal) return;
+
+    const updatedCauses = [...riskCauses, ...newCauses].sort((a,b) => (a.sequenceNumber || 0) - (b.sequenceNumber || 0));
+    // Re-sequence all causes
+    const resequencedCauses = updatedCauses.map((cause, index) => ({ ...cause, sequenceNumber: index + 1 }));
+    
+    setRiskCauses(resequencedCauses);
+    localStorage.setItem(getRiskCausesStorageKey(parentPotentialRiskGoal.uprId, parentPotentialRiskGoal.period, currentPotentialRisk.id), JSON.stringify(resequencedCauses));
+    toast({ title: "Saran Penyebab Disimpan", description: `${newCauses.length} penyebab risiko baru dari AI telah ditambahkan.` });
+    setIsBrainstormCausesSuggestionsModalOpen(false);
+  };
+
+
   if (pageIsLoading || !currentUprId || !currentPeriod) {
     return (
       <div className="flex flex-col items-center justify-center h-screen">
@@ -314,8 +348,10 @@ export default function ManagePotentialRiskPage() {
     );
   }
   
-  const parentGoalCode = currentPotentialRisk ? (goals.find(g => g.id === currentPotentialRisk.goalId)?.code || 'S?') : (goals.length > 0 ? goals[0].code || 'S?' : 'S?');
+  const parentGoalForDisplay = goals.find(g => g.id === (currentPotentialRisk ? currentPotentialRisk.goalId : (isCreatingNew && goals.length > 0 ? goals[0].id : '')));
+  const parentGoalCode = parentGoalForDisplay?.code || 'S?';
   const potentialRiskCode = parentGoalCode && currentPotentialRisk ? `${parentGoalCode}.PR${currentPotentialRisk.sequenceNumber}` : (isCreatingNew ? "PR Baru" : "PR...");
+
 
   return (
     <div className="space-y-6">
@@ -432,12 +468,24 @@ export default function ManagePotentialRiskPage() {
           <Separator />
           <Card>
             <CardHeader>
-              <CardTitle>Penyebab Risiko untuk: {currentPotentialRisk.description} ({potentialRiskCode})</CardTitle>
-              <CardDescription>Identifikasi dan kelola penyebab spesifik yang berkontribusi pada potensi risiko ini.</CardDescription>
+              <div className="flex justify-between items-center">
+                <div>
+                    <CardTitle>({potentialRiskCode}) {currentPotentialRisk.description} </CardTitle>
+                    <CardDescription>Identifikasi dan kelola penyebab spesifik yang berkontribusi pada potensi risiko ini.</CardDescription>
+                </div>
+                <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={() => setIsBrainstormCausesContextModalOpen(true)}
+                    disabled={!currentPotentialRisk || !parentGoalForDisplay}
+                >
+                    <Wand2 className="mr-2 h-4 w-4" /> Brainstorm Penyebab (AI)
+                </Button>
+              </div>
             </CardHeader>
             <CardContent className="space-y-6">
               <form onSubmit={handleSubmitRiskCause(onRiskCauseSubmit)} className="space-y-4 border p-4 rounded-md shadow">
-                <h3 className="text-lg font-semibold">Tambah Penyebab Baru</h3>
+                <h3 className="text-lg font-semibold">Tambah Penyebab Baru (Manual)</h3>
                 <div className="space-y-1.5">
                   <Label htmlFor="causeDescription">Deskripsi Penyebab</Label>
                   <Textarea
@@ -477,7 +525,7 @@ export default function ManagePotentialRiskPage() {
                 </div>
                 <Button type="submit" disabled={isAddingCause} size="sm">
                   {isAddingCause ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PlusCircle className="mr-2 h-4 w-4" />} 
-                  Tambah Penyebab
+                  Tambah Penyebab (Manual)
                 </Button>
               </form>
 
@@ -542,6 +590,26 @@ export default function ManagePotentialRiskPage() {
           </Card>
         </>
       )}
+      {currentPotentialRisk && parentGoalForDisplay && isBrainstormCausesContextModalOpen && (
+        <BrainstormCausesContextModal
+            isOpen={isBrainstormCausesContextModalOpen}
+            onOpenChange={setIsBrainstormCausesContextModalOpen}
+            potentialRisk={currentPotentialRisk}
+            goalDescription={parentGoalForDisplay.description}
+            onSuggestionsReady={handleAISuggestionsReady}
+        />
+      )}
+      {isBrainstormCausesSuggestionsModalOpen && currentPotentialRisk && (
+        <BrainstormCausesSuggestionsModal
+            isOpen={isBrainstormCausesSuggestionsModalOpen}
+            onOpenChange={setIsBrainstormCausesSuggestionsModalOpen}
+            suggestions={aiSuggestedCauses}
+            potentialRiskId={currentPotentialRisk.id}
+            existingCausesCount={riskCauses.length}
+            onSaveSelectedCauses={handleSaveAISelectedCauses}
+        />
+      )}
     </div>
   );
 }
+

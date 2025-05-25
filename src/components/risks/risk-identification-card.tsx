@@ -27,7 +27,7 @@ export function RiskIdentificationCard({ goal, onPotentialRisksIdentified, exist
   const [isSuggestionsModalOpen, setIsSuggestionsModalOpen] = useState(false);
   const [aiSuggestions, setAiSuggestions] = useState<AISuggestion[]>([]);
 
-  const initialAIContext = `Nama Sasaran: ${goal.name}\nKode Sasaran: ${goal.code || '[TANPA KODE]'}\nDeskripsi Sasaran: ${goal.description}\nKonteks UPR: ${goal.uprId}, Periode: ${goal.period}`;
+  const initialAIContext = `Nama Sasaran: ${goal.name}\nDeskripsi Sasaran: ${goal.description}`;
 
   const handleSuggestionsReady = (suggestions: AISuggestion[]) => {
     if (suggestions.length === 0) {
