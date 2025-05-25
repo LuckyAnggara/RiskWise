@@ -4,7 +4,7 @@
 import type { RiskCause, LikelihoodLevelDesc, ImpactLevelDesc } from '@/lib/types';
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"; // Added CardFooter
 import { Settings2, BarChart3, Trash2 } from 'lucide-react';
 import { LIKELIHOOD_LEVELS_MAP, IMPACT_LEVELS_MAP, type CalculatedRiskLevelCategory } from '@/lib/types';
 import Link from 'next/link';
@@ -17,7 +17,7 @@ import {
 
 interface RiskCauseCardItemProps {
   riskCause: RiskCause;
-  potentialRiskFullCode: string; // e.g., "N1.PR1"
+  potentialRiskFullCode: string; 
   onAnalyze: (causeId: string) => void;
   onDelete: (causeId: string) => void;
   returnPath: string;
