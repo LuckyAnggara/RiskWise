@@ -7,8 +7,8 @@ import { useRouter } from 'next/navigation';
 import { PageHeader } from '@/components/ui/page-header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import type { Goal, PotentialRisk, RiskCause, RiskCategory, LikelihoodImpactLevel, RiskSource } from '@/lib/types';
-import { RISK_CATEGORIES, LIKELIHOOD_IMPACT_LEVELS, RISK_SOURCES } from '@/lib/types';
+import type { Goal, PotentialRisk, RiskCause, RiskCategory, LikelihoodLevelDesc, ImpactLevelDesc, RiskSource, CalculatedRiskLevelCategory } from '@/lib/types';
+import { RISK_CATEGORIES, LIKELIHOOD_LEVELS_MAP, IMPACT_LEVELS_MAP, RISK_SOURCES } from '@/lib/types';
 import { Loader2, ListChecks, Search, Filter, BarChart3, Settings2, Trash2, AlertTriangle, CheckCircle2, Columns } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -19,6 +19,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Checkbox } from '@/components/ui/checkbox';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useToast } from '@/hooks/use-toast';
+import { getCalculatedRiskLevel, getRiskLevelColor } from '@/app/risk-cause-analysis/[riskCauseId]/page'; // Import shared functions
 
 const getGoalsStorageKey = (uprId: string, period: string) => `riskwise-upr${uprId}-period${period}-goals`;
 const getPotentialRisksStorageKeyForGoal = (uprId: string, period: string, goalId: string) => `riskwise-upr${uprId}-period${period}-goal${goalId}-potentialRisks`;
@@ -33,39 +34,20 @@ interface EnrichedRiskCause extends RiskCause {
   goalUprId: string; 
   goalPeriod: string;
   goalId: string;
-  goalSequenceNumber: number; // Added for consistent coding
+  goalSequenceNumber: number; 
 }
 
-const getRiskLevel = (likelihood: LikelihoodImpactLevel | null, impact: LikelihoodImpactLevel | null): string => {
-  if (!likelihood || !impact) return 'N/A';
-  const L: { [key in LikelihoodImpactLevel]: number } = { 'Sangat Rendah': 1, 'Rendah': 2, 'Sedang': 3, 'Tinggi': 4, 'Sangat Tinggi': 5 };
-  const I: { [key in LikelihoodImpactLevel]: number } = { 'Sangat Rendah': 1, 'Rendah': 2, 'Sedang': 3, 'Tinggi': 4, 'Sangat Tinggi': 5 };
-  
-  const likelihoodValue = L[likelihood];
-  const impactValue = I[impact];
 
-  if (!likelihoodValue || !impactValue) return 'N/A'; 
-
-  const score = likelihoodValue * impactValue;
-
-  if (score >= 20) return 'Sangat Tinggi';
-  if (score >= 16) return 'Tinggi'; 
-  if (score >= 12) return 'Sedang';  
-  if (score >= 6) return 'Rendah';   
-  if (score >= 1) return 'Sangat Rendah'; 
-  return 'N/A';
-};
-
-const getRiskLevelColor = (level: string) => {
-  switch (level.toLowerCase()) {
-    case 'sangat tinggi': return 'bg-red-600 hover:bg-red-700 text-white';
-    case 'tinggi': return 'bg-orange-500 hover:bg-orange-600 text-white';
-    case 'sedang': return 'bg-yellow-400 hover:bg-yellow-500 text-black dark:bg-yellow-500 dark:text-black';
-    case 'rendah': return 'bg-blue-500 hover:bg-blue-600 text-white'; 
-    case 'sangat rendah': return 'bg-green-500 hover:bg-green-600 text-white'; 
-    default: return 'bg-gray-400 hover:bg-gray-500 text-white';
-  }
-};
+const ALL_COLUMNS_CONFIG: Array<{ id: keyof ColumnVisibility; label: string; defaultVisible: boolean }> = [
+  { id: 'sumber', label: 'Sumber', defaultVisible: true },
+  { id: 'kri', label: 'KRI', defaultVisible: true },
+  { id: 'toleransi', label: 'Toleransi', defaultVisible: true },
+  { id: 'kemungkinan', label: 'Kemungkinan', defaultVisible: true },
+  { id: 'dampak', label: 'Dampak', defaultVisible: true },
+  { id: 'tingkatRisiko', label: 'Tingkat Risiko', defaultVisible: true },
+  { id: 'potensiRisikoInduk', label: 'Potensi Risiko Induk', defaultVisible: false },
+  { id: 'sasaranInduk', label: 'Sasaran Induk', defaultVisible: false },
+];
 
 type ColumnVisibility = {
   sumber: boolean;
@@ -78,16 +60,7 @@ type ColumnVisibility = {
   sasaranInduk: boolean;
 };
 
-const ALL_COLUMNS_CONFIG: Array<{ id: keyof ColumnVisibility; label: string; defaultVisible: boolean }> = [
-  { id: 'sumber', label: 'Sumber', defaultVisible: true },
-  { id: 'kri', label: 'KRI', defaultVisible: true },
-  { id: 'toleransi', label: 'Toleransi', defaultVisible: true },
-  { id: 'kemungkinan', label: 'Kemungkinan', defaultVisible: true },
-  { id: 'dampak', label: 'Dampak', defaultVisible: true },
-  { id: 'tingkatRisiko', label: 'Tingkat Risiko', defaultVisible: true },
-  { id: 'potensiRisikoInduk', label: 'Potensi Risiko Induk', defaultVisible: false },
-  { id: 'sasaranInduk', label: 'Sasaran Induk', defaultVisible: false },
-];
+const ALL_POSSIBLE_CALCULATED_RISK_LEVELS: CalculatedRiskLevelCategory[] = ['Sangat Rendah', 'Rendah', 'Sedang', 'Tinggi', 'Sangat Tinggi'];
 
 
 export default function RiskAnalysisPage() {
@@ -155,7 +128,7 @@ export default function RiskAnalysisPage() {
                 goalUprId: goal.uprId, 
                 goalPeriod: goal.period,
                 goalId: goal.id,
-                goalSequenceNumber: goal.sequenceNumber || 0, // Add goal sequence number
+                goalSequenceNumber: 0, // Placeholder, as Goal.sequenceNumber is not directly used in EnrichedRiskCause display logic
               }));
               collectedEnrichedRiskCauses = [...collectedEnrichedRiskCauses, ...enrichedCauses];
             }
@@ -244,7 +217,7 @@ export default function RiskAnalysisPage() {
 
     if (selectedRiskLevels.length > 0) {
         tempCauses = tempCauses.filter(cause => {
-            const level = getRiskLevel(cause.likelihood, cause.impact);
+            const { level } = getCalculatedRiskLevel(cause.likelihood, cause.impact);
             return selectedRiskLevels.includes(level);
         });
     }
@@ -309,7 +282,7 @@ export default function RiskAnalysisPage() {
     }
     setIsSingleDeleteDialogOpen(false);
     setCauseToDelete(null);
-    setSelectedCauseIds(prev => prev.filter(id => id !== causeToDelete?.id)); // Also remove from selection
+    setSelectedCauseIds(prev => prev.filter(id => id !== causeToDelete?.id));
   };
 
   const handleDeleteSelectedCauses = () => {
@@ -352,7 +325,7 @@ export default function RiskAnalysisPage() {
   }
 
   const relevantGoalsForFilter = allGoals.filter(g => g.uprId === currentUprId && g.period === currentPeriod);
-  const allPossibleRiskLevels = ['Sangat Rendah', 'Rendah', 'Sedang', 'Tinggi', 'Sangat Tinggi', 'N/A'];
+
 
   return (
     <div className="space-y-6">
@@ -485,7 +458,7 @@ export default function RiskAnalysisPage() {
                 <DropdownMenuContent align="end" className="w-[200px]">
                 <DropdownMenuLabel>Pilih Level Risiko Penyebab</DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                {allPossibleRiskLevels.map((level) => (
+                {ALL_POSSIBLE_CALCULATED_RISK_LEVELS.map((level) => (
                     <DropdownMenuCheckboxItem
                     key={level}
                     checked={selectedRiskLevels.includes(level)}
@@ -494,6 +467,13 @@ export default function RiskAnalysisPage() {
                     {level}
                     </DropdownMenuCheckboxItem>
                 ))}
+                 <DropdownMenuCheckboxItem /* For N/A */
+                    key="N/A"
+                    checked={selectedRiskLevels.includes("N/A")}
+                    onCheckedChange={() => toggleRiskLevelFilter("N/A")}
+                    >
+                    N/A (Belum Dianalisis)
+                </DropdownMenuCheckboxItem>
                 </DropdownMenuContent>
             </DropdownMenu>
             <DropdownMenu>
@@ -561,9 +541,9 @@ export default function RiskAnalysisPage() {
                     {columnVisibility.sumber && <TableHead className="min-w-[100px]">Sumber</TableHead>}
                     {columnVisibility.kri && <TableHead className="min-w-[180px]">KRI</TableHead>}
                     {columnVisibility.toleransi && <TableHead className="min-w-[180px]">Toleransi</TableHead>}
-                    {columnVisibility.kemungkinan && <TableHead className="min-w-[120px]">Kemungkinan</TableHead>}
-                    {columnVisibility.dampak && <TableHead className="min-w-[120px]">Dampak</TableHead>}
-                    {columnVisibility.tingkatRisiko && <TableHead className="min-w-[120px]">Tingkat Risiko</TableHead>}
+                    {columnVisibility.kemungkinan && <TableHead className="min-w-[150px]">Kemungkinan</TableHead>}
+                    {columnVisibility.dampak && <TableHead className="min-w-[150px]">Dampak</TableHead>}
+                    {columnVisibility.tingkatRisiko && <TableHead className="min-w-[150px]">Tingkat Risiko</TableHead>}
                     {columnVisibility.potensiRisikoInduk && <TableHead className="min-w-[250px]">Potensi Risiko Induk</TableHead>}
                     {columnVisibility.sasaranInduk && <TableHead className="min-w-[200px]">Sasaran Induk</TableHead>}
                     <TableHead className="text-right w-[100px]">Aksi</TableHead>
@@ -571,7 +551,7 @@ export default function RiskAnalysisPage() {
                 </TableHeader>
                 <TableBody>
                     {filteredAndSortedCauses.map((cause) => {
-                    const causeRiskLevel = getRiskLevel(cause.likelihood, cause.impact);
+                    const {level: causeRiskLevelText, score: causeRiskScore} = getCalculatedRiskLevel(cause.likelihood, cause.impact);
                     const goalCodeDisplay = (cause.goalCode && cause.goalCode.trim() !== '') ? cause.goalCode : '[Tanpa Kode]';
                     const causeCode = `${goalCodeDisplay}.PR${cause.potentialRiskSequenceNumber || 'N/A'}.PC${cause.sequenceNumber || 'N/A'}`;
                     return (
@@ -589,9 +569,9 @@ export default function RiskAnalysisPage() {
                             {columnVisibility.sumber && <TableCell className="text-xs"><Badge variant="outline">{cause.source}</Badge></TableCell>}
                             {columnVisibility.kri && <TableCell className="text-xs max-w-[180px] truncate" title={cause.keyRiskIndicator || ''}>{cause.keyRiskIndicator || '-'}</TableCell>}
                             {columnVisibility.toleransi && <TableCell className="text-xs max-w-[180px] truncate" title={cause.riskTolerance || ''}>{cause.riskTolerance || '-'}</TableCell>}
-                            {columnVisibility.kemungkinan && <TableCell><Badge variant={cause.likelihood ? "outline" : "ghost"} className={`text-xs ${!cause.likelihood ? "text-muted-foreground" : ""}`}>{cause.likelihood || 'N/A'}</Badge></TableCell>}
-                            {columnVisibility.dampak && <TableCell><Badge variant={cause.impact ? "outline" : "ghost"} className={`text-xs ${!cause.impact ? "text-muted-foreground" : ""}`}>{cause.impact || 'N/A'}</Badge></TableCell>}
-                            {columnVisibility.tingkatRisiko && <TableCell><Badge className={`${getRiskLevelColor(causeRiskLevel)} text-xs`}>{causeRiskLevel}</Badge></TableCell>}
+                            {columnVisibility.kemungkinan && <TableCell><Badge variant={cause.likelihood ? "outline" : "ghost"} className={`text-xs ${!cause.likelihood ? "text-muted-foreground" : ""}`}>{cause.likelihood ? `${cause.likelihood} (${LIKELIHOOD_LEVELS_MAP[cause.likelihood]})` : 'N/A'}</Badge></TableCell>}
+                            {columnVisibility.dampak && <TableCell><Badge variant={cause.impact ? "outline" : "ghost"} className={`text-xs ${!cause.impact ? "text-muted-foreground" : ""}`}>{cause.impact ? `${cause.impact} (${IMPACT_LEVELS_MAP[cause.impact]})` : 'N/A'}</Badge></TableCell>}
+                            {columnVisibility.tingkatRisiko && <TableCell><Badge className={`${getRiskLevelColor(causeRiskLevelText)} text-xs`}>{causeRiskLevelText === 'N/A' ? 'N/A' : `${causeRiskLevelText} (${causeRiskScore})`}</Badge></TableCell>}
                             {columnVisibility.potensiRisikoInduk && 
                               <TableCell className="text-xs max-w-xs truncate" title={cause.potentialRiskDescription}>
                                 PR{cause.potentialRiskSequenceNumber || 'N/A'} - {cause.potentialRiskDescription} 

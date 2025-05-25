@@ -9,8 +9,8 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import type { PotentialRisk, Goal, RiskCause, LikelihoodImpactLevel, RiskCategory, RiskSource } from '@/lib/types';
-import { LIKELIHOOD_IMPACT_LEVELS } from '@/lib/types';
+import type { PotentialRisk, Goal, RiskCause, LikelihoodLevelDesc, ImpactLevelDesc, RiskCategory, RiskSource, CalculatedRiskLevelCategory } from '@/lib/types';
+import { LIKELIHOOD_LEVELS_DESC, IMPACT_LEVELS_DESC, LIKELIHOOD_LEVELS_MAP, IMPACT_LEVELS_MAP } from '@/lib/types';
 import { useForm, type SubmitHandler, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -27,8 +27,8 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 const riskCauseAnalysisSchema = z.object({
   keyRiskIndicator: z.string().nullable(),
   riskTolerance: z.string().nullable(),
-  likelihood: z.custom<LikelihoodImpactLevel>().nullable(),
-  impact: z.custom<LikelihoodImpactLevel>().nullable(),
+  likelihood: z.custom<LikelihoodLevelDesc>((val) => LIKELIHOOD_LEVELS_DESC.includes(val as LikelihoodLevelDesc)).nullable(),
+  impact: z.custom<ImpactLevelDesc>((val) => IMPACT_LEVELS_DESC.includes(val as ImpactLevelDesc)).nullable(),
 });
 
 type RiskCauseAnalysisFormData = z.infer<typeof riskCauseAnalysisSchema>;
@@ -37,24 +37,30 @@ const getGoalsStorageKey = (uprId: string, period: string) => `riskwise-upr${upr
 const getPotentialRisksStorageKeyForGoal = (uprId: string, period: string, goalId: string) => `riskwise-upr${uprId}-period${period}-goal${goalId}-potentialRisks`;
 const getRiskCausesStorageKey = (uprId: string, period: string, potentialRiskId: string) => `riskwise-upr${uprId}-period${period}-potentialRisk${potentialRiskId}-causes`;
 
-const getRiskLevel = (likelihood: LikelihoodImpactLevel | null, impact: LikelihoodImpactLevel | null): string => {
-  if (!likelihood || !impact) return 'N/A';
-  const L: { [key in LikelihoodImpactLevel]: number } = { 'Sangat Rendah': 1, 'Rendah': 2, 'Sedang': 3, 'Tinggi': 4, 'Sangat Tinggi': 5 };
-  const I: { [key in LikelihoodImpactLevel]: number } = { 'Sangat Rendah': 1, 'Rendah': 2, 'Sedang': 3, 'Tinggi': 4, 'Sangat Tinggi': 5 };
-  const likelihoodValue = L[likelihood];
-  const impactValue = I[impact];
-  if (!likelihoodValue || !impactValue) return 'N/A';
+export const getCalculatedRiskLevel = (likelihood: LikelihoodLevelDesc | null, impact: ImpactLevelDesc | null): { level: CalculatedRiskLevelCategory | 'N/A'; score: number | null } => {
+  if (!likelihood || !impact) return { level: 'N/A', score: null };
+  
+  const likelihoodValue = LIKELIHOOD_LEVELS_MAP[likelihood];
+  const impactValue = IMPACT_LEVELS_MAP[impact];
+
+  if (likelihoodValue === undefined || impactValue === undefined) return { level: 'N/A', score: null };
+
   const score = likelihoodValue * impactValue;
-  if (score >= 20) return 'Sangat Tinggi';
-  if (score >= 16) return 'Tinggi';
-  if (score >= 12) return 'Sedang';
-  if (score >= 6) return 'Rendah';
-  if (score >= 1) return 'Sangat Rendah';
-  return 'N/A';
+
+  let level: CalculatedRiskLevelCategory;
+  if (score >= 20) level = 'Sangat Tinggi';
+  else if (score >= 16) level = 'Tinggi';
+  else if (score >= 12) level = 'Sedang';
+  else if (score >= 6) level = 'Rendah';
+  else if (score >= 1) level = 'Sangat Rendah';
+  else level = 'Sangat Rendah'; // Default for score 0 or less, though should be >= 1
+
+  return { level, score };
 };
 
-const getRiskLevelColor = (level: string) => {
-  switch (level.toLowerCase()) {
+
+export const getRiskLevelColor = (level: CalculatedRiskLevelCategory | 'N/A') => {
+  switch (level?.toLowerCase()) {
     case 'sangat tinggi': return 'bg-red-600 hover:bg-red-700 text-white';
     case 'tinggi': return 'bg-orange-500 hover:bg-orange-600 text-white';
     case 'sedang': return 'bg-yellow-400 hover:bg-yellow-500 text-black dark:bg-yellow-500 dark:text-black';
@@ -85,9 +91,9 @@ export default function RiskCauseAnalysisPage() {
   const [isRiskMatrixModalOpen, setIsRiskMatrixModalOpen] = useState(false);
 
   const [aiSuggestion, setAiSuggestion] = useState<{
-    likelihood: LikelihoodImpactLevel | null;
+    likelihood: LikelihoodLevelDesc | null;
     likelihoodJustification: string;
-    impact: LikelihoodImpactLevel | null;
+    impact: ImpactLevelDesc | null;
     impactJustification: string;
   } | null>(null);
   const [isAISuggestionLoading, setIsAISuggestionLoading] = useState(false);
@@ -108,11 +114,23 @@ export default function RiskCauseAnalysisPage() {
 
   const watchedLikelihood = watch("likelihood");
   const watchedImpact = watch("impact");
-  const calculatedRiskLevel = getRiskLevel(watchedLikelihood, watchedImpact);
+  const { level: calculatedRiskLevelText, score: calculatedRiskScore } = getCalculatedRiskLevel(watchedLikelihood, watchedImpact);
 
-  const loadData = useCallback(async (uprId: string, period: string) => {
+
+  const getReturnPath = useCallback(() => {
+    const fromQuery = searchParams.get('from');
+    if (fromQuery) return fromQuery;
+    if (parentPotentialRisk) return `/all-risks/manage/${parentPotentialRisk.id}`;
+    return '/risk-analysis'; // Default fallback
+  }, [searchParams, parentPotentialRisk]);
+
+  const loadData = useCallback(async () => {
+    const context = initializeAppContext();
+    setCurrentUprId(context.uprId);
+    setCurrentPeriod(context.period);
     setPageIsLoading(true);
-    const goalsStorageKey = getGoalsStorageKey(uprId, period);
+
+    const goalsStorageKey = getGoalsStorageKey(context.uprId, context.period);
     const storedGoalsData = localStorage.getItem(goalsStorageKey);
     const allGoals: Goal[] = storedGoalsData ? JSON.parse(storedGoalsData) : [];
 
@@ -160,22 +178,12 @@ export default function RiskCauseAnalysisPage() {
       router.push(getReturnPath()); 
     }
     setPageIsLoading(false);
-  }, [riskCauseId, reset, router, toast]); // Added getReturnPath to dependencies
-
-  const getReturnPath = useCallback(() => {
-    const fromQuery = searchParams.get('from');
-    if (fromQuery) return fromQuery;
-    if (parentPotentialRisk) return `/all-risks/manage/${parentPotentialRisk.id}`;
-    return '/risk-analysis'; // Default fallback
-  }, [searchParams, parentPotentialRisk]);
+  }, [riskCauseId, reset, router, toast, getReturnPath]); 
 
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const context = initializeAppContext();
-      setCurrentUprId(context.uprId);
-      setCurrentPeriod(context.period);
-      loadData(context.uprId, context.period);
+      loadData();
     }
   }, [loadData]);
 
@@ -219,13 +227,13 @@ export default function RiskCauseAnalysisPage() {
       });
       if (result.success && result.data) {
         setAiSuggestion({
-          likelihood: result.data.suggestedLikelihood as LikelihoodImpactLevel | null,
+          likelihood: result.data.suggestedLikelihood as LikelihoodLevelDesc | null,
           likelihoodJustification: result.data.likelihoodJustification,
-          impact: result.data.suggestedImpact as LikelihoodImpactLevel | null,
+          impact: result.data.suggestedImpact as ImpactLevelDesc | null,
           impactJustification: result.data.impactJustification,
         });
-        if (result.data.suggestedLikelihood) setValue('likelihood', result.data.suggestedLikelihood as LikelihoodImpactLevel);
-        if (result.data.suggestedImpact) setValue('impact', result.data.suggestedImpact as LikelihoodImpactLevel);
+        if (result.data.suggestedLikelihood) setValue('likelihood', result.data.suggestedLikelihood as LikelihoodLevelDesc);
+        if (result.data.suggestedImpact) setValue('impact', result.data.suggestedImpact as ImpactLevelDesc);
 
       } else {
         toast({ title: "Kesalahan Saran AI", description: result.error || "Gagal mendapatkan saran dari AI.", variant: "destructive" });
@@ -287,7 +295,6 @@ export default function RiskCauseAnalysisPage() {
         <CardContent>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Left Column */}
               <div className="space-y-6">
                 <div className="space-y-1.5">
                   <Label htmlFor="keyRiskIndicator">Key Risk Indicator (KRI)</Label>
@@ -314,7 +321,6 @@ export default function RiskCauseAnalysisPage() {
                 </div>
               </div>
 
-              {/* Right Column */}
               <div className="space-y-6">
                 <div className="space-y-1.5">
                     <div className="flex items-center justify-between">
@@ -335,7 +341,7 @@ export default function RiskCauseAnalysisPage() {
                                 <SelectValue placeholder="Pilih kemungkinan" />
                             </SelectTrigger>
                             <SelectContent>
-                            {LIKELIHOOD_IMPACT_LEVELS.map(level => (<SelectItem key={`lh-${level}`} value={level}>{level}</SelectItem>))}
+                            {LIKELIHOOD_LEVELS_DESC.map(level => (<SelectItem key={`lh-${level}`} value={level}>{`${level} (${LIKELIHOOD_LEVELS_MAP[level]})`}</SelectItem>))}
                             </SelectContent>
                         </Select>
                         )}
@@ -344,7 +350,7 @@ export default function RiskCauseAnalysisPage() {
                     {aiSuggestion?.likelihoodJustification && (
                       <Alert variant="default" className="mt-2 text-xs">
                          <Wand2 className="h-4 w-4" />
-                         <AlertTitle className="font-semibold">Saran AI (Kemungkinan): {aiSuggestion.likelihood || "Tidak ada"}</AlertTitle>
+                         <AlertTitle className="font-semibold">Saran AI (Kemungkinan): {aiSuggestion.likelihood ? `${aiSuggestion.likelihood} (${LIKELIHOOD_LEVELS_MAP[aiSuggestion.likelihood]})` : "Tidak ada"}</AlertTitle>
                          <AlertDescription>{aiSuggestion.likelihoodJustification}</AlertDescription>
                        </Alert>
                     )}
@@ -369,7 +375,7 @@ export default function RiskCauseAnalysisPage() {
                                 <SelectValue placeholder="Pilih dampak" />
                             </SelectTrigger>
                             <SelectContent>
-                            {LIKELIHOOD_IMPACT_LEVELS.map(level => (<SelectItem key={`im-${level}`} value={level}>{level}</SelectItem>))}
+                            {IMPACT_LEVELS_DESC.map(level => (<SelectItem key={`im-${level}`} value={level}>{`${level} (${IMPACT_LEVELS_MAP[level]})`}</SelectItem>))}
                             </SelectContent>
                         </Select>
                         )}
@@ -378,7 +384,7 @@ export default function RiskCauseAnalysisPage() {
                     {aiSuggestion?.impactJustification && (
                       <Alert variant="default" className="mt-2 text-xs">
                         <Wand2 className="h-4 w-4" />
-                        <AlertTitle className="font-semibold">Saran AI (Dampak): {aiSuggestion.impact || "Tidak ada"}</AlertTitle>
+                        <AlertTitle className="font-semibold">Saran AI (Dampak): {aiSuggestion.impact ? `${aiSuggestion.impact} (${IMPACT_LEVELS_MAP[aiSuggestion.impact]})` : "Tidak ada"}</AlertTitle>
                         <AlertDescription>{aiSuggestion.impactJustification}</AlertDescription>
                       </Alert>
                     )}
@@ -387,8 +393,8 @@ export default function RiskCauseAnalysisPage() {
                 <div className="space-y-2 rounded-md border p-3 bg-muted/30">
                     <div className="flex items-center justify-between">
                         <Label className="text-sm font-medium">Tingkat Risiko (Penyebab)</Label>
-                         <Badge className={`${getRiskLevelColor(calculatedRiskLevel)}`}>
-                            {calculatedRiskLevel}
+                         <Badge className={`${getRiskLevelColor(calculatedRiskLevelText)}`}>
+                            {calculatedRiskLevelText === 'N/A' ? 'N/A' : `${calculatedRiskLevelText} (${calculatedRiskScore})`}
                          </Badge>
                     </div>
                     <p className="text-xs text-muted-foreground">Dihitung berdasarkan Kemungkinan dan Dampak yang dipilih untuk penyebab ini.</p>

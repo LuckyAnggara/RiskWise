@@ -13,8 +13,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import type { PotentialRisk, Goal, RiskCategory, RiskCause, RiskSource, LikelihoodImpactLevel } from '@/lib/types';
-import { RISK_CATEGORIES, RISK_SOURCES, LIKELIHOOD_IMPACT_LEVELS } from '@/lib/types';
+import type { PotentialRisk, Goal, RiskCategory, RiskCause, RiskSource, LikelihoodLevelDesc, ImpactLevelDesc, CalculatedRiskLevelCategory } from '@/lib/types';
+import { RISK_CATEGORIES, RISK_SOURCES, LIKELIHOOD_LEVELS_MAP, IMPACT_LEVELS_MAP } from '@/lib/types';
 import { useForm, type SubmitHandler, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -30,6 +30,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { getCalculatedRiskLevel, getRiskLevelColor } from '@/app/risk-cause-analysis/[riskCauseId]/page'; // Import shared functions
+
 
 const potentialRiskFormSchema = z.object({
   description: z.string().min(10, "Deskripsi potensi risiko minimal 10 karakter."),
@@ -59,34 +61,6 @@ const getRiskCausesStorageKey = (uprId: string, period: string, potentialRiskId:
 type AISuggestedCause = {
   description: string;
   source: RiskSource | null;
-};
-
-
-const getRiskLevel = (likelihood: LikelihoodImpactLevel | null, impact: LikelihoodImpactLevel | null): string => {
-  if (!likelihood || !impact) return 'N/A';
-  const L: { [key in LikelihoodImpactLevel]: number } = { 'Sangat Rendah': 1, 'Rendah': 2, 'Sedang': 3, 'Tinggi': 4, 'Sangat Tinggi': 5 };
-  const I: { [key in LikelihoodImpactLevel]: number } = { 'Sangat Rendah': 1, 'Rendah': 2, 'Sedang': 3, 'Tinggi': 4, 'Sangat Tinggi': 5 };
-  const likelihoodValue = L[likelihood];
-  const impactValue = I[impact];
-  if (!likelihoodValue || !impactValue) return 'N/A';
-  const score = likelihoodValue * impactValue;
-  if (score >= 20) return 'Sangat Tinggi';
-  if (score >= 16) return 'Tinggi';
-  if (score >= 12) return 'Sedang';
-  if (score >= 6) return 'Rendah';
-  if (score >= 1) return 'Sangat Rendah';
-  return 'N/A';
-};
-
-const getRiskLevelColor = (level: string) => {
-  switch (level.toLowerCase()) {
-    case 'sangat tinggi': return 'bg-red-600 hover:bg-red-700 text-white';
-    case 'tinggi': return 'bg-orange-500 hover:bg-orange-600 text-white';
-    case 'sedang': return 'bg-yellow-400 hover:bg-yellow-500 text-black dark:bg-yellow-500 dark:text-black';
-    case 'rendah': return 'bg-blue-500 hover:bg-blue-600 text-white';
-    case 'sangat rendah': return 'bg-green-500 hover:bg-green-600 text-white';
-    default: return 'bg-gray-400 hover:bg-gray-500 text-white';
-  }
 };
 
 
@@ -336,7 +310,6 @@ export default function ManagePotentialRiskPage() {
     if (!parentPotentialRiskGoal) return;
 
     const updatedCauses = [...riskCauses, ...newCauses].sort((a,b) => (a.sequenceNumber || 0) - (b.sequenceNumber || 0));
-    // Re-sequence all causes
     const resequencedCauses = updatedCauses.map((cause, index) => ({ ...cause, sequenceNumber: index + 1 }));
     
     setRiskCauses(resequencedCauses);
@@ -552,15 +525,15 @@ export default function ManagePotentialRiskPage() {
                           <TableHead>Sumber</TableHead>
                           <TableHead className="min-w-[100px]">KRI</TableHead>
                           <TableHead className="min-w-[100px]">Toleransi</TableHead>
-                          <TableHead>Kemungkinan</TableHead>
-                          <TableHead>Dampak</TableHead>
-                          <TableHead>Level</TableHead>
+                          <TableHead className="min-w-[150px]">Kemungkinan</TableHead>
+                          <TableHead className="min-w-[150px]">Dampak</TableHead>
+                          <TableHead className="min-w-[150px]">Tingkat Risiko</TableHead>
                           <TableHead className="text-right">Aksi</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {riskCauses.map(cause => {
-                            const causeRiskLevel = getRiskLevel(cause.likelihood, cause.impact);
+                            const {level: causeRiskLevelText, score: causeRiskScore} = getCalculatedRiskLevel(cause.likelihood, cause.impact);
                             const backToManagePage = `/all-risks/manage/${currentPotentialRisk.id}`;
                             return (
                               <TableRow key={cause.id}>
@@ -570,13 +543,19 @@ export default function ManagePotentialRiskPage() {
                                 <TableCell className="text-xs max-w-[100px] truncate" title={cause.keyRiskIndicator || ''}>{cause.keyRiskIndicator || '-'}</TableCell>
                                 <TableCell className="text-xs max-w-[100px] truncate" title={cause.riskTolerance || ''}>{cause.riskTolerance || '-'}</TableCell>
                                 <TableCell className="text-xs">
-                                  <Badge variant={cause.likelihood ? "outline" : "ghost"} className={!cause.likelihood ? "text-muted-foreground" : ""}>{cause.likelihood || 'N/A'}</Badge>
+                                  <Badge variant={cause.likelihood ? "outline" : "ghost"} className={!cause.likelihood ? "text-muted-foreground" : ""}>
+                                     {cause.likelihood ? `${cause.likelihood} (${LIKELIHOOD_LEVELS_MAP[cause.likelihood]})` : 'N/A'}
+                                  </Badge>
                                 </TableCell>
                                 <TableCell className="text-xs">
-                                  <Badge variant={cause.impact ? "outline" : "ghost"} className={!cause.impact ? "text-muted-foreground" : ""}>{cause.impact || 'N/A'}</Badge>
+                                  <Badge variant={cause.impact ? "outline" : "ghost"} className={!cause.impact ? "text-muted-foreground" : ""}>
+                                    {cause.impact ? `${cause.impact} (${IMPACT_LEVELS_MAP[cause.impact]})` : 'N/A'}
+                                  </Badge>
                                 </TableCell>
                                 <TableCell>
-                                   <Badge className={`${getRiskLevelColor(causeRiskLevel)} text-xs`}>{causeRiskLevel}</Badge>
+                                   <Badge className={`${getRiskLevelColor(causeRiskLevelText)} text-xs`}>
+                                      {causeRiskLevelText === 'N/A' ? 'N/A' : `${causeRiskLevelText} (${causeRiskScore})`}
+                                   </Badge>
                                 </TableCell>
                                 <TableCell className="text-right">
                                   <DropdownMenu>

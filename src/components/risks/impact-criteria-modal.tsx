@@ -30,11 +30,11 @@ const impactCriteriaData = [
   {
     no: "1",
     areaDampak: "Fraud Non Kerugian Keuangan Negara",
-    tidakSignifikan: "-",
-    minor: "-",
-    moderat: "-",
-    signifikan: "≤100jt",
-    sangatSignifikan: ">100jt",
+    tidakSignifikan: "-", // Updated from "Tidak Signifikan"
+    minor: "-", // Updated from "Minor"
+    moderat: "-", // Updated from "Moderat"
+    signifikan: "≤100jt", // Updated from "Signifikan"
+    sangatSignifikan: ">100jt", // Updated from "Sangat Signifikan"
   },
   {
     no: "",
@@ -94,7 +94,7 @@ export function ImpactCriteriaModal({ isOpen, onOpenChange }: ImpactCriteriaModa
           </DialogDescription>
         </DialogHeader>
         <div className="h-[70vh] w-full overflow-auto rounded-md border text-xs">
-          <div className="py-4 "> {/* Added min-w-max here */}
+          <div className="py-4 "> 
             <Table>
               <TableHeader>
                 <TableRow>
@@ -111,7 +111,7 @@ export function ImpactCriteriaModal({ isOpen, onOpenChange }: ImpactCriteriaModa
                 {impactCriteriaData.map((item, index) => (
                   <TableRow key={index}>
                     <TableCell>{item.no}</TableCell>
-                    <TableCell className="whitespace-normal">{item.areaDampak}</TableCell> {/* Allow area dampak to wrap */}
+                    <TableCell className="whitespace-normal">{item.areaDampak}</TableCell> 
                     <TableCell className="whitespace-normal">{item.tidakSignifikan}</TableCell>
                     <TableCell className="whitespace-normal">{item.minor}</TableCell>
                     <TableCell className="whitespace-normal">{item.moderat}</TableCell>
@@ -130,4 +130,3 @@ export function ImpactCriteriaModal({ isOpen, onOpenChange }: ImpactCriteriaModa
     </Dialog>
   );
 }
-
