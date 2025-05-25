@@ -20,7 +20,7 @@ interface RiskIdentificationCardProps {
 
 export function RiskIdentificationCard({ goal, onPotentialRisksIdentified, existingPotentialRisksCount }: RiskIdentificationCardProps) {
   const [goalDescriptionForAI, setGoalDescriptionForAI] = useState(
-    `Sasaran S${goal.sequenceNumber}: ${goal.name} - ${goal.description} (Konteks untuk sasaran ini: UPR ${goal.uprId}, Periode ${goal.period})`
+    `Sasaran ${goal.code}: ${goal.name} - ${goal.description} (Konteks untuk sasaran ini: UPR ${goal.uprId}, Periode ${goal.period})`
   );
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -76,7 +76,7 @@ export function RiskIdentificationCard({ goal, onPotentialRisksIdentified, exist
       <CardHeader>
         <CardTitle>Identifikasi Potensi Risiko dengan AI</CardTitle>
         <CardDescription>
-          Gunakan AI untuk brainstorming potensi risiko untuk sasaran: <span className="font-semibold">S{goal.sequenceNumber} - {goal.name}</span>.
+          Gunakan AI untuk brainstorming potensi risiko untuk sasaran: <span className="font-semibold">{goal.code} - {goal.name}</span>.
           Sempurnakan deskripsi di bawah ini untuk hasil AI yang lebih baik.
         </CardDescription>
       </CardHeader>
@@ -115,3 +115,4 @@ export function RiskIdentificationCard({ goal, onPotentialRisksIdentified, exist
     </Card>
   );
 }
+

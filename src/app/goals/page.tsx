@@ -13,9 +13,9 @@ import { useToast } from '@/hooks/use-toast';
 import { getCurrentUprId, getCurrentPeriod, initializeAppContext } from '@/lib/upr-period-context';
 
 const INITIAL_GOALS_TEMPLATE: Omit<Goal, 'uprId' | 'period'>[] = [
-  { id: 'g1', name: 'Luncurkan Produk X Baru', description: 'Berhasil mengembangkan dan meluncurkan Produk X pada Q4 untuk meraih 5% pangsa pasar dalam tahun pertama.', createdAt: '2023-10-15T10:00:00Z' },
-  { id: 'g2', name: 'Tingkatkan Kepuasan Pelanggan', description: 'Naikkan skor kepuasan pelanggan (CSAT) dari 80% menjadi 90% pada akhir tahun melalui peningkatan dukungan dan kegunaan produk.', createdAt: '2023-11-01T14:30:00Z' },
-  { id: 'g3', name: 'Ekspansi ke Pasar Baru', description: 'Membangun kehadiran pasar di setidaknya 3 wilayah baru utama pada pertengahan tahun depan, mencapai target penjualan awal.', createdAt: '2024-01-20T09:15:00Z' },
+  { id: 'g1', code: 'L1', name: 'Luncurkan Produk X Baru', description: 'Berhasil mengembangkan dan meluncurkan Produk X pada Q4 untuk meraih 5% pangsa pasar dalam tahun pertama.', createdAt: '2023-10-15T10:00:00Z' },
+  { id: 'g2', code: 'T1', name: 'Tingkatkan Kepuasan Pelanggan', description: 'Naikkan skor kepuasan pelanggan (CSAT) dari 80% menjadi 90% pada akhir tahun melalui peningkatan dukungan dan kegunaan produk.', createdAt: '2023-11-01T14:30:00Z' },
+  { id: 'g3', code: 'E1', name: 'Ekspansi ke Pasar Baru', description: 'Membangun kehadiran pasar di setidaknya 3 wilayah baru utama pada pertengahan tahun depan, mencapai target penjualan awal.', createdAt: '2024-01-20T09:15:00Z' },
 ];
 
 const getGoalsStorageKey = (uprId: string, period: string) => `riskwise-upr${uprId}-period${period}-goals`;
@@ -61,20 +61,48 @@ export default function GoalsPage() {
   const updateLocalStorage = (updatedGoals: Goal[]) => {
     if (typeof window !== 'undefined' && currentUprId && currentPeriod) {
       const storageKey = getGoalsStorageKey(currentUprId, currentPeriod);
-      localStorage.setItem(storageKey, JSON.stringify(updatedGoals));
+      localStorage.setItem(storageKey, JSON.stringify(updatedGoals.sort((a, b) => a.code.localeCompare(b.code))));
     }
   };
 
-  const handleGoalSave = (goal: Goal) => {
+  const handleGoalSave = (goalData: Omit<Goal, 'id' | 'code' | 'createdAt' | 'uprId' | 'period'>, existingGoalId?: string) => {
     setGoals(prevGoals => {
-      const existingIndex = prevGoals.findIndex(g => g.id === goal.id);
       let updatedGoals;
-      if (existingIndex > -1) {
-        updatedGoals = prevGoals.map(g => g.id === goal.id ? goal : g);
-        toast({ title: "Sasaran Diperbarui", description: `Sasaran "${goal.name}" telah berhasil diperbarui.` });
-      } else {
-        updatedGoals = [goal, ...prevGoals];
-        toast({ title: "Sasaran Ditambahkan", description: `Sasaran baru "${goal.name}" telah berhasil ditambahkan.` });
+      if (existingGoalId) { // Editing existing goal
+        updatedGoals = prevGoals.map(g => 
+          g.id === existingGoalId 
+          ? { ...g, name: goalData.name, description: goalData.description } 
+          : g
+        );
+        const editedGoal = updatedGoals.find(g => g.id === existingGoalId);
+        toast({ title: "Sasaran Diperbarui", description: `Sasaran "${editedGoal?.name}" (${editedGoal?.code}) telah berhasil diperbarui.` });
+      } else { // Adding new goal
+        const firstLetter = goalData.name.charAt(0).toUpperCase();
+        // Basic validation for a letter, default to 'X' if not.
+        const prefix = /^[A-Z]$/.test(firstLetter) ? firstLetter : 'X';
+        
+        const goalsWithSamePrefix = prevGoals.filter(g => g.code.startsWith(prefix));
+        let maxNum = 0;
+        goalsWithSamePrefix.forEach(g => {
+          const numPart = parseInt(g.code.substring(prefix.length), 10);
+          if (!isNaN(numPart) && numPart > maxNum) {
+            maxNum = numPart;
+          }
+        });
+        const newNumericPart = maxNum + 1;
+        const newGoalCode = `${prefix}${newNumericPart}`;
+
+        const newGoal: Goal = {
+          id: `goal_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+          name: goalData.name,
+          description: goalData.description,
+          code: newGoalCode,
+          createdAt: new Date().toISOString(),
+          uprId: currentUprId,
+          period: currentPeriod,
+        };
+        updatedGoals = [newGoal, ...prevGoals];
+        toast({ title: "Sasaran Ditambahkan", description: `Sasaran baru "${newGoal.name}" (${newGoal.code}) telah berhasil ditambahkan.` });
       }
       updateLocalStorage(updatedGoals);
       return updatedGoals;
@@ -88,7 +116,7 @@ export default function GoalsPage() {
     setGoals(prevGoals => {
       const updatedGoals = prevGoals.filter(g => g.id !== goalId);
       updateLocalStorage(updatedGoals);
-      toast({ title: "Sasaran Dihapus", description: `Sasaran "${goalToDelete.name}" telah dihapus.`, variant: "destructive" });
+      toast({ title: "Sasaran Dihapus", description: `Sasaran "${goalToDelete.name}" (${goalToDelete.code}) telah dihapus.`, variant: "destructive" });
       
       if (typeof window !== 'undefined') {
         const potentialRisksStorageKey = getPotentialRisksStorageKey(currentUprId, currentPeriod, goalId);
@@ -107,12 +135,14 @@ export default function GoalsPage() {
   };
 
   const filteredGoals = useMemo(() => {
+    let sortedGoals = [...goals].sort((a, b) => a.code.localeCompare(b.code, undefined, {numeric: true}));
     if (!searchTerm) {
-      return goals;
+      return sortedGoals;
     }
-    return goals.filter(goal => 
+    return sortedGoals.filter(goal => 
       goal.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      goal.description.toLowerCase().includes(searchTerm.toLowerCase())
+      goal.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      goal.code.toLowerCase().includes(searchTerm.toLowerCase())
     );
   }, [goals, searchTerm]);
   
@@ -133,8 +163,8 @@ export default function GoalsPage() {
         actions={
           <AddGoalDialog 
             onGoalSave={handleGoalSave}
-            currentUprId={currentUprId}
-            currentPeriod={currentPeriod}
+            // Pass all current goals for code generation logic if it were inside the dialog
+            // For now, logic is in handleGoalSave here
             triggerButton={
               <Button>
                 <PlusCircle className="mr-2 h-4 w-4" /> Tambah Sasaran Baru
@@ -149,7 +179,7 @@ export default function GoalsPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             type="search"
-            placeholder="Cari sasaran berdasarkan nama atau deskripsi..."
+            placeholder="Cari sasaran berdasarkan kode, nama, atau deskripsi..."
             className="pl-10 w-full md:w-1/2 lg:w-1/3"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
@@ -177,8 +207,6 @@ export default function GoalsPage() {
           <div className="mt-6">
             <AddGoalDialog 
               onGoalSave={handleGoalSave} 
-              currentUprId={currentUprId}
-              currentPeriod={currentPeriod}
               triggerButton={
                 <Button>
                   <PlusCircle className="mr-2 h-4 w-4" /> Tambah Sasaran Baru
@@ -195,7 +223,7 @@ export default function GoalsPage() {
             <GoalCard 
               key={goal.id} 
               goal={goal} 
-              onEditGoal={handleGoalSave} 
+              onEditGoal={(editedGoalData) => handleGoalSave(editedGoalData, goal.id)} 
               onDeleteGoal={handleGoalDelete}
             />
           ))}
@@ -204,3 +232,4 @@ export default function GoalsPage() {
     </div>
   );
 }
+

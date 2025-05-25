@@ -194,7 +194,7 @@ export default function RiskCauseAnalysisPage() {
     );
   }
   
-  const goalCode = `S${grandParentGoal.sequenceNumber}`;
+  const goalCode = `${grandParentGoal.code}`;
   const potentialRiskCode = `${goalCode}.PR${parentPotentialRisk.sequenceNumber}`;
   const riskCauseCode = `${potentialRiskCode}.PC${currentRiskCause.sequenceNumber}`;
 

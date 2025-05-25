@@ -11,7 +11,7 @@ import { AddGoalDialog } from './add-goal-dialog';
 interface GoalCardProps {
   goal: Goal;
   riskCount?: number; 
-  onEditGoal: (goal: Goal) => void;
+  onEditGoal: (goalData: Omit<Goal, 'id' | 'code' | 'createdAt' | 'uprId' | 'period'>, existingGoalId: string) => void;
   onDeleteGoal: (goalId: string) => void;
 }
 
@@ -24,26 +24,24 @@ export function GoalCard({ goal, riskCount = 0, onEditGoal, onDeleteGoal }: Goal
           <div className="flex space-x-2">
              <AddGoalDialog 
                 existingGoal={goal} 
-                onGoalSave={onEditGoal}
-                currentUprId={goal.uprId}
-                currentPeriod={goal.period}
+                onGoalSave={(data) => onEditGoal(data, goal.id)}
                 triggerButton={
-                  <Button variant="ghost" size="icon" aria-label={`Edit sasaran ${goal.name}`}>
+                  <Button variant="ghost" size="icon" aria-label={`Edit sasaran ${goal.name} (${goal.code})`}>
                     <Edit className="h-4 w-4" />
                   </Button>
                 }
               />
-            <Button variant="ghost" size="icon" aria-label={`Hapus sasaran ${goal.name}`} onClick={() => onDeleteGoal(goal.id)}>
+            <Button variant="ghost" size="icon" aria-label={`Hapus sasaran ${goal.name} (${goal.code})`} onClick={() => onDeleteGoal(goal.id)}>
               <Trash2 className="h-4 w-4 text-destructive" />
             </Button>
           </div>
         </div>
-        <CardTitle className="text-lg">{goal.name}</CardTitle> 
+        <CardTitle className="text-lg">{goal.code} - {goal.name}</CardTitle> 
         <CardDescription className="line-clamp-3 min-h-[3.75rem] text-sm">{goal.description}</CardDescription>
       </CardHeader>
       <CardContent className="flex-grow">
         <p className="text-xs text-muted-foreground">
-          Dibuat: {new Date(goal.createdAt).toLocaleDateString()}
+          Dibuat: {new Date(goal.createdAt).toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' })}
         </p>
       </CardContent>
       <CardFooter className="flex justify-between items-center">
@@ -60,3 +58,4 @@ export function GoalCard({ goal, riskCount = 0, onEditGoal, onDeleteGoal }: Goal
     </Card>
   );
 }
+

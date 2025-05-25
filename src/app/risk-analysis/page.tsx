@@ -2,21 +2,20 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo, Fragment } from 'react';
-import Link from 'next/link'; // Corrected import for Link
-import { useRouter } from 'next/navigation'; // useRouter is correctly from here
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { PageHeader } from '@/components/ui/page-header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import type { Goal, PotentialRisk, RiskCause, RiskCategory, LikelihoodImpactLevel, RiskSource } from '@/lib/types';
 import { RISK_CATEGORIES, LIKELIHOOD_IMPACT_LEVELS, RISK_SOURCES } from '@/lib/types';
-import { Loader2, ListChecks, Search, Filter, BarChart3 } from 'lucide-react'; // Removed unused ChevronDown, ChevronUp, Zap
+import { Loader2, ListChecks, Search, Filter, BarChart3 } from 'lucide-react';
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, DropdownMenuCheckboxItem, DropdownMenuLabel } from "@/components/ui/dropdown-menu";
 import { getCurrentUprId, getCurrentPeriod, initializeAppContext } from '@/lib/upr-period-context';
 import { ScrollArea } from '@/components/ui/scroll-area';
-// RiskCauseAnalysisModal is no longer opened from here directly. Navigation to a dedicated page.
 
 const getGoalsStorageKey = (uprId: string, period: string) => `riskwise-upr${uprId}-period${period}-goals`;
 const getPotentialRisksStorageKeyForGoal = (uprId: string, period: string, goalId: string) => `riskwise-upr${uprId}-period${period}-goal${goalId}-potentialRisks`;
@@ -26,7 +25,7 @@ interface EnrichedRiskCause extends RiskCause {
   potentialRiskDescription: string;
   potentialRiskCategory: RiskCategory | null;
   goalName: string;
-  goalSequenceNumber: number;
+  goalCode: string; // Changed from goalSequenceNumber
   potentialRiskSequenceNumber: number;
 }
 
@@ -38,15 +37,15 @@ const getRiskLevel = (likelihood: LikelihoodImpactLevel | null, impact: Likeliho
   const likelihoodValue = L[likelihood];
   const impactValue = I[impact];
 
-  if (!likelihoodValue || !impactValue) return 'N/A'; // Should not happen if types are correct
+  if (!likelihoodValue || !impactValue) return 'N/A'; 
 
   const score = likelihoodValue * impactValue;
 
   if (score >= 20) return 'Sangat Tinggi';
-  if (score >= 16) return 'Tinggi'; // 16-19
-  if (score >= 12) return 'Sedang';  // 12-15
-  if (score >= 6) return 'Rendah';   // 6-11
-  if (score >= 1) return 'Sangat Rendah'; // 1-5
+  if (score >= 16) return 'Tinggi'; 
+  if (score >= 12) return 'Sedang';  
+  if (score >= 6) return 'Rendah';   
+  if (score >= 1) return 'Sangat Rendah'; 
   return 'N/A';
 };
 
@@ -55,8 +54,8 @@ const getRiskLevelColor = (level: string) => {
     case 'sangat tinggi': return 'bg-red-600 hover:bg-red-700 text-white';
     case 'tinggi': return 'bg-orange-500 hover:bg-orange-600 text-white';
     case 'sedang': return 'bg-yellow-400 hover:bg-yellow-500 text-black dark:bg-yellow-500 dark:text-black';
-    case 'rendah': return 'bg-blue-500 hover:bg-blue-600 text-white'; // Changed from green
-    case 'sangat rendah': return 'bg-green-500 hover:bg-green-600 text-white'; // Changed from sky
+    case 'rendah': return 'bg-blue-500 hover:bg-blue-600 text-white'; 
+    case 'sangat rendah': return 'bg-green-500 hover:bg-green-600 text-white'; 
     default: return 'bg-gray-400 hover:bg-gray-500 text-white';
   }
 };
@@ -84,7 +83,7 @@ export default function RiskAnalysisPage() {
       
       const goalsStorageKey = getGoalsStorageKey(currentUprId, currentPeriod);
       const storedGoalsData = localStorage.getItem(goalsStorageKey);
-      const loadedGoals: Goal[] = storedGoalsData ? JSON.parse(storedGoalsData).sort((a:Goal, b:Goal) => a.sequenceNumber - b.sequenceNumber) : [];
+      const loadedGoals: Goal[] = storedGoalsData ? JSON.parse(storedGoalsData).sort((a:Goal, b:Goal) => a.code.localeCompare(b.code, undefined, {numeric: true})) : [];
       setAllGoals(loadedGoals);
 
       let collectedEnrichedRiskCauses: EnrichedRiskCause[] = [];
@@ -105,7 +104,7 @@ export default function RiskAnalysisPage() {
                 potentialRiskDescription: pRisk.description,
                 potentialRiskCategory: pRisk.category,
                 goalName: goal.name,
-                goalSequenceNumber: goal.sequenceNumber,
+                goalCode: goal.code, // Use goal.code
                 potentialRiskSequenceNumber: pRisk.sequenceNumber,
               }));
               collectedEnrichedRiskCauses = [...collectedEnrichedRiskCauses, ...enrichedCauses];
@@ -130,7 +129,7 @@ export default function RiskAnalysisPage() {
     if (currentUprId && currentPeriod) {
       loadData();
     }
-  }, [loadData, currentUprId, currentPeriod, router]);
+  }, [loadData, currentUprId, currentPeriod]); // Removed router from dependencies as it's not directly used in loadData for re-fetching. Re-fetching happens via state changes if needed.
 
 
   const toggleCategoryFilter = (category: RiskCategory) => {
@@ -175,7 +174,7 @@ export default function RiskAnalysisPage() {
         (cause.keyRiskIndicator && cause.keyRiskIndicator.toLowerCase().includes(lowerSearchTerm)) ||
         cause.potentialRiskDescription.toLowerCase().includes(lowerSearchTerm) ||
         cause.goalName.toLowerCase().includes(lowerSearchTerm) ||
-        `S${cause.goalSequenceNumber}.PR${cause.potentialRiskSequenceNumber}.PC${cause.sequenceNumber}`.toLowerCase().includes(lowerSearchTerm)
+        `${cause.goalCode}.PR${cause.potentialRiskSequenceNumber}.PC${cause.sequenceNumber}`.toLowerCase().includes(lowerSearchTerm)
       );
     }
 
@@ -186,7 +185,6 @@ export default function RiskAnalysisPage() {
     }
     
     if (selectedGoalIds.length > 0) {
-        // Need to get potentialRiskId from the cause, then check if that potentialRisk's goalId is in selectedGoalIds
         const potentialRisksFromSelectedGoals = allGoals
             .filter(g => selectedGoalIds.includes(g.id))
             .flatMap(g => {
@@ -208,11 +206,11 @@ export default function RiskAnalysisPage() {
         });
     }
 
+    // Sort by the full constructed code
     return tempCauses.sort((a, b) => {
-      if (a.goalSequenceNumber !== b.goalSequenceNumber) return a.goalSequenceNumber - b.goalSequenceNumber;
-      if (a.potentialRiskSequenceNumber !== b.potentialRiskSequenceNumber) return a.potentialRiskSequenceNumber - b.potentialRiskSequenceNumber;
-      if (a.sequenceNumber !== b.sequenceNumber) return a.sequenceNumber - b.sequenceNumber;
-      return a.description.localeCompare(b.description);
+        const codeA = `${a.goalCode}.PR${a.potentialRiskSequenceNumber}.PC${a.sequenceNumber}`;
+        const codeB = `${b.goalCode}.PR${b.potentialRiskSequenceNumber}.PC${b.sequenceNumber}`;
+        return codeA.localeCompare(codeB, undefined, {numeric: true});
     });
   }, [allEnrichedRiskCauses, searchTerm, selectedCategories, selectedGoalIds, selectedSources, selectedRiskLevels, allGoals, currentUprId, currentPeriod]);
 
@@ -289,7 +287,7 @@ export default function RiskAnalysisPage() {
                       checked={selectedGoalIds.includes(goal.id)}
                       onCheckedChange={() => toggleGoalFilter(goal.id)}
                     >
-                      S{goal.sequenceNumber} - {goal.name}
+                      {goal.code} - {goal.name}
                     </DropdownMenuCheckboxItem>
                   ))}
                 </ScrollArea>
@@ -379,7 +377,7 @@ export default function RiskAnalysisPage() {
               <TableBody>
                 {filteredAndSortedCauses.map((cause) => {
                   const causeRiskLevel = getRiskLevel(cause.likelihood, cause.impact);
-                  const causeCode = `S${cause.goalSequenceNumber}.PR${cause.potentialRiskSequenceNumber}.PC${cause.sequenceNumber}`;
+                  const causeCode = `${cause.goalCode}.PR${cause.potentialRiskSequenceNumber}.PC${cause.sequenceNumber}`;
                   return (
                     <Fragment key={cause.id}>
                       <TableRow>
@@ -395,7 +393,7 @@ export default function RiskAnalysisPage() {
                           PR{cause.potentialRiskSequenceNumber} - {cause.potentialRiskDescription} 
                           {cause.potentialRiskCategory && <Badge variant="secondary" className="ml-1 text-[10px]">{cause.potentialRiskCategory}</Badge>}
                         </TableCell>
-                        <TableCell className="text-xs max-w-[180px] truncate text-muted-foreground" title={cause.goalName}>S{cause.goalSequenceNumber} - {cause.goalName}</TableCell>
+                        <TableCell className="text-xs max-w-[180px] truncate text-muted-foreground" title={cause.goalName}>{cause.goalCode} - {cause.goalName}</TableCell>
                         <TableCell className="text-right">
                           <Link href={`/risk-cause-analysis/${cause.id}`}>
                             <Button variant="outline" size="sm">
@@ -415,4 +413,5 @@ export default function RiskAnalysisPage() {
     </div>
   );
 }
+
 

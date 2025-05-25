@@ -29,7 +29,7 @@ export interface Goal {
   createdAt: string; // ISO date string
   uprId: string; // Unit Pemilik Risiko ID
   period: string; // e.g., "2024", "2025"
-  sequenceNumber: number; // For codification e.g., G1, G2
+  code: string; // e.g., "A1", "B12" - New codification
 }
 
 export interface PotentialRisk {
@@ -70,3 +70,4 @@ export interface Control {
 }
 
 export type RiskLevel = 'Sangat Rendah' | 'Rendah' | 'Sedang' | 'Tinggi' | 'Sangat Tinggi';
+

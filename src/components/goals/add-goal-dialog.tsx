@@ -24,27 +24,20 @@ import { PlusCircle, Pencil } from 'lucide-react';
 const goalSchema = z.object({
   name: z.string().min(3, "Nama sasaran minimal 3 karakter."),
   description: z.string().min(10, "Deskripsi minimal 10 karakter."),
-  // sequenceNumber will be handled programmatically
 });
 
 type GoalFormData = z.infer<typeof goalSchema>;
 
 interface AddGoalDialogProps {
-  onGoalSave: (goal: Goal) => void;
+  onGoalSave: (goalData: GoalFormData, existingGoalId?: string) => void;
   existingGoal?: Goal | null;
   triggerButton?: React.ReactNode;
-  currentUprId: string;
-  currentPeriod: string;
-  existingGoalsCount: number; // To determine next sequence number
 }
 
 export function AddGoalDialog({ 
   onGoalSave, 
   existingGoal, 
   triggerButton, 
-  currentUprId, 
-  currentPeriod,
-  existingGoalsCount 
 }: AddGoalDialogProps) {
   const [open, setOpen] = useState(false);
   const {
@@ -74,15 +67,7 @@ export function AddGoalDialog({
   }, [existingGoal, open, reset]);
 
   const onSubmit: SubmitHandler<GoalFormData> = (data) => {
-    const newGoal: Goal = {
-      id: existingGoal?.id || `goal_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-      ...data,
-      createdAt: existingGoal?.createdAt || new Date().toISOString(),
-      uprId: currentUprId,
-      period: currentPeriod,
-      sequenceNumber: existingGoal?.sequenceNumber || (existingGoalsCount + 1),
-    };
-    onGoalSave(newGoal);
+    onGoalSave(data, existingGoal?.id);
     setOpen(false);
   };
 
@@ -103,15 +88,15 @@ export function AddGoalDialog({
         ) : (
           <Button onClick={() => setOpen(true)}>
             {existingGoal ? <Pencil className="mr-2 h-4 w-4" /> : <PlusCircle className="mr-2 h-4 w-4" />}
-             {existingGoal ? "Edit Sasaran" : "Tambah Sasaran Baru"}
+             {existingGoal ? `Edit Sasaran (${existingGoal.code})` : "Tambah Sasaran Baru"}
           </Button>
         )}
       </DialogTrigger>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>{existingGoal ? "Edit Sasaran" : "Tambah Sasaran Baru"}</DialogTitle>
+          <DialogTitle>{existingGoal ? `Edit Sasaran (${existingGoal.code})` : "Tambah Sasaran Baru"}</DialogTitle>
           <DialogDescription>
-            {existingGoal ? `Perbarui detail sasaran Anda. Untuk UPR: ${currentUprId}, Periode: ${currentPeriod}` : `Definisikan sasaran baru untuk mulai mengelola risikonya. Untuk UPR: ${currentUprId}, Periode: ${currentPeriod}`}
+            {existingGoal ? `Perbarui detail sasaran Anda.` : `Definisikan sasaran baru untuk mulai mengelola risikonya.`}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)} className="grid gap-4 py-4">
@@ -144,7 +129,7 @@ export function AddGoalDialog({
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>Batal</Button>
             <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? "Menyimpan..." : "Simpan Sasaran"}
+              {isSubmitting ? "Menyimpan..." : (existingGoal ? "Simpan Perubahan" : "Simpan Sasaran")}
             </Button>
           </DialogFooter>
         </form>
@@ -152,3 +137,4 @@ export function AddGoalDialog({
     </Dialog>
   );
 }
+
