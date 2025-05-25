@@ -78,43 +78,45 @@ export function RiskListItem({
   return (
     <Card className="flex flex-col h-full">
       <CardHeader className="pb-3">
-        <div className="flex items-start justify-between">
-            <div className="flex items-center space-x-2 flex-grow min-w-0">
-                <Checkbox
-                    id={`select-risk-${potentialRisk.id}`}
-                    checked={isSelected}
-                    onCheckedChange={onSelectRisk}
-                    aria-label={`Pilih potensi risiko ${potentialRisk.description}`}
-                    className="flex-shrink-0 mt-1"
-                />
-                <CardTitle className="text-base font-semibold leading-tight min-w-0">
-                    <label htmlFor={`select-risk-${potentialRisk.id}`} className="cursor-pointer hover:underline">
-                        {potentialRiskCodeDisplay} - {potentialRisk.description}
-                    </label>
-                </CardTitle>
-            </div>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" aria-label="Opsi potensi risiko" className="flex-shrink-0 -mt-1 -mr-2">
-                <Settings2 className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => onEditDetails(potentialRisk.id)}> 
-                <Edit className="mr-2 h-4 w-4" /> Edit Detail & Penyebab
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onAddControl(potentialRisk)}>
-                <PlusCircle className="mr-2 h-4 w-4" /> Tambah Kontrol
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={onDuplicateRisk}>
-                <Copy className="mr-2 h-4 w-4" /> Duplikat Risiko
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => onDeletePotentialRisk(potentialRisk)} className="text-destructive focus:text-destructive focus:bg-destructive/10">
-                <Trash2 className="mr-2 h-4 w-4" /> Hapus Potensi Risiko
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+        <div className="flex items-start justify-between"> {/* Main flex container for header content */}
+          {/* Title and its own container to allow truncation */}
+          <div className="flex-grow min-w-0 mr-2"> 
+            <CardTitle className="text-base font-semibold leading-tight">
+              {potentialRiskCodeDisplay} - {potentialRisk.description}
+            </CardTitle>
+          </div>
+
+          {/* Actions container: Checkbox and Dropdown */}
+          <div className="flex flex-shrink-0 items-center space-x-2"> 
+            <Checkbox
+              id={`select-risk-item-${potentialRisk.id}`}
+              checked={isSelected}
+              onCheckedChange={onSelectRisk}
+              aria-label={`Pilih potensi risiko ${potentialRisk.description}`}
+            />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" aria-label="Opsi potensi risiko" className="h-8 w-8">
+                  <Settings2 className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => onEditDetails(potentialRisk.id)}> 
+                  <Edit className="mr-2 h-4 w-4" /> Edit Detail & Penyebab
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onAddControl(potentialRisk)}>
+                  <PlusCircle className="mr-2 h-4 w-4" /> Tambah Kontrol
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={onDuplicateRisk}>
+                  <Copy className="mr-2 h-4 w-4" /> Duplikat Risiko
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => onDeletePotentialRisk(potentialRisk)} className="text-destructive focus:text-destructive focus:bg-destructive/10">
+                  <Trash2 className="mr-2 h-4 w-4" /> Hapus Potensi Risiko
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
         <CardDescription className="pt-1">
           <div className="text-xs text-muted-foreground space-y-0.5 mt-1">
@@ -155,11 +157,6 @@ export function RiskListItem({
             </Button>
           </div>
         )}
-        {riskCauses.length === 0 && (
-             <Button variant="outline" size="sm" onClick={() => onEditDetails(potentialRisk.id)} className="w-full text-xs">
-                <Zap className="mr-2 h-3 w-3" /> Tambah & Kelola Penyebab
-            </Button>
-        )}
         
         {controls.length > 0 && (
           <div className="mt-3">
@@ -193,25 +190,13 @@ export function RiskListItem({
           </div>
         )}
       </CardContent>
-      {controls.length === 0 && riskCauses.length > 0 && ( // Only show if causes exist but controls don't
-        <CardFooter className="pt-0">
-            <Button variant="outline" size="sm" onClick={() => onAddControl(potentialRisk)} className="w-full text-xs">
-                <PlusCircle className="mr-2 h-3 w-3" /> Tambah Tindakan Kontrol
-            </Button>
-        </CardFooter>
-      )}
-       {controls.length === 0 && riskCauses.length === 0 && ( // Show both if neither exist
-         <CardFooter className="pt-0 flex-col space-y-2 items-stretch">
-            <Button variant="outline" size="sm" onClick={() => onEditDetails(potentialRisk.id)} className="w-full text-xs">
-                <Zap className="mr-2 h-3 w-3" /> Tambah & Kelola Penyebab
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => onAddControl(potentialRisk)} className="w-full text-xs">
-                <PlusCircle className="mr-2 h-3 w-3" /> Tambah Tindakan Kontrol
-            </Button>
-        </CardFooter>
-      )}
+      <CardFooter className="pt-2">
+        {riskCauses.length === 0 && (
+          <Button variant="outline" size="sm" onClick={() => onEditDetails(potentialRisk.id)} className="w-full text-xs">
+            <Zap className="mr-2 h-3 w-3" /> Tambah & Kelola Penyebab
+          </Button>
+        )}
+      </CardFooter>
     </Card>
   );
 }
-
-    
