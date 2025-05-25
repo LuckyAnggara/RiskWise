@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { PageHeader } from '@/components/ui/page-header';
 import { Button } from '@/components/ui/button';
@@ -26,8 +26,8 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
 import { AddEditControlMeasureModal } from '@/components/risks/add-edit-control-measure-modal';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { format, parseISO } from 'date-fns'; // Added import
 
 const riskCauseAnalysisSchema = z.object({
   keyRiskIndicator: z.string().nullable(),
@@ -90,8 +90,8 @@ export default function RiskCauseAnalysisPage() {
   const [isSaving, setIsSaving] = useState(false);
   
   const [currentRiskCause, setCurrentRiskCause] = useState<RiskCause | null>(null);
-  const [currentParentPotentialRisk, setCurrentParentPotentialRisk] = useState<PotentialRisk | null>(null);
-  const [currentGrandParentGoal, setCurrentGrandParentGoal] = useState<Goal | null>(null);
+  const [parentPotentialRisk, setParentPotentialRisk] = useState<PotentialRisk | null>(null);
+  const [grandParentGoal, setGrandParentGoal] = useState<Goal | null>(null);
 
   const [controls, setControls] = useState<ControlMeasure[]>([]);
   const [isControlModalOpen, setIsControlModalOpen] = useState(false);
@@ -140,78 +140,75 @@ export default function RiskCauseAnalysisPage() {
   const returnPathForButton = useMemo(() => {
     const fromQuery = searchParams.get('from');
     if (fromQuery) return fromQuery;
-    if (currentParentPotentialRisk) return `/all-risks/manage/${currentParentPotentialRisk.id}`;
+    if (parentPotentialRisk) return `/all-risks/manage/${parentPotentialRisk.id}`;
     return '/risk-analysis'; 
-  }, [searchParams, currentParentPotentialRisk]);
+  }, [searchParams, parentPotentialRisk]);
 
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const context = initializeAppContext();
-      setCurrentUprId(context.uprId);
-      setCurrentPeriod(context.period);
-    }
+    const context = initializeAppContext();
+    setCurrentUprId(context.uprId);
+    setCurrentPeriod(context.period);
   }, []); 
 
   useEffect(() => {
     if (!currentUprId || !currentPeriod || !riskCauseId) {
-      setPageIsLoading(riskCauseId ? false : true); // If no riskCauseId, page isn't really "loaded" yet
+      setPageIsLoading(true);
       return;
     }
 
-    setPageIsLoading(true);
     let foundCause: RiskCause | null = null;
-    let foundPotentialRisk: PotentialRisk | null = null;
+    let foundPRisk: PotentialRisk | null = null;
     let foundGoal: Goal | null = null;
     let loadedControls: ControlMeasure[] = [];
 
-    if (typeof window !== 'undefined') {
-      const goalsStorageKey = getGoalsStorageKey(currentUprId, currentPeriod);
-      const storedGoalsData = localStorage.getItem(goalsStorageKey);
-      const allGoals: Goal[] = storedGoalsData ? JSON.parse(storedGoalsData) : [];
+    const goalsStorageKey = getGoalsStorageKey(currentUprId, currentPeriod);
+    const storedGoalsData = localStorage.getItem(goalsStorageKey);
+    const allGoals: Goal[] = storedGoalsData ? JSON.parse(storedGoalsData) : [];
 
-      for (const goal of allGoals) {
-        const potentialRisksStorageKey = getPotentialRisksStorageKeyForGoal(goal.uprId, goal.period, goal.id);
-        const storedPotentialRisksData = localStorage.getItem(potentialRisksStorageKey);
-        if (storedPotentialRisksData) {
-          const goalPotentialRisks: PotentialRisk[] = JSON.parse(storedPotentialRisksData);
-          for (const pRisk of goalPotentialRisks) {
-            const causesStorageKey = getRiskCausesStorageKey(goal.uprId, goal.period, pRisk.id);
-            const storedCausesData = localStorage.getItem(causesStorageKey);
-            if (storedCausesData) {
-              const pRiskCauses: RiskCause[] = JSON.parse(storedCausesData);
-              const cause = pRiskCauses.find(rc => rc.id === riskCauseId);
-              if (cause) {
-                foundCause = cause;
-                foundPotentialRisk = pRisk;
-                foundGoal = goal;
-
-                const controlsKey = getControlsForCauseStorageKey(goal.uprId, goal.period, cause.id);
-                const storedControlsData = localStorage.getItem(controlsKey);
-                loadedControls = storedControlsData ? JSON.parse(storedControlsData) : [];
-                break;
-              }
+    for (const goal of allGoals) {
+      const pRisksStorageKey = getPotentialRisksStorageKeyForGoal(goal.uprId, goal.period, goal.id);
+      const storedPRisksData = localStorage.getItem(pRisksStorageKey);
+      if (storedPRisksData) {
+        const goalPRisks: PotentialRisk[] = JSON.parse(storedPRisksData);
+        for (const pRisk of goalPRisks) {
+          const causesStorageKey = getRiskCausesStorageKey(goal.uprId, goal.period, pRisk.id);
+          const storedCausesData = localStorage.getItem(causesStorageKey);
+          if (storedCausesData) {
+            const pRiskCauses: RiskCause[] = JSON.parse(storedCausesData);
+            const cause = pRiskCauses.find(rc => rc.id === riskCauseId);
+            if (cause) {
+              foundCause = cause;
+              foundPRisk = pRisk;
+              foundGoal = goal;
+              const controlsKey = getControlsForCauseStorageKey(goal.uprId, goal.period, cause.id);
+              const storedControlsData = localStorage.getItem(controlsKey);
+              loadedControls = storedControlsData ? JSON.parse(storedControlsData) : [];
+              break;
             }
           }
         }
-        if (foundCause) break;
       }
+      if (foundCause) break;
     }
 
-    if (foundCause && foundPotentialRisk && foundGoal) {
-      setCurrentRiskCause(foundCause);
-      setCurrentParentPotentialRisk(foundPotentialRisk);
-      setCurrentGrandParentGoal(foundGoal);
-      setControls(loadedControls.sort((a, b) => {
-        const typeOrder = { 'Prv': 1, 'RM': 2, 'Crr': 3 };
-        return (typeOrder[a.controlType] - typeOrder[b.controlType]) || (a.sequenceNumber - b.sequenceNumber);
-      }));
+    if (foundCause && foundPRisk && foundGoal) {
+      if (!currentRiskCause || currentRiskCause.id !== foundCause.id) {
+        setCurrentRiskCause(foundCause);
+        setParentPotentialRisk(foundPRisk);
+        setGrandParentGoal(foundGoal);
+        setControls(loadedControls.sort((a, b) => {
+          const typeOrder = { 'Prv': 1, 'RM': 2, 'Crr': 3 };
+          return (typeOrder[a.controlType] - typeOrder[b.controlType]) || (a.sequenceNumber - b.sequenceNumber);
+        }));
+      }
     } else {
       toast({ title: "Kesalahan", description: "Detail Penyebab Risiko tidak ditemukan.", variant: "destructive" });
-      router.push(returnPathForButton);
+      router.push(searchParams.get('from') || '/risk-analysis');
     }
     setPageIsLoading(false);
-  }, [riskCauseId, currentUprId, currentPeriod, router, toast, returnPathForButton]);
+  }, [riskCauseId, currentUprId, currentPeriod, router, toast, searchParams, currentRiskCause]); // Added currentRiskCause
+
 
   useEffect(() => {
     if (currentRiskCause) {
@@ -227,7 +224,7 @@ export default function RiskCauseAnalysisPage() {
 
 
   const onSubmitAnalysis: SubmitHandler<RiskCauseAnalysisFormData> = async (data) => {
-    if (!currentRiskCause || !currentParentPotentialRisk || !currentGrandParentGoal) {
+    if (!currentRiskCause || !parentPotentialRisk || !grandParentGoal) {
       toast({ title: "Kesalahan", description: "Konteks data tidak lengkap untuk menyimpan.", variant: "destructive" });
       return;
     }
@@ -242,26 +239,26 @@ export default function RiskCauseAnalysisPage() {
       analysisUpdatedAt: new Date().toISOString(),
     };
 
-    const causesStorageKey = getRiskCausesStorageKey(currentGrandParentGoal.uprId, currentGrandParentGoal.period, currentParentPotentialRisk.id);
+    const causesStorageKey = getRiskCausesStorageKey(grandParentGoal.uprId, grandParentGoal.period, parentPotentialRisk.id);
     const storedCausesData = localStorage.getItem(causesStorageKey);
     let currentRiskCausesForPR: RiskCause[] = storedCausesData ? JSON.parse(storedCausesData) : [];
     currentRiskCausesForPR = currentRiskCausesForPR.map(rc => rc.id === updatedRiskCause.id ? updatedRiskCause : rc);
     localStorage.setItem(causesStorageKey, JSON.stringify(currentRiskCausesForPR.sort((a,b) => (a.sequenceNumber || 0) - (b.sequenceNumber || 0))));
     
     setCurrentRiskCause(updatedRiskCause); 
-    toast({ title: "Sukses", description: `Analisis untuk penyebab risiko ${riskCauseCodeDisplay(currentGrandParentGoal, currentParentPotentialRisk, updatedRiskCause)} telah disimpan.` });
+    toast({ title: "Sukses", description: `Analisis untuk penyebab risiko ${riskCauseCodeDisplay(grandParentGoal, parentPotentialRisk, updatedRiskCause)} telah disimpan.` });
     setIsSaving(false);
   };
 
   const handleGetAISuggestion = async () => {
-    if (!currentRiskCause || !currentParentPotentialRisk || !currentGrandParentGoal) return;
+    if (!currentRiskCause || !parentPotentialRisk || !grandParentGoal) return;
     setIsAISuggestionLoading(true);
     setAiSuggestion(null);
     try {
       const result = await suggestRiskParametersAction({
-        potentialRiskDescription: currentParentPotentialRisk.description,
-        riskCategory: currentParentPotentialRisk.category,
-        goalDescription: currentGrandParentGoal.description,
+        potentialRiskDescription: parentPotentialRisk.description,
+        riskCategory: parentPotentialRisk.category,
+        goalDescription: grandParentGoal.description,
         riskCauseDescription: currentRiskCause.description,
       });
 
@@ -363,18 +360,21 @@ export default function RiskCauseAnalysisPage() {
     );
   }
   
-  if (!currentRiskCause || !currentParentPotentialRisk || !currentGrandParentGoal) {
+  if (!currentRiskCause || !parentPotentialRisk || !grandParentGoal) {
     return (
       <div className="flex flex-col items-center justify-center h-screen">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
         <p className="text-xl text-muted-foreground">Memuat detail penyebab risiko atau data tidak ditemukan...</p>
+         <Button onClick={() => router.push(returnPathForButton)} variant="outline" className="mt-4">
+            <ArrowLeft className="mr-2 h-4 w-4" /> Kembali
+        </Button>
       </div>
     );
   }
   
-  const currentRiskCauseFullCode = riskCauseCodeDisplay(currentGrandParentGoal, currentParentPotentialRisk, currentRiskCause);
-  const goalCodeDisplay = `${currentGrandParentGoal.code || '[Tanpa S]'}`;
-  const potentialRiskCodeDisplay = `${goalCodeDisplay}•PR${currentParentPotentialRisk.sequenceNumber || '?'}`;
+  const currentRiskCauseFullCode = riskCauseCodeDisplay(grandParentGoal, parentPotentialRisk, currentRiskCause);
+  const goalCodeDisplay = `${grandParentGoal.code || '[Tanpa S]'}`;
+  const potentialRiskCodeDisplay = `${goalCodeDisplay}•PR${parentPotentialRisk.sequenceNumber || '?'}`;
 
 
   return (
@@ -397,11 +397,11 @@ export default function RiskCauseAnalysisPage() {
             <CardTitle>Konteks Risiko</CardTitle>
         </CardHeader>
         <CardContent className="space-y-1 text-sm">
-            <div><strong>Sasaran Terkait ({goalCodeDisplay}):</strong> {currentGrandParentGoal.name}</div>
-            <div><strong>Potensi Risiko ({potentialRiskCodeDisplay}):</strong> {currentParentPotentialRisk.description}</div>
-            <div><strong>Kategori Risiko:</strong> <Badge variant="secondary">{currentParentPotentialRisk.category || 'N/A'}</Badge></div>
-            <div><strong>Pemilik Potensi Risiko:</strong> {currentParentPotentialRisk.owner || 'N/A'}</div>
-            <div><strong>Deskripsi Penyebab (PC{currentRiskCause.sequenceNumber || '?' }):</strong> {currentRiskCause.description}</div>
+            <p><strong>Sasaran Terkait ({goalCodeDisplay}):</strong> {grandParentGoal.name}</p>
+            <p><strong>Potensi Risiko ({potentialRiskCodeDisplay}):</strong> {parentPotentialRisk.description}</p>
+            <div><strong>Kategori Risiko:</strong> <Badge variant="secondary">{parentPotentialRisk.category || 'N/A'}</Badge></div>
+            <p><strong>Pemilik Potensi Risiko:</strong> {parentPotentialRisk.owner || 'N/A'}</p>
+            <p><strong>Deskripsi Penyebab (PC{currentRiskCause.sequenceNumber || '?' }):</strong> {currentRiskCause.description}</p>
             <div><strong>Sumber Penyebab:</strong> <Badge variant="outline">{currentRiskCause.source}</Badge></div>
         </CardContent>
       </Card>
@@ -412,126 +412,130 @@ export default function RiskCauseAnalysisPage() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit(onSubmitAnalysis)} className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-6"> 
-                <div className="space-y-1.5">
-                  <Label htmlFor="keyRiskIndicator">Key Risk Indicator (KRI)</Label>
-                  <Textarea
-                    id="keyRiskIndicator"
-                    {...register("keyRiskIndicator")}
-                    rows={3}
-                    placeholder="Contoh: Jumlah keluhan pelanggan melebihi X per bulan, Persentase downtime sistem > Y%"
-                    disabled={isSaving}
-                  />
-                  {errors.keyRiskIndicator && <p className="text-xs text-destructive mt-1">{errors.keyRiskIndicator.message}</p>}
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label htmlFor="riskTolerance">Toleransi Risiko</Label>
-                  <Textarea
-                    id="riskTolerance"
-                    {...register("riskTolerance")}
-                    rows={3}
-                    placeholder="Contoh: Maksimal 5 keluhan pelanggan per bulan, Downtime sistem tidak boleh melebihi 2 jam per kuartal"
-                    disabled={isSaving}
-                  />
-                  {errors.riskTolerance && <p className="text-xs text-destructive mt-1">{errors.riskTolerance.message}</p>}
-                </div>
-              </div>
-
-              <div className="space-y-6"> 
-                <div className="space-y-1.5">
-                    <div className="flex items-center justify-between">
-                        <Label htmlFor="likelihood">Kemungkinan</Label>
-                        <div className="flex items-center space-x-1">
-                           <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-primary" onClick={handleGetAISuggestion} disabled={isAISuggestionLoading} aria-label="Dapatkan Saran AI untuk Kemungkinan" type="button">
-                             {isAISuggestionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
-                           </Button>
-                           <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-primary" onClick={() => setIsLikelihoodCriteriaModalOpen(true)} type="button" aria-label="Lihat Kriteria Kemungkinan"><Info className="h-4 w-4" /></Button>
-                        </div>
-                    </div>
-                    <Controller
-                        name="likelihood"
-                        control={control}
-                        render={({ field }) => (
-                        <Select 
-                            value={field.value || ""} 
-                            onValueChange={(value) => field.onChange(value as LikelihoodLevelDesc)} 
-                            disabled={isSaving}
-                        >
-                            <SelectTrigger id="likelihood" className={errors.likelihood ? "border-destructive" : ""}>
-                                <SelectValue placeholder="Pilih kemungkinan" />
-                            </SelectTrigger>
-                            <SelectContent>
-                            {LIKELIHOOD_LEVELS_DESC.map(level => (<SelectItem key={`lh-${level}`} value={level}>{level}</SelectItem>))}
-                            </SelectContent>
-                        </Select>
-                        )}
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-6"> 
+                    <div className="space-y-1.5">
+                    <Label htmlFor="keyRiskIndicator">Key Risk Indicator (KRI)</Label>
+                    <Textarea
+                        id="keyRiskIndicator"
+                        {...register("keyRiskIndicator")}
+                        rows={3}
+                        placeholder="Contoh: Jumlah keluhan pelanggan melebihi X per bulan, Persentase downtime sistem > Y%"
+                        disabled={isSaving}
                     />
-                    {errors.likelihood && <p className="text-xs text-destructive mt-1">{errors.likelihood.message}</p>}
-                    {aiSuggestion?.likelihoodJustification && (
-                      <Alert variant="default" className="mt-2 text-xs">
-                         <Wand2 className="h-4 w-4" />
-                         <AlertTitle className="font-semibold">Saran AI (Kemungkinan): {aiSuggestion.likelihood || "Tidak ada"}</AlertTitle>
-                         <AlertDescription>{aiSuggestion.likelihoodJustification}</AlertDescription>
-                       </Alert>
-                    )}
-                </div>
-
-                <div className="space-y-1.5">
-                     <div className="flex items-center justify-between">
-                        <Label htmlFor="impact">Dampak</Label>
-                         <div className="flex items-center space-x-1">
-                           <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-primary" onClick={handleGetAISuggestion} disabled={isAISuggestionLoading} aria-label="Dapatkan Saran AI untuk Dampak" type="button">
-                             {isAISuggestionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
-                           </Button>
-                           <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-primary" onClick={() => setIsImpactCriteriaModalOpen(true)} type="button" aria-label="Lihat Kriteria Dampak"><Info className="h-4 w-4" /></Button>
-                        </div>
+                    {errors.keyRiskIndicator && <p className="text-xs text-destructive mt-1">{errors.keyRiskIndicator.message}</p>}
                     </div>
-                    <Controller
-                        name="impact"
-                        control={control}
-                        render={({ field }) => ( 
-                        <Select 
-                            value={field.value || ""} 
-                            onValueChange={(value) => field.onChange(value as ImpactLevelDesc)} 
-                            disabled={isSaving}
-                        >
-                            <SelectTrigger id="impact" className={errors.impact ? "border-destructive" : ""}>
-                                <SelectValue placeholder="Pilih dampak" />
-                            </SelectTrigger>
-                            <SelectContent>
-                            {IMPACT_LEVELS_DESC.map(level => (<SelectItem key={`im-${level}`} value={level}>{level}</SelectItem>))}
-                            </SelectContent>
-                        </Select>
-                        )}
+
+                    <div className="space-y-1.5">
+                    <Label htmlFor="riskTolerance">Toleransi Risiko</Label>
+                    <Textarea
+                        id="riskTolerance"
+                        {...register("riskTolerance")}
+                        rows={3}
+                        placeholder="Contoh: Maksimal 5 keluhan pelanggan per bulan, Downtime sistem tidak boleh melebihi 2 jam per kuartal"
+                        disabled={isSaving}
                     />
-                    {errors.impact && <p className="text-xs text-destructive mt-1">{errors.impact.message}</p>}
-                    {aiSuggestion?.impactJustification && (
-                      <Alert variant="default" className="mt-2 text-xs">
-                        <Wand2 className="h-4 w-4" />
-                        <AlertTitle className="font-semibold">Saran AI (Dampak): {aiSuggestion.impact || "Tidak ada"}</AlertTitle>
-                        <AlertDescription>{aiSuggestion.impactJustification}</AlertDescription>
-                      </Alert>
-                    )}
+                    {errors.riskTolerance && <p className="text-xs text-destructive mt-1">{errors.riskTolerance.message}</p>}
+                    </div>
                 </div>
 
-                <div className="space-y-2 rounded-md border p-3 bg-muted/30">
-                    <div className="flex items-center justify-between">
-                        <Label className="text-sm font-medium">Tingkat Risiko (Penyebab)</Label>
-                         <Badge className={`${getRiskLevelColor(calculatedRiskLevelText)} text-xs`}>
-                            {calculatedRiskLevelText === 'N/A' ? 'N/A' : `${calculatedRiskLevelText} (${calculatedRiskScore})`}
-                         </Badge>
+                <div className="space-y-6"> 
+                    <div className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                            <Label htmlFor="likelihood">Kemungkinan</Label>
+                            <div className="flex items-center space-x-1">
+                            <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-primary" onClick={handleGetAISuggestion} disabled={isAISuggestionLoading} aria-label="Dapatkan Saran AI untuk Kemungkinan" type="button">
+                                {isAISuggestionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-primary" onClick={() => setIsLikelihoodCriteriaModalOpen(true)} type="button" aria-label="Lihat Kriteria Kemungkinan"><Info className="h-4 w-4" /></Button>
+                            </div>
+                        </div>
+                        <Controller
+                            name="likelihood"
+                            control={control}
+                            render={({ field }) => (
+                            <Select 
+                                value={field.value || ""} 
+                                onValueChange={(value) => {
+                                    field.onChange(value as LikelihoodLevelDesc);
+                                }} 
+                                disabled={isSaving}
+                            >
+                                <SelectTrigger id="likelihood" className={errors.likelihood ? "border-destructive" : ""}>
+                                    <SelectValue placeholder="Pilih kemungkinan" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                {LIKELIHOOD_LEVELS_DESC.map(level => (<SelectItem key={`lh-${level}`} value={level}>{level}</SelectItem>))}
+                                </SelectContent>
+                            </Select>
+                            )}
+                        />
+                        {errors.likelihood && <p className="text-xs text-destructive mt-1">{errors.likelihood.message}</p>}
+                        {aiSuggestion?.likelihoodJustification && (
+                        <Alert variant="default" className="mt-2 text-xs">
+                            <Wand2 className="h-4 w-4" />
+                            <AlertTitle className="font-semibold">Saran AI (Kemungkinan): {aiSuggestion.likelihood || "Tidak ada"}</AlertTitle>
+                            <AlertDescription>{aiSuggestion.likelihoodJustification}</AlertDescription>
+                        </Alert>
+                        )}
                     </div>
-                    <p className="text-xs text-muted-foreground">Dihitung berdasarkan Kemungkinan dan Dampak yang dipilih untuk penyebab ini.</p>
+
+                    <div className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                            <Label htmlFor="impact">Dampak</Label>
+                            <div className="flex items-center space-x-1">
+                            <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-primary" onClick={handleGetAISuggestion} disabled={isAISuggestionLoading} aria-label="Dapatkan Saran AI untuk Dampak" type="button">
+                                {isAISuggestionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-primary" onClick={() => setIsImpactCriteriaModalOpen(true)} type="button" aria-label="Lihat Kriteria Dampak"><Info className="h-4 w-4" /></Button>
+                            </div>
+                        </div>
+                        <Controller
+                            name="impact"
+                            control={control}
+                            render={({ field }) => ( 
+                            <Select 
+                                value={field.value || ""} 
+                                onValueChange={(value) => {
+                                    field.onChange(value as ImpactLevelDesc);
+                                }} 
+                                disabled={isSaving}
+                            >
+                                <SelectTrigger id="impact" className={errors.impact ? "border-destructive" : ""}>
+                                    <SelectValue placeholder="Pilih dampak" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                {IMPACT_LEVELS_DESC.map(level => (<SelectItem key={`im-${level}`} value={level}>{level}</SelectItem>))}
+                                </SelectContent>
+                            </Select>
+                            )}
+                        />
+                        {errors.impact && <p className="text-xs text-destructive mt-1">{errors.impact.message}</p>}
+                        {aiSuggestion?.impactJustification && (
+                        <Alert variant="default" className="mt-2 text-xs">
+                            <Wand2 className="h-4 w-4" />
+                            <AlertTitle className="font-semibold">Saran AI (Dampak): {aiSuggestion.impact || "Tidak ada"}</AlertTitle>
+                            <AlertDescription>{aiSuggestion.impactJustification}</AlertDescription>
+                        </Alert>
+                        )}
+                    </div>
+
+                    <div className="space-y-2 rounded-md border p-3 bg-muted/30">
+                        <div className="flex items-center justify-between">
+                            <Label className="text-sm font-medium">Tingkat Risiko (Penyebab)</Label>
+                            <Badge className={`${getRiskLevelColor(calculatedRiskLevelText)} text-xs`}>
+                                {calculatedRiskLevelText === 'N/A' ? 'N/A' : `${calculatedRiskLevelText} (${calculatedRiskScore || 'N/A'})`}
+                            </Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground">Dihitung berdasarkan Kemungkinan dan Dampak yang dipilih untuk penyebab ini.</p>
+                    </div>
+                    
+                    <div className="pt-2">
+                    <Button variant="outline" size="sm" onClick={() => setIsRiskMatrixModalOpen(true)} type="button" className="w-full">
+                        <BarChartHorizontalBig className="mr-2 h-4 w-4" /> Lihat Matriks Profil Risiko
+                        </Button>
+                    </div>
                 </div>
-                
-                <div className="pt-2">
-                   <Button variant="outline" size="sm" onClick={() => setIsRiskMatrixModalOpen(true)} type="button" className="w-full">
-                      <BarChartHorizontalBig className="mr-2 h-4 w-4" /> Lihat Matriks Profil Risiko
-                    </Button>
-                </div>
-              </div>
             </div>
             
             <div className="flex justify-end mt-8">
@@ -614,16 +618,16 @@ export default function RiskCauseAnalysisPage() {
       <LikelihoodCriteriaModal isOpen={isLikelihoodCriteriaModalOpen} onOpenChange={setIsLikelihoodCriteriaModalOpen} />
       <ImpactCriteriaModal isOpen={isImpactCriteriaModalOpen} onOpenChange={setIsImpactCriteriaModalOpen} />
       <RiskMatrixModal isOpen={isRiskMatrixModalOpen} onOpenChange={setIsRiskMatrixModalOpen} />
-      {currentRiskCause && currentGrandParentGoal && currentParentPotentialRisk && (
+      {currentRiskCause && grandParentGoal && parentPotentialRisk && (
         <AddEditControlMeasureModal
             isOpen={isControlModalOpen}
             onOpenChange={setIsControlModalOpen}
             onSave={handleSaveControlMeasure}
             riskCause={currentRiskCause}
-            potentialRiskId={currentParentPotentialRisk.id}
-            goalId={currentGrandParentGoal.id}
-            uprId={currentGrandParentGoal.uprId}
-            period={currentGrandParentGoal.period}
+            potentialRiskId={parentPotentialRisk.id}
+            goalId={grandParentGoal.id}
+            uprId={grandParentGoal.uprId}
+            period={grandParentGoal.period}
             existingControlMeasure={controlToEdit}
             existingControlsForCause={controls}
         />
@@ -645,3 +649,5 @@ export default function RiskCauseAnalysisPage() {
     </div>
   );
 }
+
+    
