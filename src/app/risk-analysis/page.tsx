@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import type { Goal, PotentialRisk, RiskCause, RiskCategory, LikelihoodImpactLevel, RiskSource } from '@/lib/types';
 import { RISK_CATEGORIES, LIKELIHOOD_IMPACT_LEVELS, RISK_SOURCES } from '@/lib/types';
-import { Loader2, ListChecks, Search, Filter, BarChart3, Settings2, Trash2, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { Loader2, ListChecks, Search, Filter, BarChart3, Settings2, Trash2, AlertTriangle, CheckCircle2, Columns } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -32,7 +32,7 @@ interface EnrichedRiskCause extends RiskCause {
   potentialRiskSequenceNumber: number; 
   goalUprId: string; 
   goalPeriod: string;
-  goalId: string; // Added goalId for easier linking and context
+  goalId: string;
 }
 
 const getRiskLevel = (likelihood: LikelihoodImpactLevel | null, impact: LikelihoodImpactLevel | null): string => {
@@ -66,6 +66,29 @@ const getRiskLevelColor = (level: string) => {
   }
 };
 
+type ColumnVisibility = {
+  sumber: boolean;
+  kri: boolean;
+  toleransi: boolean;
+  kemungkinan: boolean;
+  dampak: boolean;
+  tingkatRisiko: boolean;
+  potensiRisikoInduk: boolean;
+  sasaranInduk: boolean;
+};
+
+const ALL_COLUMNS_CONFIG: Array<{ id: keyof ColumnVisibility; label: string; defaultVisible: boolean }> = [
+  { id: 'sumber', label: 'Sumber', defaultVisible: true },
+  { id: 'kri', label: 'KRI', defaultVisible: true },
+  { id: 'toleransi', label: 'Toleransi', defaultVisible: true },
+  { id: 'kemungkinan', label: 'Kemungkinan', defaultVisible: true },
+  { id: 'dampak', label: 'Dampak', defaultVisible: true },
+  { id: 'tingkatRisiko', label: 'Tingkat Risiko', defaultVisible: true },
+  { id: 'potensiRisikoInduk', label: 'Potensi Risiko Induk', defaultVisible: false },
+  { id: 'sasaranInduk', label: 'Sasaran Induk', defaultVisible: false },
+];
+
+
 export default function RiskAnalysisPage() {
   const router = useRouter();
   const { toast } = useToast();
@@ -87,6 +110,17 @@ export default function RiskAnalysisPage() {
   const [causeToDelete, setCauseToDelete] = useState<EnrichedRiskCause | null>(null);
   const [isSingleDeleteDialogOpen, setIsSingleDeleteDialogOpen] = useState(false);
   const [isBulkDeleteDialogOpen, setIsBulkDeleteDialogOpen] = useState(false);
+
+  const [columnVisibility, setColumnVisibility] = useState<ColumnVisibility>(
+    ALL_COLUMNS_CONFIG.reduce((acc, col) => {
+      acc[col.id] = col.defaultVisible;
+      return acc;
+    }, {} as ColumnVisibility)
+  );
+
+  const toggleColumnVisibility = (columnId: keyof ColumnVisibility) => {
+    setColumnVisibility(prev => ({ ...prev, [columnId]: !prev[columnId] }));
+  };
 
   const loadData = useCallback(() => {
     if (typeof window !== 'undefined' && currentUprId && currentPeriod) {
@@ -114,7 +148,7 @@ export default function RiskAnalysisPage() {
                 ...cause,
                 potentialRiskDescription: pRisk.description,
                 potentialRiskCategory: pRisk.category,
-                potentialRiskSequenceNumber: pRisk.sequenceNumber,
+                potentialRiskSequenceNumber: pRisk.sequenceNumber || 0,
                 goalName: goal.name,
                 goalCode: goal.code || "", 
                 goalUprId: goal.uprId, 
@@ -145,13 +179,6 @@ export default function RiskAnalysisPage() {
       loadData();
     }
   }, [loadData, currentUprId, currentPeriod]);
-
-  const handleRiskCauseUpdated = (updatedCause: RiskCause) => {
-    setAllEnrichedRiskCauses(prevCauses => 
-      prevCauses.map(c => c.id === updatedCause.id ? { ...c, ...updatedCause } : c)
-    );
-    // Note: Parent (RiskCauseAnalysisPage) handles localStorage update.
-  };
 
   const toggleCategoryFilter = (category: RiskCategory) => {
     setSelectedCategories(prev => 
@@ -362,7 +389,7 @@ export default function RiskAnalysisPage() {
       </div>
 
       <div className="flex flex-col md:flex-row gap-2 mb-4 justify-between items-center">
-        <div className="flex flex-col md:flex-row gap-2 w-full md:w-auto">
+        <div className="flex flex-col md:flex-row gap-2 w-full md:w-auto items-center">
             <div className="relative flex-grow md:flex-grow-0 md:max-w-xs">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -466,6 +493,27 @@ export default function RiskAnalysisPage() {
                 ))}
                 </DropdownMenuContent>
             </DropdownMenu>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline">
+                  <Columns className="mr-2 h-4 w-4" />
+                  Kolom
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuLabel>Tampilkan Kolom</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {ALL_COLUMNS_CONFIG.map((col) => (
+                  <DropdownMenuCheckboxItem
+                    key={col.id}
+                    checked={columnVisibility[col.id]}
+                    onCheckedChange={() => toggleColumnVisibility(col.id)}
+                  >
+                    {col.label}
+                  </DropdownMenuCheckboxItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
             </div>
         </div>
          {selectedCauseIds.length > 0 && (
@@ -507,14 +555,14 @@ export default function RiskAnalysisPage() {
                     </TableHead>
                     <TableHead className="min-w-[120px]">Kode</TableHead>
                     <TableHead className="min-w-[250px]">Penyebab Potensi Risiko</TableHead>
-                    <TableHead className="min-w-[100px]">Sumber</TableHead>
-                    <TableHead className="min-w-[180px]">KRI</TableHead>
-                    <TableHead className="min-w-[180px]">Toleransi</TableHead>
-                    <TableHead className="min-w-[120px]">Kemungkinan</TableHead>
-                    <TableHead className="min-w-[120px]">Dampak</TableHead>
-                    <TableHead className="min-w-[120px]">Tingkat Risiko</TableHead>
-                    <TableHead className="min-w-[200px]">Potensi Risiko Induk</TableHead>
-                    <TableHead className="min-w-[200px]">Sasaran Induk</TableHead>
+                    {columnVisibility.sumber && <TableHead className="min-w-[100px]">Sumber</TableHead>}
+                    {columnVisibility.kri && <TableHead className="min-w-[180px]">KRI</TableHead>}
+                    {columnVisibility.toleransi && <TableHead className="min-w-[180px]">Toleransi</TableHead>}
+                    {columnVisibility.kemungkinan && <TableHead className="min-w-[120px]">Kemungkinan</TableHead>}
+                    {columnVisibility.dampak && <TableHead className="min-w-[120px]">Dampak</TableHead>}
+                    {columnVisibility.tingkatRisiko && <TableHead className="min-w-[120px]">Tingkat Risiko</TableHead>}
+                    {columnVisibility.potensiRisikoInduk && <TableHead className="min-w-[250px]">Potensi Risiko Induk</TableHead>}
+                    {columnVisibility.sasaranInduk && <TableHead className="min-w-[200px]">Sasaran Induk</TableHead>}
                     <TableHead className="text-right w-[100px]">Aksi</TableHead>
                     </TableRow>
                 </TableHeader>
@@ -535,19 +583,23 @@ export default function RiskAnalysisPage() {
                             </TableCell>
                             <TableCell className="text-xs font-mono">{causeCode}</TableCell>
                             <TableCell className="font-medium text-xs max-w-xs truncate" title={cause.description}>{cause.description}</TableCell>
-                            <TableCell className="text-xs"><Badge variant="outline">{cause.source}</Badge></TableCell>
-                            <TableCell className="text-xs max-w-[180px] truncate" title={cause.keyRiskIndicator || ''}>{cause.keyRiskIndicator || '-'}</TableCell>
-                            <TableCell className="text-xs max-w-[180px] truncate" title={cause.riskTolerance || ''}>{cause.riskTolerance || '-'}</TableCell>
-                            <TableCell><Badge variant={cause.likelihood ? "outline" : "ghost"} className={`text-xs ${!cause.likelihood ? "text-muted-foreground" : ""}`}>{cause.likelihood || 'N/A'}</Badge></TableCell>
-                            <TableCell><Badge variant={cause.impact ? "outline" : "ghost"} className={`text-xs ${!cause.impact ? "text-muted-foreground" : ""}`}>{cause.impact || 'N/A'}</Badge></TableCell>
-                            <TableCell><Badge className={`${getRiskLevelColor(causeRiskLevel)} text-xs`}>{causeRiskLevel}</Badge></TableCell>
-                            <TableCell className="text-xs max-w-xs truncate" title={cause.potentialRiskDescription}>
-                            PR{cause.potentialRiskSequenceNumber || 'N/A'} - {cause.potentialRiskDescription} 
-                            {cause.potentialRiskCategory && <Badge variant="secondary" className="ml-1 text-[10px]">{cause.potentialRiskCategory}</Badge>}
-                            </TableCell>
-                            <TableCell className="text-xs max-w-sm truncate text-muted-foreground" title={cause.goalName}>
-                            {goalCodeDisplay} - {cause.goalName}
-                            </TableCell>
+                            {columnVisibility.sumber && <TableCell className="text-xs"><Badge variant="outline">{cause.source}</Badge></TableCell>}
+                            {columnVisibility.kri && <TableCell className="text-xs max-w-[180px] truncate" title={cause.keyRiskIndicator || ''}>{cause.keyRiskIndicator || '-'}</TableCell>}
+                            {columnVisibility.toleransi && <TableCell className="text-xs max-w-[180px] truncate" title={cause.riskTolerance || ''}>{cause.riskTolerance || '-'}</TableCell>}
+                            {columnVisibility.kemungkinan && <TableCell><Badge variant={cause.likelihood ? "outline" : "ghost"} className={`text-xs ${!cause.likelihood ? "text-muted-foreground" : ""}`}>{cause.likelihood || 'N/A'}</Badge></TableCell>}
+                            {columnVisibility.dampak && <TableCell><Badge variant={cause.impact ? "outline" : "ghost"} className={`text-xs ${!cause.impact ? "text-muted-foreground" : ""}`}>{cause.impact || 'N/A'}</Badge></TableCell>}
+                            {columnVisibility.tingkatRisiko && <TableCell><Badge className={`${getRiskLevelColor(causeRiskLevel)} text-xs`}>{causeRiskLevel}</Badge></TableCell>}
+                            {columnVisibility.potensiRisikoInduk && 
+                              <TableCell className="text-xs max-w-xs truncate" title={cause.potentialRiskDescription}>
+                                PR{cause.potentialRiskSequenceNumber || 'N/A'} - {cause.potentialRiskDescription} 
+                                {cause.potentialRiskCategory && <Badge variant="secondary" className="ml-1 text-[10px]">{cause.potentialRiskCategory}</Badge>}
+                              </TableCell>
+                            }
+                            {columnVisibility.sasaranInduk && 
+                              <TableCell className="text-xs max-w-sm truncate text-muted-foreground" title={cause.goalName}>
+                                {goalCodeDisplay} - {cause.goalName}
+                              </TableCell>
+                            }
                             <TableCell className="text-right">
                             <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
@@ -610,3 +662,4 @@ export default function RiskAnalysisPage() {
     </div>
   );
 }
+
