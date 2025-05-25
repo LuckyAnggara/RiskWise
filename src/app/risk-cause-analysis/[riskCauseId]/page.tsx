@@ -157,10 +157,18 @@ export default function RiskCauseAnalysisPage() {
       });
     } else {
       toast({ title: "Kesalahan", description: "Detail Penyebab Risiko tidak ditemukan.", variant: "destructive" });
-      router.push('/risk-analysis'); 
+      router.push(getReturnPath()); 
     }
     setPageIsLoading(false);
-  }, [riskCauseId, reset, router, toast]);
+  }, [riskCauseId, reset, router, toast]); // Added getReturnPath to dependencies
+
+  const getReturnPath = useCallback(() => {
+    const fromQuery = searchParams.get('from');
+    if (fromQuery) return fromQuery;
+    if (parentPotentialRisk) return `/all-risks/manage/${parentPotentialRisk.id}`;
+    return '/risk-analysis'; // Default fallback
+  }, [searchParams, parentPotentialRisk]);
+
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -194,7 +202,7 @@ export default function RiskCauseAnalysisPage() {
     localStorage.setItem(causesStorageKey, JSON.stringify(currentRiskCauses.sort((a,b) => (a.sequenceNumber || 0) - (b.sequenceNumber || 0))));
     
     setCurrentRiskCause(updatedRiskCause); 
-    toast({ title: "Sukses", description: `Analisis untuk penyebab risiko PC${updatedRiskCause.sequenceNumber} telah disimpan.` });
+    toast({ title: "Sukses", description: `Analisis untuk penyebab risiko PC${updatedRiskCause.sequenceNumber || '?'} telah disimpan.` });
     setIsSaving(false);
   };
 
@@ -230,14 +238,6 @@ export default function RiskCauseAnalysisPage() {
     }
   };
 
-  const getReturnPath = () => {
-    const fromQuery = searchParams.get('from');
-    if (fromQuery) return fromQuery;
-    if (parentPotentialRisk) return `/all-risks/manage/${parentPotentialRisk.id}`;
-    return '/risk-analysis'; // Default fallback
-  }
-
-
   if (pageIsLoading || !currentRiskCause || !parentPotentialRisk || !grandParentGoal) {
     return (
       <div className="flex flex-col items-center justify-center h-screen">
@@ -247,9 +247,9 @@ export default function RiskCauseAnalysisPage() {
     );
   }
   
-  const goalCode = `${grandParentGoal.code || 'S?'}`;
-  const potentialRiskCode = `${goalCode}.PR${parentPotentialRisk.sequenceNumber || '?'}`;
-  const riskCauseCode = `${potentialRiskCode}.PC${currentRiskCause.sequenceNumber || '?'}`;
+  const goalCode = `${grandParentGoal.code || '[Tanpa Kode]'}`;
+  const potentialRiskCode = `${goalCode} • PR${parentPotentialRisk.sequenceNumber || '?'}`;
+  const riskCauseCode = `${potentialRiskCode} • PC${currentRiskCause.sequenceNumber || '?'}`;
 
   return (
     <div className="space-y-6">
@@ -270,7 +270,7 @@ export default function RiskCauseAnalysisPage() {
         <CardHeader>
             <CardTitle>Konteks Risiko</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-2 text-sm">
+        <CardContent className="space-y-1 text-sm">
             <div><strong>Sasaran Terkait ({goalCode}):</strong> {grandParentGoal.name}</div>
             <div><strong>Potensi Risiko ({potentialRiskCode}):</strong> {parentPotentialRisk.description}</div>
             <div><strong>Kategori Risiko:</strong> <Badge variant="secondary">{parentPotentialRisk.category || 'N/A'}</Badge></div>
@@ -286,31 +286,36 @@ export default function RiskCauseAnalysisPage() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-            <div className="space-y-1.5">
-              <Label htmlFor="keyRiskIndicator">Key Risk Indicator (KRI)</Label>
-              <Textarea
-                id="keyRiskIndicator"
-                {...register("keyRiskIndicator")}
-                rows={3}
-                placeholder="Contoh: Jumlah keluhan pelanggan melebihi X per bulan, Persentase downtime sistem > Y%"
-                disabled={isSaving}
-              />
-               {errors.keyRiskIndicator && <p className="text-xs text-destructive mt-1">{errors.keyRiskIndicator.message}</p>}
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="riskTolerance">Toleransi Risiko</Label>
-              <Textarea
-                id="riskTolerance"
-                {...register("riskTolerance")}
-                rows={3}
-                placeholder="Contoh: Maksimal 5 keluhan pelanggan per bulan, Downtime sistem tidak boleh melebihi 2 jam per kuartal"
-                disabled={isSaving}
-              />
-              {errors.riskTolerance && <p className="text-xs text-destructive mt-1">{errors.riskTolerance.message}</p>}
-            </div>
-            
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Left Column */}
+              <div className="space-y-6">
+                <div className="space-y-1.5">
+                  <Label htmlFor="keyRiskIndicator">Key Risk Indicator (KRI)</Label>
+                  <Textarea
+                    id="keyRiskIndicator"
+                    {...register("keyRiskIndicator")}
+                    rows={5}
+                    placeholder="Contoh: Jumlah keluhan pelanggan melebihi X per bulan, Persentase downtime sistem > Y%"
+                    disabled={isSaving}
+                  />
+                  {errors.keyRiskIndicator && <p className="text-xs text-destructive mt-1">{errors.keyRiskIndicator.message}</p>}
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="riskTolerance">Toleransi Risiko</Label>
+                  <Textarea
+                    id="riskTolerance"
+                    {...register("riskTolerance")}
+                    rows={5}
+                    placeholder="Contoh: Maksimal 5 keluhan pelanggan per bulan, Downtime sistem tidak boleh melebihi 2 jam per kuartal"
+                    disabled={isSaving}
+                  />
+                  {errors.riskTolerance && <p className="text-xs text-destructive mt-1">{errors.riskTolerance.message}</p>}
+                </div>
+              </div>
+
+              {/* Right Column */}
+              <div className="space-y-6">
                 <div className="space-y-1.5">
                     <div className="flex items-center justify-between">
                         <Label htmlFor="likelihood">Kemungkinan</Label>
@@ -378,25 +383,26 @@ export default function RiskCauseAnalysisPage() {
                       </Alert>
                     )}
                 </div>
-            </div>
 
-            <div className="space-y-2 rounded-md border p-3 bg-muted/30">
-                <div className="flex items-center justify-between">
-                    <Label className="text-sm font-medium">Tingkat Risiko (Penyebab)</Label>
-                     <Badge className={`${getRiskLevelColor(calculatedRiskLevel)}`}>
-                        {calculatedRiskLevel}
-                     </Badge>
+                <div className="space-y-2 rounded-md border p-3 bg-muted/30">
+                    <div className="flex items-center justify-between">
+                        <Label className="text-sm font-medium">Tingkat Risiko (Penyebab)</Label>
+                         <Badge className={`${getRiskLevelColor(calculatedRiskLevel)}`}>
+                            {calculatedRiskLevel}
+                         </Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Dihitung berdasarkan Kemungkinan dan Dampak yang dipilih untuk penyebab ini.</p>
                 </div>
-                <p className="text-xs text-muted-foreground">Dihitung berdasarkan Kemungkinan dan Dampak yang dipilih untuk penyebab ini.</p>
+                
+                <div className="pt-2">
+                   <Button variant="outline" size="sm" onClick={() => setIsRiskMatrixModalOpen(true)} type="button" className="w-full">
+                      <BarChartHorizontalBig className="mr-2 h-4 w-4" /> Lihat Matriks Profil Risiko
+                    </Button>
+                </div>
+              </div>
             </div>
             
-            <div className="pt-2">
-               <Button variant="outline" size="sm" onClick={() => setIsRiskMatrixModalOpen(true)} type="button" className="w-full">
-                  <BarChartHorizontalBig className="mr-2 h-4 w-4" /> Lihat Matriks Profil Risiko
-                </Button>
-            </div>
-            
-            <div className="flex justify-end">
+            <div className="flex justify-end mt-8">
               <Button type="submit" disabled={isSaving}>
                 {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                 Simpan Analisis Penyebab
