@@ -2,7 +2,7 @@
 export const LIKELIHOOD_LEVELS_DESC_MAP = {
   "Hampir tidak terjadi (1)": 1,
   "Jarang terjadi (2)": 2,
-  "Kadang Terjadi (3)": 3, // Adjusted "Kadang terjadi (3)" to "Kadang Terjadi (3)" for consistency
+  "Kadang Terjadi (3)": 3,
   "Sering terjadi (4)": 4,
   "Hampir pasti terjadi (5)": 5,
 } as const;
@@ -118,7 +118,14 @@ export interface AppUser {
   displayName: string | null;
   photoURL: string | null;
   role: UserRole;
-  uprId?: string | null; // ID Unit Pemilik Risiko pengguna
+  uprId: string | null; // ID dari koleksi UPRs (misalnya, "UPR1", "UPR2")
+  createdAt: string; 
+}
+
+export interface UPR {
+  id: string; // Firestore document ID
+  code: string; // e.g., UPR1, UPR2
+  name: string; // User-provided UPR name
   createdAt: string; // ISO string or Firebase Timestamp
 }
 
@@ -127,3 +134,4 @@ export interface AppUser {
 export const getControlTypeName = (typeKey: ControlMeasureTypeKey): string => {
   return CONTROL_MEASURE_TYPES[typeKey];
 };
+

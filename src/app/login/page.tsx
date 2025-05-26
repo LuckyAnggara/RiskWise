@@ -42,7 +42,9 @@ export default function LoginPage() {
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
-      await checkAndCreateUserDocument(user); // Peran default akan 'userSatker'
+      // For login, we just check if the user document exists.
+      // displayName and uprName are not passed as we assume profile is set up.
+      await checkAndCreateUserDocument(user, user.displayName || user.email || "Pengguna", undefined, 'userSatker'); 
       toast({ title: 'Login Berhasil', description: 'Selamat datang kembali!' });
       router.push('/');
     } catch (error: any) {
@@ -65,7 +67,9 @@ export default function LoginPage() {
     try {
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
-      await checkAndCreateUserDocument(user); // Peran default akan 'userSatker'
+      // For Google sign-in, uprName is not provided at this stage.
+      // displayName is taken from Google.
+      await checkAndCreateUserDocument(user, user.displayName || user.email || "Pengguna Google", undefined, 'userSatker'); 
       toast({ title: 'Login Google Berhasil', description: `Selamat datang, ${user.displayName || user.email}!` });
       router.push('/');
     } catch (error: any) {
@@ -75,6 +79,8 @@ export default function LoginPage() {
         errorMessage = 'Proses login Google dibatalkan oleh pengguna.';
       } else if (error.code === 'auth/account-exists-with-different-credential') {
         errorMessage = 'Akun sudah ada dengan metode login lain. Coba masuk dengan metode tersebut.';
+      } else {
+        errorMessage = error.message || errorMessage;
       }
       toast({ title: 'Login Google Gagal', description: errorMessage, variant: 'destructive' });
     } finally {
@@ -155,7 +161,7 @@ export default function LoginPage() {
           <Link href="/register" className="text-primary hover:underline">
             Belum punya akun? Daftar di sini
           </Link>
-          <p className="text-muted-foreground">&copy; {new Date().getFullYear()} RiskWise. Aplikasi Manajemen Risiko.</p>
+           <p className="text-muted-foreground">&copy; {new Date().getFullYear()} RiskWise. Aplikasi Manajemen Risiko.</p>
         </CardFooter>
       </Card>
     </div>

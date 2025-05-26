@@ -9,168 +9,187 @@ service cloud.firestore {
       return request.auth != null && docData.userId == request.auth.uid;
     }
 
-    function hasRequiredCreateFieldsAndOwnership(collectionName) {
-      let data = request.resource.data;
-      let commonFields = data.userId == request.auth.uid &&
-                         data.uprId != null && data.uprId != "" &&
-                         data.period != null && data.period != "" &&
-                         data.createdAt == request.time; // Enforce server timestamp on create
-
-      if (!commonFields) { return false; }
-
-      if (collectionName == 'goals') {
-        return data.name != null && data.name != "" &&
-               data.code != null && data.code != "" &&
-               data.description != null && data.description != "";
-      }
-      if (collectionName == 'potentialRisks') {
-        return data.goalId != null && data.goalId != "" &&
-               data.description != null && data.description != "" &&
-               data.sequenceNumber != null;
-      }
-      if (collectionName == 'riskCauses') {
-        return data.potentialRiskId != null && data.potentialRiskId != "" &&
-               data.goalId != null && data.goalId != "" && // Denormalized for rule checking
-               data.description != null && data.description != "" &&
-               data.source != null && data.source != "" &&
-               data.sequenceNumber != null;
-      }
-      if (collectionName == 'controlMeasures') {
-         return data.riskCauseId != null && data.riskCauseId != "" &&
-                data.potentialRiskId != null && data.potentialRiskId != "" && // Denormalized
-                data.goalId != null && data.goalId != "" && // Denormalized
-                data.controlType != null && data.controlType != "" &&
-                data.sequenceNumber != null &&
-                data.description != null && data.description != "";
-      }
-      if (collectionName == 'users') {
-        return data.uid == request.auth.uid && // UID must match authenticated user
-               data.email != null && // Email can be null from some providers, adjust if needed
-               data.role != null && (data.role == 'admin' || data.role == 'userSatker');
-      }
-      return false; // Unknown collection
+    function isUserAuthenticated() {
+      return request.auth != null;
     }
 
-    function isAllowedUpdate(collectionName) {
-      let data = request.resource.data;
-      let existingData = resource.data;
-      let commonImmutable = data.userId == existingData.userId &&
-                            data.uprId == existingData.uprId &&
-                            data.period == existingData.period &&
-                            data.createdAt == existingData.createdAt;
+    // Rules for 'users' collection
+    match /users/{userIdDoc} {
+      allow read: if isUserAuthenticated(); // Allow authenticated users to read user profiles (e.g., for display names)
+                                         // Consider restricting to only allow reading their own profile if needed: if request.auth.uid == userIdDoc;
+      allow create: if isUserAuthenticated() &&
+                       request.auth.uid == userIdDoc && // User can only create their own document
+                       request.resource.data.uid == request.auth.uid &&
+                       request.resource.data.email != null && // Email from auth provider
+                       request.resource.data.displayName != null && request.resource.data.displayName != "" && // DisplayName from form
+                       request.resource.data.role != null && (request.resource.data.role == 'userSatker' || request.resource.data.role == 'admin') &&
+                       // uprId can be null if user registers via Google first, or if no UPR is entered.
+                       (request.resource.data.uprId == null || (request.resource.data.uprId is string && request.resource.data.uprId != "")) &&
+                       request.resource.data.createdAt == request.time;
+
+      allow update: if isUserAuthenticated() && 
+                       request.auth.uid == userIdDoc && // User can only update their own document
+                       !(request.resource.data.uid != resource.data.uid) && // Cannot change uid
+                       !(request.resource.data.email != resource.data.email) && // Typically email is not changed by user directly
+                       !(request.resource.data.role != resource.data.role) && // Role should be changed by admin
+                       !(request.resource.data.createdAt != resource.data.createdAt); // Cannot change createdAt
+                       // Allow uprId to be updated (e.g., by an admin, or user in profile settings)
+                       // Allow displayName and photoURL to be updated.
       
-      if (!commonImmutable) { return false; }
-      
-      if (collectionName == 'goals') {
-        return data.code == existingData.code; // Code should be immutable after creation
-      }
-      if (collectionName == 'potentialRisks' || collectionName == 'riskCauses' || collectionName == 'controlMeasures') {
-        return data.sequenceNumber == existingData.sequenceNumber; // Sequence number immutable
-      }
-      if (collectionName == 'users') {
-        return data.uid == existingData.uid &&
-               data.role == existingData.role && // Role should not be changed by user
-               data.createdAt == existingData.createdAt; // createdAt immutable
-      }
-      return true; // Allow updates for other fields if not specified
+      allow delete: if false; // Generally users should not delete their own accounts directly through Firestore rules
     }
 
-    // USERS Collection
-    match /users/{userId} {
-      allow read: if request.auth != null; // Allow any authenticated user to read user profiles (e.g., for display names)
-                  // Or, for stricter: if request.auth.uid == userId; (only read own profile)
-      allow create: if request.auth != null && 
-                       request.resource.data.uid == request.auth.uid && // User can only create their own doc
-                       hasRequiredCreateFieldsAndOwnership('users');
-      allow update: if request.auth != null && 
-                       request.auth.uid == userId && // User can only update their own doc
-                       isAllowedUpdate('users');
-      allow delete: if false; // Generally users should not delete their own auth/user record directly
+    // Rules for 'uprs' collection
+    match /uprs/{uprDocId} {
+      allow read: if isUserAuthenticated();
+      allow list: if isUserAuthenticated();
+      allow create: if isUserAuthenticated() &&
+                       request.resource.data.name != null && request.resource.data.name != "" &&
+                       request.resource.data.code != null && request.resource.data.code != "" &&
+                       request.resource.data.createdAt == request.time; 
+                       // Add more validation if needed (e.g., code format)
+      allow update: if false; // Typically UPRs are not updated frequently, or only by admin.
+      allow delete: if false; // Typically UPRs are not deleted, or only by admin.
     }
 
-    // GOALS Collection
+    // Function to check required fields for 'goals' on create
+    function hasRequiredGoalCreateFields() {
+      return request.resource.data.name != null && request.resource.data.name != "" &&
+             request.resource.data.code != null && request.resource.data.code != "" &&
+             request.resource.data.description != null &&
+             request.resource.data.uprId != null && request.resource.data.uprId == resource.data.uprId && // uprId is from existing doc if applicable
+             request.resource.data.period != null && request.resource.data.period == resource.data.period && // period is from existing
+             request.resource.data.userId == request.auth.uid &&
+             request.resource.data.createdAt == request.time;
+    }
+    
+    // Function to check immutable fields for 'goals' on update
+    function isAllowedGoalUpdate() {
+      return !(request.resource.data.uprId != resource.data.uprId) &&
+             !(request.resource.data.period != resource.data.period) &&
+             !(request.resource.data.userId != resource.data.userId) &&
+             !(request.resource.data.code != resource.data.code) &&
+             !(request.resource.data.createdAt != resource.data.createdAt) &&
+             (request.resource.data.updatedAt == request.time || request.resource.data.updatedAt == null) ; // Allow setting/updating updatedAt
+    }
+
     match /goals/{goalId} {
-      allow read, list: if request.auth != null;
-      allow create: if request.auth != null && hasRequiredCreateFieldsAndOwnership('goals');
-      allow update: if request.auth != null && isOwner(resource.data) && isAllowedUpdate('goals');
-      allow delete: if request.auth != null && isOwner(resource.data);
+      allow read, list: if isUserAuthenticated(); // Assuming client filters by uprId/period
+      allow create: if isUserAuthenticated() && hasRequiredGoalCreateFields();
+      allow update: if isUserAuthenticated() && isOwner(resource.data) && isAllowedGoalUpdate();
+      allow delete: if isUserAuthenticated() && isOwner(resource.data);
 
-      // Potential Risks Subcollection (or top-level collection)
+      // Rules for 'potentialRisks' subcollection (or top-level collection)
       match /potentialRisks/{potentialRiskId} {
-        allow read, list: if request.auth != null;
-        allow create: if request.auth != null &&
-                         hasRequiredCreateFieldsAndOwnership('potentialRisks') &&
-                         get(/databases/$(database)/documents/goals/$(request.resource.data.goalId)).data.userId == request.auth.uid &&
-                         get(/databases/$(database)/documents/goals/$(request.resource.data.goalId)).data.uprId == request.resource.data.uprId &&
-                         get(/databases/$(database)/documents/goals/$(request.resource.data.goalId)).data.period == request.resource.data.period;
-        allow update: if request.auth != null && isOwner(resource.data) && isAllowedUpdate('potentialRisks');
-        allow delete: if request.auth != null && isOwner(resource.data);
+        allow read, list: if isUserAuthenticated();
+        allow create: if isUserAuthenticated() &&
+                         request.resource.data.userId == request.auth.uid &&
+                         request.resource.data.goalId == goalId &&
+                         request.resource.data.uprId == get(/databases/$(database)/documents/goals/$(goalId)).data.uprId &&
+                         request.resource.data.period == get(/databases/$(database)/documents/goals/$(goalId)).data.period &&
+                         request.resource.data.description != null && request.resource.data.description != "" &&
+                         request.resource.data.sequenceNumber != null &&
+                         request.resource.data.identifiedAt == request.time;
+                         // category and owner can be null
+        allow update: if isUserAuthenticated() && isOwner(resource.data) &&
+                         !(request.resource.data.userId != resource.data.userId) &&
+                         !(request.resource.data.goalId != resource.data.goalId) &&
+                         !(request.resource.data.uprId != resource.data.uprId) &&
+                         !(request.resource.data.period != resource.data.period) &&
+                         !(request.resource.data.identifiedAt != resource.data.identifiedAt) &&
+                         !(request.resource.data.sequenceNumber != resource.data.sequenceNumber);
+        allow delete: if isUserAuthenticated() && isOwner(resource.data);
 
-        // Risk Causes Subcollection
+        // Rules for 'riskCauses' subcollection (or top-level collection)
         match /riskCauses/{riskCauseId} {
-          allow read, list: if request.auth != null;
-          allow create: if request.auth != null &&
-                           hasRequiredCreateFieldsAndOwnership('riskCauses') &&
-                           get(/databases/$(database)/documents/goals/$(request.resource.data.goalId)/potentialRisks/$(request.resource.data.potentialRiskId)).data.userId == request.auth.uid &&
-                           get(/databases/$(database)/documents/goals/$(request.resource.data.goalId)/potentialRisks/$(request.resource.data.potentialRiskId)).data.uprId == request.resource.data.uprId &&
-                           get(/databases/$(database)/documents/goals/$(request.resource.data.goalId)/potentialRisks/$(request.resource.data.potentialRiskId)).data.period == request.resource.data.period;
-          allow update: if request.auth != null && isOwner(resource.data) && isAllowedUpdate('riskCauses');
-          allow delete: if request.auth != null && isOwner(resource.data);
+          allow read, list: if isUserAuthenticated();
+          allow create: if isUserAuthenticated() &&
+                           request.resource.data.userId == request.auth.uid &&
+                           request.resource.data.potentialRiskId == potentialRiskId &&
+                           request.resource.data.goalId == get(/databases/$(database)/documents/goals/$(goalId)/potentialRisks/$(potentialRiskId)).data.goalId &&
+                           request.resource.data.uprId == get(/databases/$(database)/documents/goals/$(goalId)/potentialRisks/$(potentialRiskId)).data.uprId &&
+                           request.resource.data.period == get(/databases/$(database)/documents/goals/$(goalId)/potentialRisks/$(potentialRiskId)).data.period &&
+                           request.resource.data.description != null && request.resource.data.description != "" &&
+                           request.resource.data.source != null &&
+                           request.resource.data.sequenceNumber != null &&
+                           request.resource.data.createdAt == request.time;
+          allow update: if isUserAuthenticated() && isOwner(resource.data) &&
+                           !(request.resource.data.userId != resource.data.userId) &&
+                           !(request.resource.data.potentialRiskId != resource.data.potentialRiskId) &&
+                           !(request.resource.data.goalId != resource.data.goalId) &&
+                           !(request.resource.data.uprId != resource.data.uprId) &&
+                           !(request.resource.data.period != resource.data.period) &&
+                           !(request.resource.data.createdAt != resource.data.createdAt) &&
+                           !(request.resource.data.sequenceNumber != resource.data.sequenceNumber);
+          allow delete: if isUserAuthenticated() && isOwner(resource.data);
 
-          // Control Measures Subcollection
+          // Rules for 'controlMeasures' subcollection (or top-level collection)
           match /controlMeasures/{controlMeasureId} {
-            allow read, list: if request.auth != null;
-            allow create: if request.auth != null &&
-                             hasRequiredCreateFieldsAndOwnership('controlMeasures') &&
-                             get(/databases/$(database)/documents/goals/$(request.resource.data.goalId)/potentialRisks/$(request.resource.data.potentialRiskId)/riskCauses/$(request.resource.data.riskCauseId)).data.userId == request.auth.uid &&
-                             get(/databases/$(database)/documents/goals/$(request.resource.data.goalId)/potentialRisks/$(request.resource.data.potentialRiskId)/riskCauses/$(request.resource.data.riskCauseId)).data.uprId == request.resource.data.uprId &&
-                             get(/databases/$(database)/documents/goals/$(request.resource.data.goalId)/potentialRisks/$(request.resource.data.potentialRiskId)/riskCauses/$(request.resource.data.riskCauseId)).data.period == request.resource.data.period;
-            allow update: if request.auth != null && isOwner(resource.data) && isAllowedUpdate('controlMeasures');
-            allow delete: if request.auth != null && isOwner(resource.data);
+            allow read, list: if isUserAuthenticated();
+            allow create: if isUserAuthenticated() &&
+                             request.resource.data.userId == request.auth.uid &&
+                             request.resource.data.riskCauseId == riskCauseId &&
+                             request.resource.data.potentialRiskId == get(/databases/$(database)/documents/goals/$(goalId)/potentialRisks/$(potentialRiskId)/riskCauses/$(riskCauseId)).data.potentialRiskId &&
+                             request.resource.data.goalId == get(/databases/$(database)/documents/goals/$(goalId)/potentialRisks/$(potentialRiskId)/riskCauses/$(riskCauseId)).data.goalId &&
+                             request.resource.data.uprId == get(/databases/$(database)/documents/goals/$(goalId)/potentialRisks/$(potentialRiskId)/riskCauses/$(riskCauseId)).data.uprId &&
+                             request.resource.data.period == get(/databases/$(database)/documents/goals/$(goalId)/potentialRisks/$(potentialRiskId)/riskCauses/$(riskCauseId)).data.period &&
+                             request.resource.data.description != null && request.resource.data.description != "" &&
+                             request.resource.data.controlType != null &&
+                             request.resource.data.sequenceNumber != null &&
+                             request.resource.data.createdAt == request.time;
+            allow update: if isUserAuthenticated() && isOwner(resource.data) &&
+                             !(request.resource.data.userId != resource.data.userId) &&
+                             !(request.resource.data.riskCauseId != resource.data.riskCauseId) &&
+                             !(request.resource.data.potentialRiskId != resource.data.potentialRiskId) &&
+                             !(request.resource.data.goalId != resource.data.goalId) &&
+                             !(request.resource.data.uprId != resource.data.uprId) &&
+                             !(request.resource.data.period != resource.data.period) &&
+                             !(request.resource.data.createdAt != resource.data.createdAt) &&
+                             !(request.resource.data.sequenceNumber != resource.data.sequenceNumber) &&
+                             !(request.resource.data.controlType != resource.data.controlType);
+            allow delete: if isUserAuthenticated() && isOwner(resource.data);
           }
         }
       }
     }
-
+    
     /*
-    // --- ALTERNATIVE: If using TOP-LEVEL collections for everything ---
-    // You would need to adjust the 'create' rules to validate parent document existence and ownership
-    // based on IDs stored in the child document.
-
+    // ALTERNATIVE: If you use TOP-LEVEL collections for everything instead of subcollections:
+    // Adjust paths and 'get' references accordingly. For example:
+    
     match /potentialRisks/{potentialRiskId} {
       allow read, list: if request.auth != null;
-      allow create: if request.auth != null &&
-                       hasRequiredCreateFieldsAndOwnership('potentialRisks') &&
-                       // Example: Check if the referenced goal exists and is owned by the user
+      allow create: if request.auth != null && 
+                       request.resource.data.userId == request.auth.uid &&
                        exists(/databases/$(database)/documents/goals/$(request.resource.data.goalId)) &&
-                       get(/databases/$(database)/documents/goals/$(request.resource.data.goalId)).data.userId == request.auth.uid &&
                        get(/databases/$(database)/documents/goals/$(request.resource.data.goalId)).data.uprId == request.resource.data.uprId &&
                        get(/databases/$(database)/documents/goals/$(request.resource.data.goalId)).data.period == request.resource.data.period;
-      allow update: if request.auth != null && isOwner(resource.data) && isAllowedUpdate('potentialRisks');
+                       // Add other field validations...
+      allow update: if request.auth != null && isOwner(resource.data) // Add immutable field checks...
       allow delete: if request.auth != null && isOwner(resource.data);
     }
 
     match /riskCauses/{riskCauseId} {
       allow read, list: if request.auth != null;
       allow create: if request.auth != null &&
-                       hasRequiredCreateFieldsAndOwnership('riskCauses') &&
+                       request.resource.data.userId == request.auth.uid &&
                        exists(/databases/$(database)/documents/potentialRisks/$(request.resource.data.potentialRiskId)) &&
-                       get(/databases/$(database)/documents/potentialRisks/$(request.resource.data.potentialRiskId)).data.userId == request.auth.uid &&
                        get(/databases/$(database)/documents/potentialRisks/$(request.resource.data.potentialRiskId)).data.uprId == request.resource.data.uprId &&
                        get(/databases/$(database)/documents/potentialRisks/$(request.resource.data.potentialRiskId)).data.period == request.resource.data.period;
-      allow update: if request.auth != null && isOwner(resource.data) && isAllowedUpdate('riskCauses');
+                       // Add other field validations...
+      allow update: if request.auth != null && isOwner(resource.data) // Add immutable field checks...
       allow delete: if request.auth != null && isOwner(resource.data);
     }
 
     match /controlMeasures/{controlMeasureId} {
       allow read, list: if request.auth != null;
       allow create: if request.auth != null &&
-                       hasRequiredCreateFieldsAndOwnership('controlMeasures') &&
+                       request.resource.data.userId == request.auth.uid &&
                        exists(/databases/$(database)/documents/riskCauses/$(request.resource.data.riskCauseId)) &&
-                       get(/databases/$(database)/documents/riskCauses/$(request.resource.data.riskCauseId)).data.userId == request.auth.uid &&
                        get(/databases/$(database)/documents/riskCauses/$(request.resource.data.riskCauseId)).data.uprId == request.resource.data.uprId &&
                        get(/databases/$(database)/documents/riskCauses/$(request.resource.data.riskCauseId)).data.period == request.resource.data.period;
-      allow update: if request.auth != null && isOwner(resource.data) && isAllowedUpdate('controlMeasures');
+                       // Add other field validations...
+      allow update: if request.auth != null && isOwner(resource.data) // Add immutable field checks...
       allow delete: if request.auth != null && isOwner(resource.data);
     }
     */
