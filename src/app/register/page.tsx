@@ -31,26 +31,40 @@ export default function RegisterPage() {
       return;
     }
     setIsLoading(true);
+    let firebaseUser: FirebaseUser | null = null;
+
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
+      firebaseUser = userCredential.user;
       
-      // Buat dokumen pengguna di Firestore dengan peran default 'userSatker'
-      await checkAndCreateUserDocument(user, 'userSatker');
+      // Attempt to create user document in Firestore
+      try {
+        await checkAndCreateUserDocument(firebaseUser, 'userSatker');
+        toast({ title: 'Registrasi Berhasil', description: 'Akun Anda telah berhasil dibuat. Silakan masuk.' });
+      } catch (firestoreError: any) {
+        console.error("Error creating user document in Firestore:", firestoreError);
+        // User was created in Auth, but Firestore document failed
+        toast({ 
+          title: 'Registrasi Akun Berhasil, Profil Gagal Disimpan', 
+          description: 'Akun Anda telah dibuat, tetapi gagal menyimpan profil pengguna. Silakan coba login atau hubungi administrator.', 
+          variant: 'destructive',
+          duration: 7000 
+        });
+      }
       
-      toast({ title: 'Registrasi Berhasil', description: 'Akun Anda telah berhasil dibuat. Silakan masuk.' });
-      router.push('/login'); // Arahkan ke halaman login setelah registrasi
-    } catch (error: any) {
-      console.error("Error with email/password registration:", error);
+      router.push('/login'); // Redirect to login after Auth user creation, regardless of Firestore profile status for now
+    
+    } catch (authError: any) {
+      console.error("Error with email/password registration:", authError);
       let errorMessage = 'Gagal melakukan registrasi. Silakan coba lagi.';
-      if (error.code === 'auth/email-already-in-use') {
+      if (authError.code === 'auth/email-already-in-use') {
         errorMessage = 'Alamat email ini sudah terdaftar.';
-      } else if (error.code === 'auth/weak-password') {
+      } else if (authError.code === 'auth/weak-password') {
         errorMessage = 'Password terlalu lemah. Minimal 6 karakter.';
-      } else if (error.code === 'auth/invalid-email') {
+      } else if (authError.code === 'auth/invalid-email') {
         errorMessage = 'Format email tidak valid.';
       }
-      toast({ title: 'Registrasi Gagal', description: errorMessage, variant: 'destructive' });
+      toast({ title: 'Registrasi Akun Gagal', description: errorMessage, variant: 'destructive' });
     } finally {
       setIsLoading(false);
     }
