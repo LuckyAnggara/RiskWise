@@ -1,4 +1,3 @@
-
 rules_version = '2';
 
 service cloud.firestore {
@@ -6,168 +5,108 @@ service cloud.firestore {
 
     // Helper Functions
     function isOwner(docData) {
-      return request.auth != null && docData.userId == request.auth.uid;
+      return request.auth != null && request.auth.uid == docData.userId;
     }
 
-    function isUpdatingAllowedFields(collectionName) {
-      let immutableFields;
-      if (collectionName == 'goals') {
-        immutableFields = ['uid', 'userId', 'uprId', 'period', 'createdAt', 'code'];
-      } else if (collectionName == 'potentialRisks') {
-        immutableFields = ['uid', 'userId', 'uprId', 'period', 'goalId', 'createdAt', 'sequenceNumber'];
-      } else if (collectionName == 'riskCauses') {
-        immutableFields = ['uid', 'userId', 'uprId', 'period', 'goalId', 'potentialRiskId', 'createdAt', 'sequenceNumber'];
-      } else if (collectionName == 'controlMeasures') {
-        immutableFields = ['uid', 'userId', 'uprId', 'period', 'goalId', 'potentialRiskId', 'riskCauseId', 'createdAt', 'sequenceNumber', 'controlType'];
-      } else if (collectionName == 'users') {
-         immutableFields = ['uid', 'email', 'role', 'createdAt']; // Pengguna bisa update displayName, photoURL, uprId
-      } else {
-        return false; // Unknown collection
-      }
-      
-      let forbiddenUpdates = request.resource.data.keys().filter(key => immutableFields.includes(key) && request.resource.data[key] != resource.data[key]);
-      return forbiddenUpdates.size() == 0 &&
-             (!request.resource.data.keys().hasAny(['updatedAt']) || request.resource.data.updatedAt == request.time);
+    // Memastikan field yang tidak boleh diubah (immutable) tidak diubah saat update
+    function isNotUpdatingImmutableFieldsForUser(requestData, resourceData) {
+      return requestData.uid == resourceData.uid &&
+             requestData.role == resourceData.role &&
+             requestData.createdAt == resourceData.createdAt;
+             // uprId dan displayName sekarang bisa diubah, jadi dihapus dari sini
     }
 
-    // Users Collection
-    match /users/{userIdDoc} {
-      allow read: if request.auth != null; // Izinkan pengguna terautentikasi membaca profil (bisa diperketat)
-      
-      allow create: if request.auth != null &&
-                       request.auth.uid == userIdDoc && // Hanya bisa membuat dokumen untuk diri sendiri
-                       request.resource.data.uid == request.auth.uid && // uid di data harus cocok
-                       request.resource.data.email == request.auth.token.email && // email harus cocok
-                       request.resource.data.displayName != null && // displayName harus ada
-                       request.resource.data.uprId == request.resource.data.displayName && // uprId harus sama dengan displayName
-                       request.resource.data.role != null && (request.resource.data.role == 'userSatker' || request.resource.data.role == 'admin') &&
-                       request.resource.data.createdAt == request.time; // Dibuat dengan server timestamp
-
-      allow update: if request.auth != null && 
-                       request.auth.uid == userIdDoc && // Hanya bisa update dokumen sendiri
-                       isUpdatingAllowedFields('users'); // Hanya field tertentu yang boleh diubah
-                       
-      allow delete: if false; // Pengguna biasa tidak bisa menghapus akun mereka sendiri via rules
-    }
-
-    // UPRS_COLLECTION tidak lagi digunakan, jadi rules untuk /uprs/{uprDocId} dihapus.
-
-    // Goals collection
-    match /goals/{goalId} {
-      allow read, list: if request.auth != null; // Asumsi: pengguna dalam UPR yang sama bisa melihat
-                                            // Kueri klien akan memfilter berdasarkan uprId pengguna
-      allow create: if request.auth != null &&
-                       isOwner(request.resource.data) &&
-                       request.resource.data.uprId == getUserData().uprId && // Goal dibuat untuk UPR pengguna
-                       request.resource.data.name != null && request.resource.data.name != "" &&
-                       request.resource.data.code != null && request.resource.data.code != "" &&
-                       request.resource.data.period == getCurrentPeriodForUser() && // Periode harus cocok dengan periode aktif pengguna
-                       request.resource.data.createdAt == request.time;
-                       
-      allow update: if request.auth != null && 
-                       isOwner(resource.data) &&
-                       isUpdatingAllowedFields('goals') &&
-                       request.resource.data.uprId == resource.data.uprId && // UPR ID tidak boleh diubah
-                       request.resource.data.period == resource.data.period;  // Periode tidak boleh diubah
-
-      allow delete: if request.auth != null && isOwner(resource.data);
-    }
-
-    // PotentialRisks collection (as a top-level collection)
-    match /potentialRisks/{potentialRiskDocId} {
-      allow read, list: if request.auth != null; // Filter by uprId/period in client query
-
-      allow create: if request.auth != null &&
-                       isOwner(request.resource.data) &&
-                       request.resource.data.uprId == getUserData().uprId &&
-                       request.resource.data.period == getCurrentPeriodForUser() &&
-                       request.resource.data.goalId != null &&
-                       exists(/databases/$(database)/documents/goals/$(request.resource.data.goalId)) &&
-                       get(/databases/$(database)/documents/goals/$(request.resource.data.goalId)).data.userId == request.auth.uid &&
-                       get(/databases/$(database)/documents/goals/$(request.resource.data.goalId)).data.uprId == request.resource.data.uprId &&
-                       get(/databases/$(database)/documents/goals/$(request.resource.data.goalId)).data.period == request.resource.data.period &&
-                       request.resource.data.identifiedAt == request.time &&
-                       request.resource.data.sequenceNumber != null;
-
-      allow update: if request.auth != null &&
-                       isOwner(resource.data) &&
-                       isUpdatingAllowedFields('potentialRisks') &&
-                       request.resource.data.uprId == resource.data.uprId &&
-                       request.resource.data.period == resource.data.period &&
-                       request.resource.data.goalId == resource.data.goalId; // goalId tidak boleh diubah
-
-      allow delete: if request.auth != null && isOwner(resource.data);
-    }
-
-    // RiskCauses collection (as a top-level collection)
-    match /riskCauses/{riskCauseDocId} {
-      allow read, list: if request.auth != null; // Filter by uprId/period in client query
-
-      allow create: if request.auth != null &&
-                       isOwner(request.resource.data) &&
-                       request.resource.data.uprId == getUserData().uprId &&
-                       request.resource.data.period == getCurrentPeriodForUser() &&
-                       request.resource.data.potentialRiskId != null &&
-                       exists(/databases/$(database)/documents/potentialRisks/$(request.resource.data.potentialRiskId)) &&
-                       get(/databases/$(database)/documents/potentialRisks/$(request.resource.data.potentialRiskId)).data.userId == request.auth.uid &&
-                       get(/databases/$(database)/documents/potentialRisks/$(request.resource.data.potentialRiskId)).data.uprId == request.resource.data.uprId &&
-                       get(/databases/$(database)/documents/potentialRisks/$(request.resource.data.potentialRiskId)).data.period == request.resource.data.period &&
-                       request.resource.data.createdAt == request.time &&
-                       request.resource.data.sequenceNumber != null;
-                       
-      allow update: if request.auth != null &&
-                       isOwner(resource.data) &&
-                       isUpdatingAllowedFields('riskCauses') &&
-                       request.resource.data.uprId == resource.data.uprId &&
-                       request.resource.data.period == resource.data.period &&
-                       request.resource.data.potentialRiskId == resource.data.potentialRiskId; // potentialRiskId tidak boleh diubah
-
-      allow delete: if request.auth != null && isOwner(resource.data);
-    }
-
-    // ControlMeasures collection (as a top-level collection)
-    match /controlMeasures/{controlMeasureDocId} {
-      allow read, list: if request.auth != null; // Filter by uprId/period in client query
-
-      allow create: if request.auth != null &&
-                       isOwner(request.resource.data) &&
-                       request.resource.data.uprId == getUserData().uprId &&
-                       request.resource.data.period == getCurrentPeriodForUser() &&
-                       request.resource.data.riskCauseId != null &&
-                       exists(/databases/$(database)/documents/riskCauses/$(request.resource.data.riskCauseId)) &&
-                       get(/databases/$(database)/documents/riskCauses/$(request.resource.data.riskCauseId)).data.userId == request.auth.uid &&
-                       get(/databases/$(database)/documents/riskCauses/$(request.resource.data.riskCauseId)).data.uprId == request.resource.data.uprId &&
-                       get(/databases/$(database)/documents/riskCauses/$(request.resource.data.riskCauseId)).data.period == request.resource.data.period &&
-                       request.resource.data.createdAt == request.time &&
-                       request.resource.data.sequenceNumber != null &&
-                       request.resource.data.controlType != null;
-
-      allow update: if request.auth != null &&
-                       isOwner(resource.data) &&
-                       isUpdatingAllowedFields('controlMeasures') &&
-                       request.resource.data.uprId == resource.data.uprId &&
-                       request.resource.data.period == resource.data.period &&
-                       request.resource.data.riskCauseId == resource.data.riskCauseId; // riskCauseId tidak boleh diubah
-                       
-      allow delete: if request.auth != null && isOwner(resource.data);
-    }
-
-    // Helper function to get user's data, specifically their uprId
-    // This assumes users documents exist and have a uprId field.
-    function getUserData() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    function hasRequiredGoalFields(data) {
+      return data.name != null && data.name != "" &&
+             data.code != null && data.code != "" &&
+             data.uprId != null && data.uprId != "" && // uprId di goal harus ada
+             data.period != null && data.period != "" &&
+             data.userId == request.auth.uid &&
+             data.createdAt == request.time;
     }
     
-    // Placeholder for current period, ideally this would come from a custom claim or app config document
-    // For now, we'll assume the client sends the correct period and rules will enforce its presence.
-    // A more robust way would be to have a global config document in Firestore.
-    function getCurrentPeriodForUser() {
-      // This is a placeholder. In a real app, you might:
-      // 1. Have the client always send the current period, and rules just validate it's not empty.
-      // 2. Or, have a 'userProfiles' collection where the active period for a user/upr is stored.
-      // For simplicity with current client-side context management:
-      return request.resource.data.period; // Relies on client sending correct period
+    function isGoalOwner(goalId) {
+        return get(/databases/$(database)/documents/goals/$(goalId)).data.userId == request.auth.uid;
     }
 
+    // Aturan untuk Koleksi 'users'
+    match /users/{userIdDoc} {
+      allow read: if request.auth != null; // Atau if request.auth.uid == userIdDoc; untuk lebih ketat
+
+      allow create: if request.auth != null &&
+                       request.auth.uid == userIdDoc && // ID dokumen harus sama dengan UID pengguna yang login
+                       request.resource.data.uid == request.auth.uid && // Field 'uid' dalam data harus sama
+                       request.resource.data.displayName != null && request.resource.data.displayName != "" &&
+                       request.resource.data.uprId == request.resource.data.displayName && // uprId harus sama dengan displayName
+                       request.resource.data.role != null && 
+                       (request.resource.data.role == 'userSatker' || request.resource.data.role == 'admin') &&
+                       request.resource.data.createdAt == request.time; // serverTimestamp
+
+      allow update: if request.auth != null &&
+                       request.auth.uid == userIdDoc && // Hanya pemilik yang bisa update
+                       isNotUpdatingImmutableFieldsForUser(request.resource.data, resource.data) &&
+                       // Pastikan jika displayName diubah, uprId juga diubah dan cocok
+                       (request.resource.data.displayName == resource.data.displayName || request.resource.data.uprId == request.resource.data.displayName) &&
+                       // Pastikan jika displayName tidak diubah, uprId juga tidak berubah atau cocok
+                       (request.resource.data.displayName != resource.data.displayName || request.resource.data.uprId == resource.data.uprId);
+
+
+      allow delete: if false; // Pengguna tidak bisa menghapus profil mereka sendiri
+    }
+
+    // Aturan untuk Koleksi 'goals'
+    match /goals/{goalId} {
+      allow read: if request.auth != null; // Semua pengguna terautentikasi bisa baca (filter UPR di client)
+      allow list: if request.auth != null; // Izinkan kueri daftar
+
+      allow create: if request.auth != null &&
+                       hasRequiredGoalFields(request.resource.data) &&
+                       // Pastikan uprId pada goal cocok dengan uprId (displayName) pengguna yang membuat
+                       request.resource.data.uprId == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.uprId;
+                       
+      allow update: if request.auth != null && isOwner(resource.data) &&
+                       request.resource.data.name != null && request.resource.data.name != "" &&
+                       request.resource.data.userId == resource.data.userId && // Tidak bisa ganti pemilik
+                       request.resource.data.uprId == resource.data.uprId &&   // Tidak bisa ganti UPR
+                       request.resource.data.period == resource.data.period && // Tidak bisa ganti Periode
+                       request.resource.data.code == resource.data.code &&     // Tidak bisa ganti kode
+                       request.resource.data.createdAt == resource.data.createdAt; // Tidak bisa ganti tanggal dibuat
+                       
+      allow delete: if request.auth != null && isOwner(resource.data);
+    }
+
+    // Aturan untuk Subkoleksi (atau koleksi top-level jika Anda memilih struktur itu)
+    // Contoh untuk potentialRisks (asumsikan koleksi top-level dengan goalId)
+    match /potentialRisks/{prId} {
+      allow read, list: if request.auth != null;
+      allow create: if request.auth != null &&
+                       request.resource.data.userId == request.auth.uid &&
+                       request.resource.data.goalId != null &&
+                       request.resource.data.uprId == get(/databases/$(database)/documents/goals/$(request.resource.data.goalId)).data.uprId &&
+                       request.resource.data.period == get(/databases/$(database)/documents/goals/$(request.resource.data.goalId)).data.period &&
+                       exists(/databases/$(database)/documents/goals/$(request.resource.data.goalId)) &&
+                       isGoalOwner(request.resource.data.goalId); // Hanya pemilik Goal yang bisa tambah PotentialRisk
+
+      allow update: if request.auth != null && isOwner(resource.data) &&
+                       request.resource.data.userId == resource.data.userId &&
+                       request.resource.data.goalId == resource.data.goalId &&
+                       request.resource.data.uprId == resource.data.uprId &&
+                       request.resource.data.period == resource.data.period;
+                       
+      allow delete: if request.auth != null && isOwner(resource.data);
+    }
+
+    // TODO: Tambahkan aturan serupa untuk riskCauses dan controlMeasures
+    // Sesuaikan path jika mereka adalah subkoleksi
+
+    // Default deny all (jika tidak ada aturan di atas yang cocok)
+    // match /{document=**} {
+    //   allow read, write: if false;
+    // }
+
+    // Aturan permisif untuk development (hapus atau ganti sebelum produksi)
+     match /{document=**} {
+       allow read, write: if request.time < timestamp.date(2025, 7, 30);
+     }
   }
 }

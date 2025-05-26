@@ -1,11 +1,10 @@
-
 // src/app/register/page.tsx
 "use client";
 
 import React, { useState } from 'react';
-import NextLink from 'next/link'; // Alias Link from next/link
+import NextLink from 'next/link';
 import { useRouter } from 'next/navigation';
-import { createUserWithEmailAndPassword, type User as FirebaseUser } from 'firebase/auth';
+import { createUserWithEmailAndPassword, updateProfile, type User as FirebaseUser } from 'firebase/auth';
 import { auth } from '@/lib/firebase/config';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -20,6 +19,7 @@ export default function RegisterPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [namaLengkap, setNamaLengkap] = useState(''); // Ditambahkan
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
@@ -27,6 +27,10 @@ export default function RegisterPage() {
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    if (!namaLengkap.trim()) {
+      toast({ title: 'Registrasi Gagal', description: 'Nama Lengkap harus diisi.', variant: 'destructive' });
+      return;
+    }
     if (password !== confirmPassword) {
       toast({ title: 'Registrasi Gagal', description: 'Password dan konfirmasi password tidak cocok.', variant: 'destructive' });
       return;
@@ -38,37 +42,44 @@ export default function RegisterPage() {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       firebaseUser = userCredential.user;
 
+      // Update displayName di Firebase Auth
+      if (firebaseUser) {
+        await updateProfile(firebaseUser, { displayName: namaLengkap.trim() });
+      }
+
       // Membuat/memperbarui dokumen pengguna di Firestore
-      // Menggunakan email sebagai placeholder displayName awal jika tidak ada dari provider
-      const initialDisplayName = firebaseUser.displayName || firebaseUser.email?.split('@')[0] || `Pengguna_${firebaseUser.uid.substring(0,5)}`;
-      await checkAndCreateUserDocument(firebaseUser); 
+      await checkAndCreateUserDocument(firebaseUser, 'userSatker', namaLengkap.trim()); 
       
       toast({ title: 'Registrasi Berhasil', description: 'Akun Anda telah berhasil dibuat. Silakan masuk.' });
       router.push('/login'); 
     
-    } catch (error: any) {
-      console.error("Kesalahan pada proses registrasi. Detail Error:", String(error));
-      let toastTitle = 'Registrasi Akun Gagal';
+    } catch (authOrFirestoreError: any) {
+      console.error("Kesalahan pada proses registrasi. Pesan:", authOrFirestoreError.message || String(authOrFirestoreError));
       let userMessage = "Terjadi kesalahan pada proses registrasi.";
       
-      if (firebaseUser && error) { 
-        toastTitle = 'Registrasi Akun Berhasil, Profil/UPR Gagal Disimpan';
-        userMessage = `Akun Anda dibuat, tetapi gagal menyimpan profil/UPR. Silakan coba login atau hubungi administrator. Detail: ${error instanceof Error ? error.message : String(error)}`;
-      } else if (error && error.code) { 
-        if (error.code === 'auth/email-already-in-use') {
-          userMessage = 'Alamat email ini sudah terdaftar.';
-        } else if (error.code === 'auth/weak-password') {
-          userMessage = 'Password terlalu lemah. Minimal 6 karakter.';
-        } else if (error.code === 'auth/invalid-email') {
-          userMessage = 'Format email tidak valid.';
-        } else {
-            userMessage = `Registrasi Akun Gagal: ${error.message || 'Error tidak diketahui.'}`;
+      if (firebaseUser && authOrFirestoreError) { 
+        // Auth user created, but Firestore/UPR part failed
+        userMessage = `Registrasi Akun Berhasil, Profil/UPR Gagal Disimpan. Pesan: ${authOrFirestoreError.message || String(authOrFirestoreError)}. Silakan coba login atau hubungi administrator.`;
+      } else if (authOrFirestoreError && authOrFirestoreError.code) { 
+        // Error from Firebase Auth
+        switch (authOrFirestoreError.code) {
+          case 'auth/email-already-in-use':
+            userMessage = 'Alamat email ini sudah terdaftar.';
+            break;
+          case 'auth/weak-password':
+            userMessage = 'Password terlalu lemah. Minimal 6 karakter.';
+            break;
+          case 'auth/invalid-email':
+            userMessage = 'Format email tidak valid.';
+            break;
+          default:
+            userMessage = `Registrasi Akun Gagal: ${authOrFirestoreError.message || 'Error tidak diketahui.'}`;
         }
-      } else if (error instanceof Error) {
-            userMessage = `Registrasi Akun Gagal. Pesan: ${error.message}`;
+      } else if (authOrFirestoreError instanceof Error) {
+            userMessage = `Registrasi Akun Gagal. Pesan: ${authOrFirestoreError.message}`;
       }
       toast({ 
-        title: toastTitle, 
+        title: firebaseUser ? 'Registrasi Akun Berhasil, Profil/UPR Gagal Disimpan' : 'Registrasi Akun Gagal', 
         description: userMessage, 
         variant: 'destructive',
         duration: 7000 
@@ -88,6 +99,18 @@ export default function RegisterPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <form onSubmit={handleRegister} className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="namaLengkap">Nama Lengkap (Ini akan menjadi Nama UPR Anda)</Label>
+              <Input
+                id="namaLengkap"
+                type="text"
+                placeholder="Masukkan nama lengkap Anda"
+                value={namaLengkap}
+                onChange={(e) => setNamaLengkap(e.target.value)}
+                required
+                disabled={isLoading}
+              />
+            </div>
             <div className="space-y-1.5">
               <Label htmlFor="email">Email</Label>
               <Input
@@ -144,5 +167,3 @@ export default function RegisterPage() {
     </div>
   );
 }
-
-    
