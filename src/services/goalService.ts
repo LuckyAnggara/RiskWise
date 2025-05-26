@@ -15,14 +15,15 @@ import {
   deleteDoc,
   Timestamp,
   serverTimestamp,
-  writeBatch
+  writeBatch,
+  getDoc // Added getDoc
 } from 'firebase/firestore';
 import { 
     GOALS_COLLECTION,
     POTENTIAL_RISKS_COLLECTION,
     RISK_CAUSES_COLLECTION,
     CONTROL_MEASURES_COLLECTION
-} from './collectionNames';
+} from '@/services/collectionNames';
 
 export interface GoalsResult {
   success: boolean;
@@ -36,14 +37,13 @@ export async function addGoal(
   uprId: string,
   period: string,
   userId: string,
-  existingGoals: Goal[] // Pass existing goals to determine the next code
+  existingGoals: Goal[]
 ): Promise<Goal> {
   try {
     const goalsCollectionRef = collection(db, GOALS_COLLECTION);
     const firstLetter = goalData.name.charAt(0).toUpperCase();
-    const prefix = /^[A-Z]$/.test(firstLetter) ? firstLetter : 'X'; // Default to 'X' if not a letter
+    const prefix = /^[A-Z]$/.test(firstLetter) ? firstLetter : 'X';
 
-    // Filter existing goals for the current UPR, Period, and starting letter
     const relevantGoals = existingGoals.filter(
       g => g.uprId === uprId && g.period === period && g.code && g.code.startsWith(prefix)
     );
@@ -69,7 +69,9 @@ export async function addGoal(
       createdAt: serverTimestamp()
     };
 
+    console.log("Attempting to add goal with data:", docData);
     const docRef = await addDoc(goalsCollectionRef, docData);
+    console.log("Goal added successfully with ID:", docRef.id);
 
     return {
         id: docRef.id,
@@ -79,11 +81,11 @@ export async function addGoal(
         uprId,
         period,
         userId,
-        createdAt: new Date().toISOString() // Placeholder, actual value is server-generated
+        createdAt: new Date().toISOString() 
     };
   } catch (error: any) {
-    console.error("Error adding goal to Firestore. Message:", error.message);
-    throw new Error("Gagal menambahkan sasaran ke database.");
+    console.error("Error adding goal to Firestore. Message:", error.message, "Code:", error.code, "Details:", error.details);
+    throw new Error(`Gagal menambahkan sasaran ke database. Pesan: ${error.message}`);
   }
 }
 
@@ -102,7 +104,6 @@ export async function getGoals(uprId: string | null | undefined, period: string)
       collection(db, GOALS_COLLECTION),
       where("uprId", "==", uprId),
       where("period", "==", period)
-      // orderBy("code", "asc") // Ordering by code will be done client-side after fetching
     );
 
     const querySnapshot = await getDocs(q);
@@ -110,34 +111,73 @@ export async function getGoals(uprId: string | null | undefined, period: string)
 
     querySnapshot.forEach((doc) => {
       const data = doc.data();
-      const createdAtISO = data.createdAt instanceof Timestamp
-                             ? data.createdAt.toDate().toISOString()
-                             : (data.createdAt ? new Date(data.createdAt).toISOString() : new Date().toISOString());
+      const createdAtTimestamp = data.createdAt as Timestamp | undefined;
+      const createdAtISO = createdAtTimestamp
+                             ? createdAtTimestamp.toDate().toISOString()
+                             : (data.createdAt && typeof data.createdAt === 'string' ? new Date(data.createdAt).toISOString() : new Date().toISOString());
+      
       goals.push({
         id: doc.id,
         name: data.name,
         description: data.description,
-        code: data.code || '', // Ensure code is always a string
+        code: data.code || '', 
         createdAt: createdAtISO,
         uprId: data.uprId,
         period: data.period,
         userId: data.userId,
       } as Goal);
     });
-
-    // Sort client-side to handle mixed numeric/alpha codes correctly
+    
     const sortedGoals = goals.sort((a, b) => (a.code || '').localeCompare(b.code || '', undefined, {numeric: true, sensitivity: 'base'}));
-
     return { success: true, goals: sortedGoals };
   } catch (error: any) {
-    console.error("Error getting goals from Firestore. Message:", error.message);
-    return {
-      success: false,
-      message: "Gagal mengambil daftar sasaran dari database.",
-      code: 'UNKNOWN_ERROR'
-    };
+    console.error("Error getting goals from Firestore. Message:", error.message, "Code:", error.code, "Details:", error.details);
+    let detailedErrorMessage = "Gagal mengambil daftar sasaran dari database.";
+    if (error.message) {
+      detailedErrorMessage += ` Pesan Asli: ${error.message}`;
+    }
+    if (error.code) {
+      detailedErrorMessage += ` Kode Error: ${error.code}`;
+      if (error.code === 'failed-precondition' && error.message && error.message.toLowerCase().includes('index')) {
+        detailedErrorMessage += " Kemungkinan ini disebabkan oleh indeks komposit yang hilang di Firestore. Silakan periksa Firebase Console (Firestore Database > Indexes) untuk membuat indeks yang diperlukan. Link untuk membuat indeks mungkin ada di log error server/konsol browser Anda.";
+      }
+    }
+    throw new Error(detailedErrorMessage);
   }
 }
+
+export async function getGoalById(goalId: string): Promise<Goal | null> {
+  try {
+    const goalRef = doc(db, GOALS_COLLECTION, goalId);
+    const docSnap = await getDoc(goalRef);
+
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      const createdAtTimestamp = data.createdAt as Timestamp | undefined;
+      const createdAtISO = createdAtTimestamp
+                             ? createdAtTimestamp.toDate().toISOString()
+                             : (data.createdAt && typeof data.createdAt === 'string' ? new Date(data.createdAt).toISOString() : new Date().toISOString());
+      
+      return {
+        id: docSnap.id,
+        name: data.name,
+        description: data.description,
+        code: data.code || '',
+        createdAt: createdAtISO,
+        uprId: data.uprId,
+        period: data.period,
+        userId: data.userId,
+      } as Goal;
+    } else {
+      console.log(`Goal dengan ID ${goalId} tidak ditemukan.`);
+      return null;
+    }
+  } catch (error: any) {
+    console.error(`Error getting goal by ID ${goalId} from Firestore: `, error.message);
+    throw new Error(`Gagal mengambil detail sasaran. Pesan: ${error.message}`);
+  }
+}
+
 
 export async function updateGoal(goalId: string, updatedData: Partial<Omit<Goal, 'id' | 'uprId' | 'period' | 'userId' | 'code' | 'createdAt'>>): Promise<void> {
   try {
@@ -155,11 +195,9 @@ export async function updateGoal(goalId: string, updatedData: Partial<Omit<Goal,
 export async function deleteGoal(goalId: string, uprId: string, period: string): Promise<void> {
   const batch = writeBatch(db);
   try {
-    // 1. Delete Goal document
     const goalRef = doc(db, GOALS_COLLECTION, goalId);
     batch.delete(goalRef);
 
-    // 2. Find and prepare to delete related PotentialRisks
     const potentialRisksQuery = query(
       collection(db, POTENTIAL_RISKS_COLLECTION),
       where("goalId", "==", goalId),
@@ -172,7 +210,6 @@ export async function deleteGoal(goalId: string, uprId: string, period: string):
       const potentialRiskId = prDoc.id;
       batch.delete(prDoc.ref);
 
-      // 3. Find and prepare to delete related RiskCauses for each PotentialRisk
       const riskCausesQuery = query(
         collection(db, RISK_CAUSES_COLLECTION),
         where("potentialRiskId", "==", potentialRiskId),
@@ -185,7 +222,6 @@ export async function deleteGoal(goalId: string, uprId: string, period: string):
         const riskCauseId = rcDoc.id;
         batch.delete(rcDoc.ref);
 
-        // 4. Find and prepare to delete related ControlMeasures for each RiskCause
         const controlMeasuresQuery = query(
           collection(db, CONTROL_MEASURES_COLLECTION),
           where("riskCauseId", "==", riskCauseId),

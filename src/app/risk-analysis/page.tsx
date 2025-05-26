@@ -8,7 +8,7 @@ import { PageHeader } from '@/components/ui/page-header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import type { Goal, PotentialRisk, RiskCause, RiskCategory, LikelihoodLevelDesc, ImpactLevelDesc, RiskSource, CalculatedRiskLevelCategory, ControlMeasure } from '@/lib/types';
-import { RISK_CATEGORIES, LIKELIHOOD_LEVELS_MAP, IMPACT_LEVELS_MAP, RISK_SOURCES } from '@/lib/types';
+import { RISK_CATEGORIES, LIKELIHOOD_LEVELS_DESC_MAP, IMPACT_LEVELS_DESC_MAP, RISK_SOURCES } from '@/lib/types'; // Corrected import
 import { Loader2, ListChecks, Search, Filter, BarChart3, Settings2, Trash2, AlertTriangle, CheckCircle2, Columns } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -20,11 +20,10 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useToast } from '@/hooks/use-toast';
 import { getCalculatedRiskLevel, getRiskLevelColor } from '@/app/risk-cause-analysis/[riskCauseId]/page'; 
-
-const getGoalsStorageKey = (uprId: string, period: string) => `riskwise-upr${uprId}-period${period}-goals`;
-const getPotentialRisksStorageKeyForGoal = (uprId: string, period: string, goalId: string) => `riskwise-upr${uprId}-period${period}-goal${goalId}-potentialRisks`;
-const getRiskCausesStorageKey = (uprId: string, period: string, potentialRiskId: string) => `riskwise-upr${uprId}-period${period}-potentialRisk${potentialRiskId}-causes`;
-const getControlsForCauseStorageKey = (uprId: string, period: string, riskCauseId: string) => `riskwise-upr${uprId}-period${period}-riskCause${riskCauseId}-controls`;
+import { useAuth } from '@/contexts/auth-context';
+import { getGoals } from '@/services/goalService';
+import { getPotentialRisksByGoalId } from '@/services/potentialRiskService';
+import { getRiskCausesByPotentialRiskId, deleteRiskCauseAndSubCollections } from '@/services/riskCauseService';
 
 
 interface EnrichedRiskCause extends RiskCause {
@@ -67,6 +66,7 @@ const ALL_POSSIBLE_CALCULATED_RISK_LEVELS: CalculatedRiskLevelCategory[] = ['San
 export default function RiskAnalysisPage() {
   const router = useRouter();
   const { toast } = useToast();
+  const { currentUser } = useAuth();
   const [currentUprId, setCurrentUprId] = useState('');
   const [currentPeriod, setCurrentPeriod] = useState('');
   
@@ -97,63 +97,65 @@ export default function RiskAnalysisPage() {
     setColumnVisibility(prev => ({ ...prev, [columnId]: !prev[columnId] }));
   };
 
-  const loadData = useCallback(() => {
-    if (typeof window !== 'undefined' && currentUprId && currentPeriod) {
-      setIsLoading(true);
-      
-      const goalsStorageKey = getGoalsStorageKey(currentUprId, currentPeriod);
-      const storedGoalsData = localStorage.getItem(goalsStorageKey);
-      const loadedGoals: Goal[] = storedGoalsData ? JSON.parse(storedGoalsData).sort((a:Goal, b:Goal) => (a.code || '').localeCompare(b.code || '', undefined, {numeric: true, sensitivity: 'base'})) : [];
-      setAllGoals(loadedGoals);
-
-      let collectedEnrichedRiskCauses: EnrichedRiskCause[] = [];
-
-      loadedGoals.forEach(goal => {
-        const potentialRisksStorageKey = getPotentialRisksStorageKeyForGoal(goal.uprId, goal.period, goal.id);
-        const storedPotentialRisksData = localStorage.getItem(potentialRisksStorageKey);
-        if (storedPotentialRisksData) {
-          const goalPotentialRisks: PotentialRisk[] = JSON.parse(storedPotentialRisksData).sort((a:PotentialRisk, b:PotentialRisk) => (a.sequenceNumber || 0) - (b.sequenceNumber || 0));
-          
-          goalPotentialRisks.forEach(pRisk => {
-            const causesStorageKey = getRiskCausesStorageKey(goal.uprId, goal.period, pRisk.id);
-            const storedCausesData = localStorage.getItem(causesStorageKey);
-            if (storedCausesData) {
-              const pRiskCauses: RiskCause[] = JSON.parse(storedCausesData).sort((a:RiskCause, b:RiskCause) => (a.sequenceNumber || 0) - (b.sequenceNumber || 0));
-              const enrichedCauses = pRiskCauses.map(cause => ({
-                ...cause,
-                potentialRiskDescription: pRisk.description,
-                potentialRiskCategory: pRisk.category,
-                potentialRiskSequenceNumber: pRisk.sequenceNumber || 0,
-                goalName: goal.name,
-                goalCode: goal.code || "", 
-                goalUprId: goal.uprId, 
-                goalPeriod: goal.period,
-                goalId: goal.id,
-              }));
-              collectedEnrichedRiskCauses = [...collectedEnrichedRiskCauses, ...enrichedCauses];
-            }
-          });
-        }
-      });
-      setAllEnrichedRiskCauses(collectedEnrichedRiskCauses);
-      setSelectedCauseIds([]); 
-      setIsLoading(false);
+  const loadData = useCallback(async () => {
+    if (!currentUser || !currentUprId || !currentPeriod) {
+        setIsLoading(false);
+        setAllEnrichedRiskCauses([]);
+        setAllGoals([]);
+        return;
     }
-  }, [currentUprId, currentPeriod]);
+    setIsLoading(true);
+    try {
+        const goalsResult = await getGoals(currentUprId, currentPeriod);
+        let loadedGoals: Goal[] = [];
+        if (goalsResult.success && goalsResult.goals) {
+            loadedGoals = goalsResult.goals;
+        } else {
+            toast({ title: "Kesalahan Data", description: goalsResult.message || "Gagal memuat daftar sasaran.", variant: "destructive" });
+        }
+        setAllGoals(loadedGoals);
+
+        let collectedEnrichedRiskCauses: EnrichedRiskCause[] = [];
+        for (const goal of loadedGoals) {
+            const pRisks = await getPotentialRisksByGoalId(goal.id, goal.uprId, goal.period);
+            for (const pRisk of pRisks) {
+                const causes = await getRiskCausesByPotentialRiskId(pRisk.id, pRisk.uprId, pRisk.period);
+                const enrichedCauses = causes.map(cause => ({
+                    ...cause,
+                    potentialRiskDescription: pRisk.description,
+                    potentialRiskCategory: pRisk.category,
+                    potentialRiskSequenceNumber: pRisk.sequenceNumber || 0,
+                    goalName: goal.name,
+                    goalCode: goal.code || "", 
+                    goalUprId: goal.uprId, 
+                    goalPeriod: goal.period,
+                    goalId: goal.id,
+                }));
+                collectedEnrichedRiskCauses.push(...enrichedCauses);
+            }
+        }
+        setAllEnrichedRiskCauses(collectedEnrichedRiskCauses);
+        setSelectedCauseIds([]);
+    } catch (error: any) {
+        console.error("Error loading data for Risk Analysis page:", error.message);
+        toast({ title: "Gagal Memuat Data", description: error.message || "Terjadi kesalahan saat memuat data analisis risiko.", variant: "destructive" });
+        setAllEnrichedRiskCauses([]);
+    } finally {
+        setIsLoading(false);
+    }
+  }, [currentUser, currentUprId, currentPeriod, toast]);
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const context = initializeAppContext();
-      setCurrentUprId(context.uprId);
-      setCurrentPeriod(context.period);
-    }
+    const context = initializeAppContext();
+    setCurrentUprId(context.uprId);
+    setCurrentPeriod(context.period);
   }, []);
 
   useEffect(() => {
-    if (currentUprId && currentPeriod) {
+    if (currentUprId && currentPeriod && currentUser) {
       loadData();
     }
-  }, [loadData, currentUprId, currentPeriod]);
+  }, [loadData, currentUprId, currentPeriod, currentUser]);
 
   const toggleCategoryFilter = (category: RiskCategory) => {
     setSelectedCategories(prev => 
@@ -243,50 +245,25 @@ export default function RiskAnalysisPage() {
     }
   };
 
-  const deleteCausesFromStorage = (causesToDelete: EnrichedRiskCause[]) => {
-    const causesByPotentialRisk = causesToDelete.reduce((acc, cause) => {
-      (acc[cause.potentialRiskId] = acc[cause.potentialRiskId] || []).push(cause.id);
-      return acc;
-    }, {} as Record<string, string[]>);
-
-    let updatedEnrichedCauses = [...allEnrichedRiskCauses];
-
-    for (const pRiskId in causesByPotentialRisk) {
-      const causeIdsToDeleteForThisPR = causesByPotentialRisk[pRiskId];
-      const parentContext = causesToDelete.find(c => c.potentialRiskId === pRiskId); 
-      if (parentContext) {
-        const storageKey = getRiskCausesStorageKey(parentContext.goalUprId, parentContext.goalPeriod, pRiskId);
-        const storedCausesData = localStorage.getItem(storageKey);
-        if (storedCausesData) {
-          let currentPRCauses: RiskCause[] = JSON.parse(storedCausesData);
-          currentPRCauses = currentPRCauses.filter(rc => !causeIdsToDeleteForThisPR.includes(rc.id));
-          currentPRCauses = currentPRCauses.sort((a,b) => (a.sequenceNumber || 0) - (b.sequenceNumber || 0))
-                                          .map((rc, index) => ({ ...rc, sequenceNumber: index + 1 }));
-          localStorage.setItem(storageKey, JSON.stringify(currentPRCauses));
-        }
-        // Also delete associated controls for each deleted cause
-        causeIdsToDeleteForThisPR.forEach(causeId => {
-            localStorage.removeItem(getControlsForCauseStorageKey(parentContext.goalUprId, parentContext.goalPeriod, causeId));
-        });
-      }
-      updatedEnrichedCauses = updatedEnrichedCauses.filter(rc => !(rc.potentialRiskId === pRiskId && causeIdsToDeleteForThisPR.includes(rc.id)));
-    }
-    setAllEnrichedRiskCauses(updatedEnrichedCauses);
-  };
 
   const handleDeleteSingleCause = (cause: EnrichedRiskCause) => {
     setCauseToDelete(cause);
     setIsSingleDeleteDialogOpen(true);
   };
 
-  const confirmDeleteSingleCause = () => {
-    if (causeToDelete) {
-      deleteCausesFromStorage([causeToDelete]);
-      toast({ title: "Penyebab Risiko Dihapus", description: `Penyebab "${causeToDelete.description}" telah dihapus.`, variant: "destructive" });
+  const confirmDeleteSingleCause = async () => {
+    if (!causeToDelete || !currentUser || !currentUprId || !currentPeriod) return;
+    try {
+      await deleteRiskCauseAndSubCollections(causeToDelete.id, currentUprId, currentPeriod);
+      toast({ title: "Penyebab Risiko Dihapus", description: `Penyebab "${causeToDelete.description}" (Kode: ${causeToDelete.goalCode}.PR${causeToDelete.potentialRiskSequenceNumber}.PC${causeToDelete.sequenceNumber}) telah dihapus.`, variant: "destructive" });
+      loadData(); // Reload data
+    } catch (error: any) {
+      console.error("Error deleting single risk cause:", error.message);
+      toast({ title: "Gagal Menghapus", description: error.message || "Terjadi kesalahan.", variant: "destructive" });
+    } finally {
+      setIsSingleDeleteDialogOpen(false);
+      setCauseToDelete(null);
     }
-    setIsSingleDeleteDialogOpen(false);
-    setCauseToDelete(null);
-    setSelectedCauseIds(prev => prev.filter(id => id !== causeToDelete?.id));
   };
 
   const handleDeleteSelectedCauses = () => {
@@ -297,13 +274,30 @@ export default function RiskAnalysisPage() {
     setIsBulkDeleteDialogOpen(true);
   };
 
-  const confirmDeleteSelectedCauses = () => {
-    const causesToDelete = allEnrichedRiskCauses.filter(cause => selectedCauseIds.includes(cause.id));
-    if (causesToDelete.length > 0) {
-      deleteCausesFromStorage(causesToDelete);
-      toast({ title: "Hapus Massal Berhasil", description: `${causesToDelete.length} penyebab risiko telah dihapus.`, variant: "destructive" });
+  const confirmDeleteSelectedCauses = async () => {
+    if (!currentUser || !currentUprId || !currentPeriod) return;
+    let deletedCount = 0;
+    const errors: string[] = [];
+
+    for (const causeId of selectedCauseIds) {
+        try {
+            await deleteRiskCauseAndSubCollections(causeId, currentUprId, currentPeriod);
+            deletedCount++;
+        } catch (error: any) {
+            const cause = allEnrichedRiskCauses.find(c => c.id === causeId);
+            console.error(`Gagal menghapus penyebab ${cause?.description || causeId}:`, error.message);
+            errors.push(cause?.description || causeId);
+        }
     }
-    setSelectedCauseIds([]);
+
+    if (deletedCount > 0) {
+        toast({ title: "Hapus Massal Selesai", description: `${deletedCount} penyebab risiko berhasil dihapus.`, variant: deletedCount === selectedCauseIds.length ? "default" : "warning" });
+    }
+    if (errors.length > 0) {
+        toast({ title: "Gagal Menghapus Sebagian", description: `Gagal menghapus penyebab: ${errors.join(', ')}.`, variant: "destructive" });
+    }
+    
+    loadData(); // Reload data
     setIsBulkDeleteDialogOpen(false);
   };
 
@@ -319,7 +313,7 @@ export default function RiskAnalysisPage() {
     };
   }, [allEnrichedRiskCauses]);
 
-  if (isLoading || !currentUprId || !currentPeriod) {
+  if (isLoading || (!currentUser && currentUprId && currentPeriod) ) {
     return (
       <div className="flex flex-col items-center justify-center h-screen">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
@@ -328,7 +322,22 @@ export default function RiskAnalysisPage() {
     );
   }
 
-  const relevantGoalsForFilter = allGoals.filter(g => g.uprId === currentUprId && g.period === currentPeriod);
+  if (!currentUser && !isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen">
+        <ListChecks className="mx-auto h-12 w-12 text-muted-foreground" />
+        <h3 className="mt-4 text-xl font-medium">Akses Dibatasi</h3>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Silakan login untuk mengakses halaman Analisis Risiko.
+        </p>
+        <Button onClick={() => router.push('/login')} className="mt-6">
+            Ke Halaman Login
+        </Button>
+      </div>
+    );
+  }
+
+  const relevantGoalsForFilter = Array.isArray(allGoals) ? allGoals.filter(g => g.uprId === currentUprId && g.period === currentPeriod) : [];
 
 
   return (
@@ -504,7 +513,7 @@ export default function RiskAnalysisPage() {
             </div>
         </div>
          {selectedCauseIds.length > 0 && (
-            <Button variant="destructive" onClick={handleDeleteSelectedCauses} className="mt-2 md:mt-0">
+            <Button variant="destructive" onClick={handleDeleteSelectedCauses} className="mt-2 md:mt-0" disabled={!currentUser}>
             <Trash2 className="mr-2 h-4 w-4" />
             Hapus ({selectedCauseIds.length}) yang Dipilih
             </Button>
@@ -528,20 +537,20 @@ export default function RiskAnalysisPage() {
       ) : (
         <Card className="w-full">
           <CardContent className="p-0">
-            <div className="relative w-full overflow-auto">
+            <div className="relative w-full overflow-x-auto">
                 <Table>
                 <TableHeader>
                     <TableRow>
-                    <TableHead className="w-[40px]">
+                    <TableHead className="w-[40px] sticky left-0 bg-background z-10">
                         <Checkbox
                             checked={selectedCauseIds.length === filteredAndSortedCauses.length && filteredAndSortedCauses.length > 0}
                             onCheckedChange={(checked) => handleSelectAllVisibleCauses(Boolean(checked))}
                             aria-label="Pilih semua penyebab yang terlihat"
-                            disabled={filteredAndSortedCauses.length === 0}
+                            disabled={filteredAndSortedCauses.length === 0 || !currentUser}
                         />
                     </TableHead>
-                    <TableHead className="min-w-[120px]">Kode</TableHead>
-                    <TableHead className="min-w-[250px] max-w-xs">Penyebab Potensi Risiko</TableHead>
+                    <TableHead className="min-w-[120px] sticky left-10 bg-background z-10">Kode</TableHead>
+                    <TableHead className="min-w-[250px] max-w-xs sticky left-[170px] bg-background z-10">Penyebab Potensi Risiko</TableHead>
                     {columnVisibility.sumber && <TableHead className="min-w-[100px]">Sumber</TableHead>}
                     {columnVisibility.kri && <TableHead className="min-w-[180px] max-w-xs">KRI</TableHead>}
                     {columnVisibility.toleransi && <TableHead className="min-w-[180px] max-w-xs">Toleransi</TableHead>}
@@ -550,7 +559,7 @@ export default function RiskAnalysisPage() {
                     {columnVisibility.tingkatRisiko && <TableHead className="min-w-[150px]">Tingkat Risiko</TableHead>}
                     {columnVisibility.potensiRisikoInduk && <TableHead className="min-w-[250px] max-w-xs">Potensi Risiko Induk</TableHead>}
                     {columnVisibility.sasaranInduk && <TableHead className="min-w-[200px] max-w-sm">Sasaran Induk</TableHead>}
-                    <TableHead className="text-right w-[100px]">Aksi</TableHead>
+                    <TableHead className="text-right w-[100px] sticky right-0 bg-background z-10 pr-4">Aksi</TableHead>
                     </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -558,23 +567,25 @@ export default function RiskAnalysisPage() {
                     const {level: causeRiskLevelText, score: causeRiskScore} = getCalculatedRiskLevel(cause.likelihood, cause.impact);
                     const goalCodeDisplay = (cause.goalCode && cause.goalCode.trim() !== '') ? cause.goalCode : '[Tanpa Kode]';
                     const causeCode = `${goalCodeDisplay}.PR${cause.potentialRiskSequenceNumber || 'N/A'}.PC${cause.sequenceNumber || 'N/A'}`;
+                    const returnPath = `/risk-analysis`;
                     return (
                         <Fragment key={cause.id}>
                         <TableRow>
-                            <TableCell>
+                            <TableCell className="sticky left-0 bg-background z-10">
                             <Checkbox
                                 checked={selectedCauseIds.includes(cause.id)}
                                 onCheckedChange={(checked) => handleSelectCause(cause.id, Boolean(checked))}
                                 aria-label={`Pilih penyebab ${cause.description}`}
+                                disabled={!currentUser}
                             />
                             </TableCell>
-                            <TableCell className="text-xs font-mono">{causeCode}</TableCell>
-                            <TableCell className="font-medium text-xs max-w-xs truncate" title={cause.description}>{cause.description}</TableCell>
+                            <TableCell className="text-xs font-mono sticky left-10 bg-background z-10">{causeCode}</TableCell>
+                            <TableCell className="font-medium text-xs max-w-xs truncate sticky left-[170px] bg-background z-10" title={cause.description}>{cause.description}</TableCell>
                             {columnVisibility.sumber && <TableCell className="text-xs"><Badge variant="outline">{cause.source}</Badge></TableCell>}
                             {columnVisibility.kri && <TableCell className="text-xs max-w-xs truncate" title={cause.keyRiskIndicator || ''}>{cause.keyRiskIndicator || '-'}</TableCell>}
                             {columnVisibility.toleransi && <TableCell className="text-xs max-w-xs truncate" title={cause.riskTolerance || ''}>{cause.riskTolerance || '-'}</TableCell>}
-                            {columnVisibility.kemungkinan && <TableCell><Badge variant={cause.likelihood ? "outline" : "ghost"} className={`text-xs ${!cause.likelihood ? "text-muted-foreground" : ""}`}>{cause.likelihood ? `${cause.likelihood} (${LIKELIHOOD_LEVELS_MAP[cause.likelihood]})` : 'N/A'}</Badge></TableCell>}
-                            {columnVisibility.dampak && <TableCell><Badge variant={cause.impact ? "outline" : "ghost"} className={`text-xs ${!cause.impact ? "text-muted-foreground" : ""}`}>{cause.impact ? `${cause.impact} (${IMPACT_LEVELS_MAP[cause.impact]})` : 'N/A'}</Badge></TableCell>}
+                            {columnVisibility.kemungkinan && <TableCell><Badge variant={cause.likelihood ? "outline" : "ghost"} className={`text-xs ${!cause.likelihood ? "text-muted-foreground" : ""}`}>{cause.likelihood ? `${cause.likelihood} (${LIKELIHOOD_LEVELS_DESC_MAP[cause.likelihood]})` : 'N/A'}</Badge></TableCell>}
+                            {columnVisibility.dampak && <TableCell><Badge variant={cause.impact ? "outline" : "ghost"} className={`text-xs ${!cause.impact ? "text-muted-foreground" : ""}`}>{cause.impact ? `${cause.impact} (${IMPACT_LEVELS_DESC_MAP[cause.impact]})` : 'N/A'}</Badge></TableCell>}
                             {columnVisibility.tingkatRisiko && <TableCell><Badge className={`${getRiskLevelColor(causeRiskLevelText)} text-xs`}>{causeRiskLevelText === 'N/A' ? 'N/A' : `${causeRiskLevelText} (${causeRiskScore || 'N/A'})`}</Badge></TableCell>}
                             {columnVisibility.potensiRisikoInduk && 
                               <TableCell className="text-xs max-w-xs truncate" title={cause.potentialRiskDescription}>
@@ -587,7 +598,7 @@ export default function RiskAnalysisPage() {
                                 {goalCodeDisplay} - {cause.goalName}
                               </TableCell>
                             }
-                            <TableCell className="text-right">
+                            <TableCell className="text-right sticky right-0 bg-background z-10 pr-4">
                             <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
                                 <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -596,11 +607,11 @@ export default function RiskAnalysisPage() {
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
                                 <DropdownMenuItem asChild>
-                                    <Link href={`/risk-cause-analysis/${cause.id}?from=/risk-analysis`}>
+                                    <Link href={`/risk-cause-analysis/${cause.id}?from=${encodeURIComponent(returnPath)}`}>
                                     <BarChart3 className="mr-2 h-4 w-4" /> Analisis Detail
                                     </Link>
                                 </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleDeleteSingleCause(cause)} className="text-destructive focus:text-destructive focus:bg-destructive/10">
+                                <DropdownMenuItem onClick={() => handleDeleteSingleCause(cause)} className="text-destructive focus:text-destructive focus:bg-destructive/10" disabled={!currentUser}>
                                     <Trash2 className="mr-2 h-4 w-4" /> Hapus Penyebab
                                 </DropdownMenuItem>
                                 </DropdownMenuContent>
@@ -641,7 +652,7 @@ export default function RiskAnalysisPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Batal</AlertDialogCancel>
+            <AlertDialogCancel onClick={() => setIsBulkDeleteDialogOpen(false)}>Batal</AlertDialogCancel>
             <AlertDialogAction onClick={confirmDeleteSelectedCauses} className="bg-destructive hover:bg-destructive/90">Hapus ({selectedCauseIds.length})</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
