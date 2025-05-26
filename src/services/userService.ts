@@ -15,14 +15,14 @@ const DEFAULT_AVAILABLE_PERIODS = [
 ];
 
 export async function getUserDocument(uid: string): Promise<AppUser | null> {
+  console.log(`[userService] getUserDocument: Attempting to get user document for UID: ${uid}`);
   try {
-    console.log(`[userService] Attempting to get user document for UID: ${uid}`);
     const userDocRef = doc(db, USERS_COLLECTION, uid);
     const userDocSnap = await getDoc(userDocRef);
 
     if (userDocSnap.exists()) {
       const data = userDocSnap.data();
-      console.log(`[userService] User document found for UID: ${uid}`, data);
+      console.log(`[userService] getUserDocument: User document found for UID ${uid}. Data:`, JSON.stringify(data));
       const createdAtTimestamp = data.createdAt as Timestamp | undefined;
       const createdAtISO = createdAtTimestamp
                         ? createdAtTimestamp.toDate().toISOString()
@@ -37,7 +37,7 @@ export async function getUserDocument(uid: string): Promise<AppUser | null> {
         uid: userDocSnap.id,
         email: data.email || null,
         displayName: data.displayName || null,
-        photoURL: data.photoURL === undefined ? null : data.photoURL,
+        photoURL: data.photoURL || null,
         role: data.role || 'userSatker',
         uprId: data.uprId || data.displayName || null,
         createdAt: createdAtISO,
@@ -46,11 +46,12 @@ export async function getUserDocument(uid: string): Promise<AppUser | null> {
         availablePeriods: data.availablePeriods || [...DEFAULT_AVAILABLE_PERIODS],
       } as AppUser;
     }
-    console.log(`[userService] User document with UID ${uid} not found.`);
+    console.log(`[userService] getUserDocument: User document with UID ${uid} not found.`);
     return null;
   } catch (error: any) {
-    console.error("[userService] Error getting user document from Firestore. Message:", error.message);
-    throw new Error(`Gagal mengambil dokumen pengguna: ${error.message || String(error)}`);
+    console.error("[userService] getUserDocument: Error getting user document from Firestore. Message:", error.message);
+    // Jangan melempar error di sini agar AuthContext bisa menangani appUser yang null
+    return null; 
   }
 }
 
@@ -59,18 +60,28 @@ export async function checkAndCreateUserDocument(
   defaultRole: UserRole = 'userSatker'
 ): Promise<AppUser> {
   console.log("[userService] checkAndCreateUserDocument called for UID:", firebaseUser.uid);
+  console.log("[userService] firebaseUser object received:", JSON.stringify({
+    uid: firebaseUser.uid,
+    email: firebaseUser.email,
+    displayName: firebaseUser.displayName,
+    photoURL: firebaseUser.photoURL,
+  }));
+
   const userDocRef = doc(db, USERS_COLLECTION, firebaseUser.uid);
 
   try {
     const existingUserDocSnap = await getDoc(userDocRef);
 
+    // Pastikan displayName dan uprId tidak undefined
     const finalDisplayName = firebaseUser.displayName || firebaseUser.email?.split('@')[0] || `Pengguna_${firebaseUser.uid.substring(0, 5)}`;
-    const finalUprId = finalDisplayName;
+    const finalUprId = finalDisplayName; // Sesuai model 1 pengguna = 1 UPR
+
+    console.log(`[userService] Determined finalDisplayName: "${finalDisplayName}", finalUprId: "${finalUprId}"`);
 
     if (existingUserDocSnap.exists()) {
-      console.log("[userService] User document exists for UID:", firebaseUser.uid);
-      const existingData = existingUserDocSnap.data() as AppUser;
-      const updates: Partial<AppUser> = {};
+      const existingData = existingUserDocSnap.data();
+      console.log("[userService] User document exists. Existing data:", JSON.stringify(existingData));
+      const updates: { [key: string]: any } = {}; // Gunakan any untuk fleksibilitas update
       let needsUpdate = false;
 
       if (finalDisplayName && existingData.displayName !== finalDisplayName) {
@@ -79,7 +90,7 @@ export async function checkAndCreateUserDocument(
         needsUpdate = true;
       }
       
-      const currentPhotoURL = firebaseUser.photoURL === undefined ? null : firebaseUser.photoURL;
+      const currentPhotoURL = firebaseUser.photoURL || null; // Pastikan null jika tidak ada
       if (existingData.photoURL !== currentPhotoURL) {
         updates.photoURL = currentPhotoURL;
         needsUpdate = true;
@@ -89,32 +100,39 @@ export async function checkAndCreateUserDocument(
         updates.uprId = finalUprId;
         needsUpdate = true;
       }
-      
-      if (existingData.activePeriod === undefined || existingData.activePeriod === null) {
+
+      // Inisialisasi periode jika belum ada
+      if (!existingData.activePeriod) {
         updates.activePeriod = DEFAULT_PERIOD;
         needsUpdate = true;
       }
-      if (existingData.availablePeriods === undefined || existingData.availablePeriods === null || (Array.isArray(existingData.availablePeriods) && existingData.availablePeriods.length === 0)) {
+      if (!existingData.availablePeriods || existingData.availablePeriods.length === 0) {
         updates.availablePeriods = [...DEFAULT_AVAILABLE_PERIODS];
         needsUpdate = true;
       }
+       if (!existingData.role) {
+        updates.role = defaultRole;
+        needsUpdate = true;
+      }
+
 
       if (needsUpdate && Object.keys(updates).length > 0) {
+        updates.updatedAt = serverTimestamp();
         console.log('[userService] Updating existing user document with:', JSON.stringify(updates));
-        await updateDoc(userDocRef, {...updates, updatedAt: serverTimestamp()});
-         console.log('[userService] Existing user document updated successfully.');
+        await updateDoc(userDocRef, updates);
+        console.log('[userService] Existing user document updated successfully.');
       } else {
         console.log('[userService] No updates needed for existing user document.');
       }
       
-      const finalDocSnap = await getDoc(userDocRef);
+      const finalDocSnap = await getDoc(userDocRef); // Re-fetch to get latest data including timestamps
       const finalData = finalDocSnap.data()!;
       const createdAt = finalData.createdAt instanceof Timestamp 
                         ? finalData.createdAt.toDate().toISOString() 
-                        : (existingData.createdAt || new Date().toISOString());
+                        : (existingData.createdAt instanceof Timestamp ? existingData.createdAt.toDate().toISOString() : new Date().toISOString());
       const updatedAt = finalData.updatedAt instanceof Timestamp
                         ? finalData.updatedAt.toDate().toISOString()
-                        : (existingData.updatedAt || undefined);
+                        : (existingData.updatedAt instanceof Timestamp ? existingData.updatedAt.toDate().toISOString() : undefined);
 
       return {
         uid: firebaseUser.uid,
@@ -135,7 +153,7 @@ export async function checkAndCreateUserDocument(
         uid: firebaseUser.uid,
         email: firebaseUser.email || null,
         displayName: finalDisplayName,
-        photoURL: firebaseUser.photoURL === undefined ? null : firebaseUser.photoURL,
+        photoURL: firebaseUser.photoURL || null,
         role: defaultRole,
         uprId: finalUprId,
         activePeriod: DEFAULT_PERIOD,
@@ -143,15 +161,15 @@ export async function checkAndCreateUserDocument(
         createdAt: serverTimestamp(),
       };
       
-      console.log('[userService] Creating new user document with:', JSON.stringify(newUserDocData));
+      console.log('[userService] Creating new user document with (SERIALIZED):', JSON.stringify(newUserDocData));
       await setDoc(userDocRef, newUserDocData);
       console.log('[userService] New user document created successfully.');
       
-      // Fetch the just created document to get the server-generated createdAt timestamp correctly
+      // Re-fetch untuk mendapatkan timestamp yang sebenarnya
       const createdDocSnap = await getDoc(userDocRef);
       if (createdDocSnap.exists()) {
         const createdData = createdDocSnap.data();
-        const createdAtTimestamp = createdData.createdAt as Timestamp;
+        const createdAtTimestamp = createdData.createdAt as Timestamp; // Harusnya sudah Timestamp
         return {
           uid: firebaseUser.uid,
           email: newUserDocData.email,
@@ -164,15 +182,15 @@ export async function checkAndCreateUserDocument(
           createdAt: createdAtTimestamp.toDate().toISOString(),
         } as AppUser;
       } else {
-        // Should not happen if setDoc was successful
-        throw new Error("Gagal mengambil dokumen pengguna yang baru dibuat.");
+        throw new Error("Gagal mengambil dokumen pengguna yang baru dibuat setelah penyimpanan.");
       }
     }
   } catch (error: any) {
-    console.error("[userService] Error in checkAndCreateUserDocument. Message:", error.message, "Code:", error.code);
+    console.error("[userService] Error in checkAndCreateUserDocument. Message:", error.message);
     if (error.name === 'FirebaseError') {
-        console.error("[userService] FirebaseError Details:", JSON.stringify(error));
+        console.error("[userService] Firestore Error Details (JSON):", JSON.stringify(error));
     }
+    // Lempar error agar bisa ditangkap oleh pemanggil (misalnya, halaman registrasi/login)
     throw new Error(`Gagal menyimpan atau memperbarui profil pengguna di database: ${error.message || String(error)}`);
   }
 }
@@ -182,27 +200,29 @@ export async function updateUserProfileData(
   data: Partial<Pick<AppUser, 'displayName' | 'photoURL' | 'activePeriod' | 'availablePeriods'>>
 ): Promise<void> {
   console.log(`[userService] updateUserProfileData called for UID: ${uid} with data:`, JSON.stringify(data));
+  const userDocRef = doc(db, USERS_COLLECTION, uid);
+  
   try {
-    const userDocRef = doc(db, USERS_COLLECTION, uid);
     const userDocSnap = await getDoc(userDocRef);
-
-    const updates: { [key: string]: any } = {}; // Use a more generic type for updates object
+    const updates: { [key: string]: any } = {};
 
     if (data.displayName !== undefined) {
-      updates.displayName = data.displayName || null;
-      updates.uprId = data.displayName || null; 
+      updates.displayName = data.displayName || null; // Pastikan null jika string kosong atau undefined
+      updates.uprId = data.displayName || null;     // Sinkronkan uprId
     }
     if (data.photoURL !== undefined) {
-      updates.photoURL = data.photoURL === undefined ? null : data.photoURL;
+      updates.photoURL = data.photoURL || null; // Pastikan null jika string kosong atau undefined
     }
     if (data.activePeriod !== undefined) {
-      updates.activePeriod = data.activePeriod || null;
+      updates.activePeriod = data.activePeriod || DEFAULT_PERIOD;
     }
     if (data.availablePeriods !== undefined) {
-      updates.availablePeriods = Array.isArray(data.availablePeriods) ? data.availablePeriods : [];
+      updates.availablePeriods = Array.isArray(data.availablePeriods) && data.availablePeriods.length > 0 
+                                  ? data.availablePeriods 
+                                  : [...DEFAULT_AVAILABLE_PERIODS];
     }
     
-    if (Object.keys(updates).length === 0 && userDocSnap.exists()) { // Only return if no updates AND doc exists
+    if (Object.keys(updates).length === 0 && userDocSnap.exists()) {
         console.log("[userService] No changes to update for user profile.");
         return;
     }
@@ -213,11 +233,12 @@ export async function updateUserProfileData(
       console.log(`[userService] Updating user document for UID ${uid} with:`, JSON.stringify(updates));
       await updateDoc(userDocRef, updates);
     } else {
-      console.log(`[userService] User document for UID ${uid} not found. Creating new document with updates.`);
+      // Jika dokumen tidak ada, buat dokumen baru dengan data yang diberikan + default
+      console.log(`[userService] User document for UID ${uid} not found. Creating new document.`);
       const newDocData = {
         uid: uid,
-        email: null, 
-        displayName: updates.displayName || `Pengguna_${uid.substring(0,5)}`, // Default if not provided
+        email: null, // Email tidak bisa didapatkan dari sini, perlu dari currentUser atau dibiarkan null
+        displayName: updates.displayName || `Pengguna_${uid.substring(0,5)}`,
         photoURL: updates.photoURL === undefined ? null : updates.photoURL,
         role: 'userSatker', 
         uprId: updates.uprId || updates.displayName || `Pengguna_${uid.substring(0,5)}`,
@@ -226,10 +247,10 @@ export async function updateUserProfileData(
         createdAt: serverTimestamp(), 
         updatedAt: serverTimestamp(),
       };
+      console.log('[userService] Creating new user document (from update path) with:', JSON.stringify(newDocData));
       await setDoc(userDocRef, newDocData);
     }
     console.log(`[userService] User document updated/created successfully for UID ${uid}.`);
-
   } catch (error: any) {
     console.error("[userService] Error updating/creating user profile data in Firestore. Message:", error.message);
     if (error.name === 'FirebaseError') {

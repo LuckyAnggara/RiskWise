@@ -5,14 +5,14 @@ import React, { createContext, useContext, useEffect, useState, type ReactNode, 
 import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
 import { auth } from '@/lib/firebase/config';
 import { Loader2 } from 'lucide-react';
-import { getUserDocument } from '@/services/userService';
+import { getUserDocument, checkAndCreateUserDocument } from '@/services/userService'; // Import checkAndCreateUserDocument
 import type { AppUser } from '@/lib/types';
 
 interface AuthContextType {
   currentUser: FirebaseUser | null;
-  appUser: AppUser | null; // User data from Firestore
+  appUser: AppUser | null;
   loading: boolean;
-  refreshAppUser: () => Promise<void>; // Function to refresh appUser
+  refreshAppUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -24,28 +24,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const fetchAppUser = useCallback(async (user: FirebaseUser | null) => {
     if (user) {
+      console.log(`[AuthContext] fetchAppUser called for UID: ${user.uid}`);
       try {
-        const userDoc = await getUserDocument(user.uid);
+        // Coba dapatkan, jika tidak ada, checkAndCreate akan membuatkan (penting untuk login pertama)
+        // Untuk login berikutnya, ini akan mengambil data yang sudah ada/diupdate.
+        const userDoc = await checkAndCreateUserDocument(user); // Menggunakan checkAndCreateUserDocument
+        console.log(`[AuthContext] fetchAppUser: AppUser data received/created:`, userDoc ? JSON.stringify(userDoc).substring(0,200) + "..." : "null");
         setAppUser(userDoc);
       } catch (error) {
-        console.error("Failed to fetch AppUser from Firestore:", error);
-        setAppUser(null); // Reset appUser on error
-        // Potentially show a toast to the user here if fetching appUser fails critically
+        console.error("[AuthContext] fetchAppUser: Failed to fetch/create AppUser from Firestore:", error);
+        setAppUser(null);
       }
     } else {
+      console.log("[AuthContext] fetchAppUser: No Firebase user, setting appUser to null.");
       setAppUser(null);
     }
   }, []);
 
   useEffect(() => {
+    setLoading(true); // Mulai loading saat listener auth state dipasang
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      console.log("[AuthContext] onAuthStateChanged: Firebase user state changed. User:", user ? user.uid : "null");
       setCurrentUser(user);
       try {
         await fetchAppUser(user);
       } catch (error) {
-        // Error during fetchAppUser is already logged within fetchAppUser
-        // We ensure loading is set to false in the finally block
+        // Error during fetchAppUser already logged
+        console.error("[AuthContext] onAuthStateChanged: Error during fetchAppUser call:", error);
       } finally {
+        console.log("[AuthContext] onAuthStateChanged: Setting loading to false.");
         setLoading(false);
       }
     });
@@ -55,18 +62,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refreshAppUser = useCallback(async () => {
     if (currentUser) {
-      setLoading(true); // Indicate loading while refreshing
+      console.log(`[AuthContext] refreshAppUser called for UID: ${currentUser.uid}`);
+      setLoading(true);
       try {
         await fetchAppUser(currentUser);
       } catch (error) {
-        // Error during fetchAppUser is already logged within fetchAppUser
+        console.error("[AuthContext] refreshAppUser: Error during fetchAppUser call:", error);
       } finally {
+        console.log("[AuthContext] refreshAppUser: Setting loading to false.");
         setLoading(false);
       }
+    } else {
+      console.log("[AuthContext] refreshAppUser: No current user, skipping refresh.");
     }
   }, [currentUser, fetchAppUser]);
-
-  // Initial loading state for the entire app until auth state is resolved AND appUser is fetched
+  
   if (loading) { 
     return (
       <div className="flex flex-col items-center justify-center h-screen">
@@ -75,7 +85,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       </div>
     );
   }
-
 
   return (
     <AuthContext.Provider value={{ currentUser, appUser, loading, refreshAppUser }}>
@@ -91,3 +100,5 @@ export function useAuth() {
   }
   return context;
 }
+
+    
