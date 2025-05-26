@@ -1,0 +1,120 @@
+
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper function to check if a user is the owner of a document
+    function isOwner(docData) {
+      return request.auth.uid == docData.userId;
+    }
+
+    // Helper function to check if incoming data for create has essential fields
+    // and that the creator is the authenticated user.
+    function hasRequiredCreateFieldsAndOwnership(collectionName) {
+      let data = request.resource.data;
+      let common = data.userId == request.auth.uid &&
+                   data.uprId is string && data.uprId.size() > 0 &&
+                   data.period is string && data.period.size() > 0;
+      if (collectionName == 'goals') {
+        return common && data.name is string && data.description is string && data.code is string;
+      }
+      if (collectionName == 'potentialRisks') {
+        return common && data.goalId is string && data.description is string && data.sequenceNumber is number;
+      }
+      if (collectionName == 'riskCauses') {
+        return common && data.potentialRiskId is string && data.goalId is string &&
+               data.description is string && data.source is string && data.sequenceNumber is number;
+      }
+      if (collectionName == 'controlMeasures') {
+        return common && data.riskCauseId is string && data.potentialRiskId is string &&
+               data.goalId is string && data.description is string &&
+               data.controlType is string && data.sequenceNumber is number;
+      }
+      return false;
+    }
+
+    // Helper function to check if an update is allowed
+    // (prevents changing key immutable fields like IDs, userId, uprId, period, createdAt, sequence numbers)
+    function isAllowedUpdate(collectionName) {
+      let incoming = request.resource.data;
+      let existing = resource.data;
+
+      // Fields that should generally be immutable after creation
+      let commonImmutable = incoming.userId == existing.userId &&
+                            incoming.uprId == existing.uprId &&
+                            incoming.period == existing.period &&
+                            (!('createdAt' in incoming) || incoming.createdAt == existing.createdAt); // Allow if not present, or same
+
+      if (collectionName == 'goals') {
+        return commonImmutable && incoming.code == existing.code;
+      }
+      if (collectionName == 'potentialRisks') {
+        return commonImmutable && incoming.goalId == existing.goalId &&
+               incoming.sequenceNumber == existing.sequenceNumber;
+      }
+      if (collectionName == 'riskCauses') {
+        return commonImmutable && incoming.potentialRiskId == existing.potentialRiskId &&
+               incoming.goalId == existing.goalId &&
+               incoming.sequenceNumber == existing.sequenceNumber;
+      }
+      if (collectionName == 'controlMeasures') {
+        return commonImmutable && incoming.riskCauseId == existing.riskCauseId &&
+               incoming.potentialRiskId == existing.potentialRiskId &&
+               incoming.goalId == existing.goalId &&
+               incoming.controlType == existing.controlType && // controlType could be updatable, but often fixed once set
+               incoming.sequenceNumber == existing.sequenceNumber;
+      }
+      return false;
+    }
+    
+    // Goals collection
+    match /goals/{goalId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && hasRequiredCreateFieldsAndOwnership('goals');
+      allow update: if request.auth != null && isOwner(resource.data) && isAllowedUpdate('goals');
+      allow delete: if request.auth != null && isOwner(resource.data);
+    }
+
+    // PotentialRisks collection
+    match /potentialRisks/{potentialRiskId} {
+      allow read: if request.auth != null;
+      // On create, ensure parent Goal exists and matches UPR/Period/User of the PotentialRisk being created
+      allow create: if request.auth != null && hasRequiredCreateFieldsAndOwnership('potentialRisks')
+                      && exists(/databases/$(database)/documents/goals/$(request.resource.data.goalId))
+                      && get(/databases/$(database)/documents/goals/$(request.resource.data.goalId)).data.uprId == request.resource.data.uprId
+                      && get(/databases/$(database)/documents/goals/$(request.resource.data.goalId)).data.period == request.resource.data.period
+                      && get(/databases/$(database)/documents/goals/$(request.resource.data.goalId)).data.userId == request.auth.uid; // Strict: only goal owner can add potential risks to it.
+      allow update: if request.auth != null && isOwner(resource.data) && isAllowedUpdate('potentialRisks');
+      allow delete: if request.auth != null && isOwner(resource.data);
+    }
+
+    // RiskCauses collection
+    match /riskCauses/{riskCauseId} {
+      allow read: if request.auth != null;
+      // On create, ensure parent PotentialRisk exists and matches context
+      allow create: if request.auth != null && hasRequiredCreateFieldsAndOwnership('riskCauses')
+                      && exists(/databases/$(database)/documents/potentialRisks/$(request.resource.data.potentialRiskId))
+                      && get(/databases/$(database)/documents/potentialRisks/$(request.resource.data.potentialRiskId)).data.uprId == request.resource.data.uprId
+                      && get(/databases/$(database)/documents/potentialRisks/$(request.resource.data.potentialRiskId)).data.period == request.resource.data.period
+                      && get(/databases/$(database)/documents/potentialRisks/$(request.resource.data.potentialRiskId)).data.userId == request.auth.uid; // Strict: only PR owner can add causes.
+      allow update: if request.auth != null && isOwner(resource.data) && isAllowedUpdate('riskCauses');
+      allow delete: if request.auth != null && isOwner(resource.data);
+    }
+
+    // ControlMeasures collection
+    match /controlMeasures/{controlMeasureId} {
+      allow read: if request.auth != null;
+      // On create, ensure parent RiskCause exists and matches context
+      allow create: if request.auth != null && hasRequiredCreateFieldsAndOwnership('controlMeasures')
+                      && exists(/databases/$(database)/documents/riskCauses/$(request.resource.data.riskCauseId))
+                      && get(/databases/$(database)/documents/riskCauses/$(request.resource.data.riskCauseId)).data.uprId == request.resource.data.uprId
+                      && get(/databases/$(database)/documents/riskCauses/$(request.resource.data.riskCauseId)).data.period == request.resource.data.period
+                      && get(/databases/$(database)/documents/riskCauses/$(request.resource.data.riskCauseId)).data.userId == request.auth.uid; // Strict: only Cause owner can add controls.
+      allow update: if request.auth != null && isOwner(resource.data) && isAllowedUpdate('controlMeasures');
+      allow delete: if request.auth != null && isOwner(resource.data);
+    }
+  }
+}
+
+    
