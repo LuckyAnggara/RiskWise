@@ -6,13 +6,7 @@ import type { AppUser, UserRole } from '@/lib/types';
 import { USERS_COLLECTION } from './collectionNames';
 import { doc, getDoc, setDoc, serverTimestamp, Timestamp, updateDoc } from 'firebase/firestore';
 import type { User as FirebaseUser } from 'firebase/auth';
-// Tidak perlu lagi impor dari uprService
 
-/**
- * Retrieves a user document from Firestore.
- * @param uid The user's UID.
- * @returns The AppUser object or null if not found.
- */
 export async function getUserDocument(uid: string): Promise<AppUser | null> {
   try {
     const userDocRef = doc(db, USERS_COLLECTION, uid);
@@ -25,11 +19,11 @@ export async function getUserDocument(uid: string): Promise<AppUser | null> {
                         : (data.createdAt && typeof data.createdAt === 'string' ? new Date(data.createdAt).toISOString() : new Date().toISOString());
       return { 
         uid: userDocSnap.id, 
-        email: data.email,
+        email: data.email || null,
         displayName: data.displayName || null,
         photoURL: data.photoURL || null,
-        role: data.role,
-        uprId: data.uprId || null, // uprId akan sama dengan displayName
+        role: data.role || 'userSatker',
+        uprId: data.uprId || data.displayName || null, // Fallback uprId to displayName if uprId is missing
         createdAt 
       } as AppUser;
     }
@@ -40,13 +34,6 @@ export async function getUserDocument(uid: string): Promise<AppUser | null> {
   }
 }
 
-/**
- * Creates or updates a user document in Firestore.
- * displayName pengguna akan digunakan sebagai uprId.
- * @param firebaseUser The User object from Firebase Authentication.
- * @param defaultRole The default role to assign to the new user.
- * @returns The AppUser object (either existing or newly created/updated).
- */
 export async function checkAndCreateUserDocument(
   firebaseUser: FirebaseUser,
   defaultRole: UserRole = 'userSatker'
@@ -57,29 +44,25 @@ export async function checkAndCreateUserDocument(
   try {
     const existingUserDocSnap = await getDoc(userDocRef);
 
-    // Tentukan displayName dan uprId
-    // Untuk registrasi email/password, displayName mungkin null awalnya, jadi kita buat placeholder.
-    // Untuk Google Sign-In, displayName biasanya ada.
     const userDisplayName = firebaseUser.displayName || firebaseUser.email?.split('@')[0] || `User_${firebaseUser.uid.substring(0,5)}`;
-    const uprIdForUser = userDisplayName; // Nama UPR = Nama Pengguna
+    // For this model, UPR ID IS the display name.
+    const uprIdForUser = userDisplayName; 
 
     if (existingUserDocSnap.exists()) {
       const existingData = existingUserDocSnap.data() as AppUser;
       const updates: Partial<AppUser> = {};
       let needsUpdate = false;
 
-      // Update displayName jika berbeda atau jika sebelumnya null dan sekarang ada dari Google
       if (userDisplayName && existingData.displayName !== userDisplayName) {
         updates.displayName = userDisplayName;
-        updates.uprId = userDisplayName; // Jika displayName berubah, uprId juga
+        updates.uprId = userDisplayName; // UPR ID follows display name
         needsUpdate = true;
       }
       if (firebaseUser.photoURL && existingData.photoURL !== firebaseUser.photoURL) {
         updates.photoURL = firebaseUser.photoURL;
         needsUpdate = true;
       }
-      // Jika UPR ID belum ada atau berbeda dari displayName baru
-      if (existingData.uprId !== uprIdForUser) {
+      if (existingData.uprId !== uprIdForUser) { // If existing uprId is different or null
         updates.uprId = uprIdForUser;
         needsUpdate = true;
       }
@@ -89,45 +72,71 @@ export async function checkAndCreateUserDocument(
         await updateDoc(userDocRef, updates);
       }
       
-      const finalDocSnap = await getDoc(userDocRef);
+      const finalDocSnap = await getDoc(userDocRef); // Re-fetch to get the most current data
       const finalData = finalDocSnap.data();
       const createdAt = finalData?.createdAt instanceof Timestamp 
                         ? finalData.createdAt.toDate().toISOString() 
                         : (existingData.createdAt || new Date().toISOString());
-      return { uid: firebaseUser.uid, ...(finalData || existingData), createdAt } as AppUser;
+      return { 
+          uid: firebaseUser.uid, 
+          ...(finalData || existingData),
+          displayName: finalData?.displayName || existingData.displayName || userDisplayName,
+          uprId: finalData?.uprId || existingData.uprId || uprIdForUser,
+          createdAt 
+      } as AppUser;
 
     } else {
-      // Buat dokumen pengguna baru
-      const newUserDocData = {
+      const newUserDocData: AppUser = {
         uid: firebaseUser.uid,
-        email: firebaseUser.email,
-        displayName: userDisplayName || null, 
+        email: firebaseUser.email || null,
+        displayName: userDisplayName, 
         photoURL: firebaseUser.photoURL || null,    
         role: defaultRole,
-        uprId: uprIdForUser, // Nama UPR = Nama Pengguna
-        createdAt: serverTimestamp(),
+        uprId: userDisplayName, // UPR ID is the display name
+        createdAt: new Date().toISOString(), // Use client-side ISO string, Firestore will convert serverTimestamp
       };
       
-      console.log('Data to create user document:', JSON.stringify(newUserDocData)); 
-      await setDoc(userDocRef, newUserDocData);
+      const dataToSave = {
+        ...newUserDocData,
+        createdAt: serverTimestamp(), // Use serverTimestamp for actual save
+      };
       
-      const createdDocSnap = await getDoc(userDocRef);
-      if (createdDocSnap.exists()) {
-          const data = createdDocSnap.data();
-          const createdAt = data.createdAt instanceof Timestamp 
-                            ? data.createdAt.toDate().toISOString() 
-                            : new Date().toISOString(); 
-          return { 
-              uid: createdDocSnap.id, 
-              ...data,
-              createdAt
-          } as AppUser;
-      } else {
-          throw new Error("Gagal mengambil profil pengguna yang baru dibuat dari database.");
-      }
+      console.log('Data to create user document:', JSON.stringify(dataToSave)); 
+      await setDoc(userDocRef, dataToSave);
+      
+      // Return the data as it would be after creation, with client-side timestamp for immediate use
+      return newUserDocData;
     }
   } catch (error: any) {
-    console.error("Error in checkAndCreateUserDocument. Message:", error.message);
+    console.error("Error in checkAndCreateUserDocument. Message:", error.message, "Details:", error);
     throw new Error(`Gagal menyimpan atau memperbarui profil pengguna di database: ${error.message || String(error)}`);
+  }
+}
+
+// New function to update user profile (displayName, photoURL) and UPR ID
+export async function updateUserProfileData(
+  uid: string,
+  data: { displayName?: string | null; photoURL?: string | null }
+): Promise<void> {
+  try {
+    const userDocRef = doc(db, USERS_COLLECTION, uid);
+    const updates: Partial<AppUser> = {};
+
+    if (data.displayName !== undefined) {
+      updates.displayName = data.displayName;
+      updates.uprId = data.displayName; // UPR ID is the display name
+    }
+    if (data.photoURL !== undefined) {
+      updates.photoURL = data.photoURL;
+    }
+    updates.updatedAt = serverTimestamp();
+
+    if (Object.keys(updates).length > 0) {
+      await updateDoc(userDocRef, updates);
+      console.log(`User profile data updated for UID ${uid}:`, updates);
+    }
+  } catch (error: any) {
+    console.error("Error updating user profile data in Firestore. Message:", error.message);
+    throw new Error(`Gagal memperbarui data profil pengguna: ${error.message || String(error)}`);
   }
 }

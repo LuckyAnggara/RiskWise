@@ -1,9 +1,9 @@
-
 "use client";
 
 import React, { useState, useEffect } from "react";
-import Link from 'next/link'; 
+import NextLink from 'next/link'; 
 import { usePathname, useRouter } from 'next/navigation';
+import { useTheme } from "next-themes";
 import {
   SidebarProvider,
   Sidebar,
@@ -19,27 +19,46 @@ import { SidebarNav } from "./sidebar-nav";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { LogOut, User, Settings as SettingsIcon, Loader2 } from "lucide-react";
+import { LogOut, User, Settings as SettingsIcon, Loader2, Sun, Moon } from "lucide-react";
 import { Toaster } from "@/components/ui/toaster";
-import { getCurrentUprId, getCurrentPeriod, initializeAppContext } from '@/lib/upr-period-context';
+import { initializeAppContext, setCurrentUprId as updateUprIdInContext } from '@/lib/upr-period-context';
 import { useAuth } from '@/contexts/auth-context';
 import { auth } from '@/lib/firebase/config';
 import { signOut } from 'firebase/auth';
 import { useToast } from "@/hooks/use-toast";
+import { getUserDocument } from "@/services/userService";
+
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
-  const [currentUpr, setCurrentUpr] = useState('');
-  const [currentPeriodDisplay, setCurrentPeriodDisplay] = useState('');
+  const [currentUprContext, setCurrentUprContext] = useState('');
+  const [currentPeriodContext, setCurrentPeriodContext] = useState('');
   const { currentUser, loading: authLoading } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const { toast } = useToast();
+  const { setTheme, theme } = useTheme();
 
   useEffect(() => {
-    const context = initializeAppContext();
-    setCurrentUpr(context.uprId);
-    setCurrentPeriodDisplay(context.period);
-  }, []);
+    const context = initializeAppContext(currentUser); // Pass currentUser to initialize
+    setCurrentUprContext(context.uprId);
+    setCurrentPeriodContext(context.period);
+
+    // If user is authenticated, ensure localStorage UPR ID matches user's UPR ID
+    if (currentUser && currentUser.uid) {
+      getUserDocument(currentUser.uid).then(appUser => {
+        if (appUser && appUser.uprId && appUser.uprId !== context.uprId) {
+          updateUprIdInContext(appUser.uprId); // Update localStorage
+          setCurrentUprContext(appUser.uprId); // Update local state
+          // Optionally, reload if UPR ID change requires a full data refresh
+          // window.location.reload(); 
+        } else if (appUser && !appUser.uprId && currentUser.displayName && currentUser.displayName !== context.uprId) {
+          // Case where uprId in DB is null, but displayName exists and is different from context
+          updateUprIdInContext(currentUser.displayName);
+          setCurrentUprContext(currentUser.displayName);
+        }
+      });
+    }
+  }, [currentUser]); // Re-run when currentUser changes
 
   useEffect(() => {
     const publicPaths = ['/login', '/register'];
@@ -47,7 +66,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       if (!currentUser && !publicPaths.includes(pathname)) {
         router.push('/login');
       } else if (currentUser && publicPaths.includes(pathname)) {
-        router.push('/'); // Arahkan pengguna yang sudah login dari halaman login/register
+        router.push('/'); 
       }
     }
   }, [currentUser, authLoading, router, pathname]);
@@ -72,15 +91,11 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // Jika tidak loading dan pengguna tidak ada, tetapi path adalah publik, izinkan children (login/register page)
   if (!currentUser && (pathname === '/login' || pathname === '/register')) {
     return <>{children}<Toaster /></>;
   }
 
-  // Jika tidak loading dan pengguna tidak ada, dan bukan path publik (sudah ditangani redirect di useEffect)
-  // atau jika pengguna ada, tampilkan layout lengkap.
   if (!currentUser && !['/login', '/register'].includes(pathname)) {
-    // Pengguna seharusnya sudah diarahkan, tapi ini sebagai fallback
     return (
       <div className="flex flex-col items-center justify-center h-screen">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
@@ -89,17 +104,16 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     );
   }
 
-
   return (
     <SidebarProvider defaultOpen>
       <Sidebar variant="sidebar" collapsible="icon" side="left">
         <SidebarHeader className="p-4">
-          <Link href="/" className="flex items-center gap-2 group-data-[collapsible=icon]:justify-center">
+          <NextLink href="/" className="flex items-center gap-2 group-data-[collapsible=icon]:justify-center">
             <AppLogo className="h-8 w-8 text-primary" />
             <span className="font-semibold text-lg text-primary group-data-[collapsible=icon]:hidden">
               RiskWise
             </span>
-          </Link>
+          </NextLink>
         </SidebarHeader>
         <Separator className="group-data-[collapsible=icon]:hidden" />
         <SidebarContent>
@@ -113,46 +127,68 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         </SidebarFooter>
       </Sidebar>
       <SidebarInset>
-        <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b bg-background/80 px-4 backdrop-blur md:px-6">
+        <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b bg-background/80 px-4 backdrop-blur md:px-6">
           <div className="flex items-center gap-2">
             <SidebarTrigger className="md:hidden" />
-            {currentUpr && currentPeriodDisplay && (
+            {currentUprContext && currentPeriodContext && (
               <div className="text-sm text-muted-foreground">
-                <span className="font-semibold">UPR:</span> {currentUpr} | <span className="font-semibold">Periode:</span> {currentPeriodDisplay}
+                <span className="font-semibold">UPR:</span> {currentUprContext} | <span className="font-semibold">Periode:</span> {currentPeriodContext}
               </div>
             )}
           </div>
-          {currentUser && (
+          <div className="flex items-center gap-2">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="rounded-full">
-                  <Avatar className="h-8 w-8">
-                    <AvatarImage src={currentUser.photoURL || "https://placehold.co/100x100.png"} alt={currentUser.displayName || currentUser.email || "User"} data-ai-hint="profile person" />
-                    <AvatarFallback>{currentUser.email ? currentUser.email.substring(0, 2).toUpperCase() : 'RW'}</AvatarFallback>
-                  </Avatar>
+                <Button variant="ghost" size="icon">
+                  {theme === 'light' ? <Sun className="h-[1.2rem] w-[1.2rem]" /> : <Moon className="h-[1.2rem] w-[1.2rem]" />}
+                  <span className="sr-only">Toggle theme</span>
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuLabel>{currentUser.displayName || currentUser.email}</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem>
-                  <User className="mr-2 h-4 w-4" />
-                  <span>Profil</span>
+                <DropdownMenuItem onClick={() => setTheme("light")}>
+                  Terang
                 </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <Link href="/settings">
-                    <SettingsIcon className="mr-2 h-4 w-4" />
-                    <span>Pengaturan</span>
-                  </Link>
+                <DropdownMenuItem onClick={() => setTheme("dark")}>
+                  Gelap
                 </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleLogout}>
-                  <LogOut className="mr-2 h-4 w-4" />
-                  <span>Keluar</span>
+                <DropdownMenuItem onClick={() => setTheme("system")}>
+                  Sistem
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-          )}
+
+            {currentUser && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="rounded-full">
+                    <Avatar className="h-8 w-8">
+                      <AvatarImage src={currentUser.photoURL || "https://placehold.co/100x100.png"} alt={currentUser.displayName || currentUser.email || "User"} data-ai-hint="profile person" />
+                      <AvatarFallback>{currentUser.displayName ? currentUser.displayName.substring(0, 2).toUpperCase() : (currentUser.email ? currentUser.email.substring(0,2).toUpperCase() : 'RW')}</AvatarFallback>
+                    </Avatar>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuLabel>{currentUser.displayName || currentUser.email}</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {/* <DropdownMenuItem>
+                    <User className="mr-2 h-4 w-4" />
+                    <span>Profil</span>
+                  </DropdownMenuItem> */}
+                  <DropdownMenuItem asChild>
+                    <NextLink href="/settings">
+                      <SettingsIcon className="mr-2 h-4 w-4" />
+                      <span>Pengaturan</span>
+                    </NextLink>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleLogout}>
+                    <LogOut className="mr-2 h-4 w-4" />
+                    <span>Keluar</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+          </div>
         </header>
         <main className="flex-1 p-4 md:p-6">
           {children}

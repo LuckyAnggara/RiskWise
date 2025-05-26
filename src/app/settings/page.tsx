@@ -9,28 +9,79 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { getCurrentUprId, getCurrentPeriod, setCurrentPeriod, getAvailablePeriods, addAvailablePeriod, initializeAppContext } from '@/lib/upr-period-context';
-import { Info, PlusCircle } from 'lucide-react';
+import { 
+  initializeAppContext, 
+  getCurrentPeriod, 
+  setCurrentPeriod, 
+  getAvailablePeriods, 
+  addAvailablePeriod,
+  setCurrentUprId as updateCurrentUprIdInContextStorage // Renamed import for clarity
+} from '@/lib/upr-period-context';
+import { Info, PlusCircle, Save, Loader2 } from 'lucide-react';
+import { useAuth } from '@/contexts/auth-context';
+import { auth } from '@/lib/firebase/config';
+import { updateProfile } from 'firebase/auth';
+import { updateUserProfileData } from '@/services/userService';
 
 export default function SettingsPage() {
-  const [currentUpr, setCurrentUpr] = useState('');
+  const { currentUser, loading: authLoading } = useAuth();
+  const [currentUprName, setCurrentUprName] = useState('');
+  const [newUprName, setNewUprName] = useState('');
+  const [isSavingUprName, setIsSavingUprName] = useState(false);
+
   const [selectedPeriod, setSelectedPeriod] = useState('');
   const [availablePeriods, setAvailablePeriods] = useState<string[]>([]);
   const [newPeriodInput, setNewPeriodInput] = useState('');
   const { toast } = useToast();
 
   useEffect(() => {
-    const context = initializeAppContext();
-    setCurrentUpr(context.uprId);
-    setSelectedPeriod(context.period);
-    setAvailablePeriods(context.availablePeriods);
-  }, []);
+    if (currentUser) {
+      const context = initializeAppContext(currentUser);
+      setCurrentUprName(context.uprId); // UPR ID is user's displayName
+      setNewUprName(context.uprId); // Initialize edit field
+      setSelectedPeriod(context.period);
+      setAvailablePeriods(context.availablePeriods);
+    } else if (!authLoading) {
+      // If not loading and no user, initialize with defaults (though user should be redirected)
+      const context = initializeAppContext();
+      setCurrentUprName(context.uprId);
+      setNewUprName(context.uprId);
+      setSelectedPeriod(context.period);
+      setAvailablePeriods(context.availablePeriods);
+    }
+  }, [currentUser, authLoading]);
 
-  const handlePeriodChange = (newPeriod: string) => {
-    if (newPeriod && newPeriod !== selectedPeriod) {
-      setCurrentPeriod(newPeriod);
-      setSelectedPeriod(newPeriod);
-      toast({ title: "Periode Diubah", description: `Periode aktif diatur ke ${newPeriod}. Halaman akan dimuat ulang.` });
+  const handleUprNameChange = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentUser || !newUprName.trim() || newUprName.trim() === currentUprName) {
+      toast({ title: "Tidak Ada Perubahan", description: "Nama UPR tidak berubah atau tidak valid.", variant: "default" });
+      return;
+    }
+    setIsSavingUprName(true);
+    try {
+      await updateProfile(currentUser, { displayName: newUprName.trim() });
+      await updateUserProfileData(currentUser.uid, { displayName: newUprName.trim() });
+      
+      updateCurrentUprIdInContextStorage(newUprName.trim()); // Update localStorage
+      setCurrentUprName(newUprName.trim()); // Update local state
+
+      toast({ title: "Nama UPR Diperbarui", description: `Nama UPR telah diubah menjadi "${newUprName.trim()}". Harap muat ulang halaman untuk melihat perubahan data di seluruh aplikasi.` });
+      // Consider window.location.reload() for immediate effect across app data,
+      // or more sophisticated state management to propagate this change.
+      // For now, we inform the user.
+    } catch (error: any) {
+      console.error("Error updating UPR name:", error);
+      toast({ title: "Gagal Memperbarui Nama UPR", description: error.message || "Terjadi kesalahan.", variant: "destructive" });
+    } finally {
+      setIsSavingUprName(false);
+    }
+  };
+
+  const handlePeriodChange = (newPeriodValue: string) => {
+    if (newPeriodValue && newPeriodValue !== selectedPeriod) {
+      setCurrentPeriod(newPeriodValue); // This will update localStorage and reload
+      setSelectedPeriod(newPeriodValue); 
+      toast({ title: "Periode Diubah", description: `Periode aktif diatur ke ${newPeriodValue}. Halaman akan dimuat ulang.` });
     }
   };
 
@@ -52,6 +103,24 @@ export default function SettingsPage() {
     setNewPeriodInput('');
   };
 
+  if (authLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen">
+        <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
+        <p className="text-xl text-muted-foreground">Memuat pengaturan...</p>
+      </div>
+    );
+  }
+  
+  if (!currentUser) {
+    return (
+         <div className="text-center py-10">
+            <p className="text-muted-foreground">Silakan login untuk mengakses pengaturan.</p>
+        </div>
+    );
+  }
+
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -61,24 +130,36 @@ export default function SettingsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Unit Pemilik Risiko (UPR) &amp; Periode</CardTitle>
+          <CardTitle>Unit Pemilik Risiko (UPR) & Periode</CardTitle>
           <CardDescription>
-            Konfigurasikan UPR aktif dan periode pelaporan untuk aplikasi.
+            Konfigurasikan UPR dan periode pelaporan aktif untuk aplikasi.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-1">
-            <Label htmlFor="currentUpr">ID UPR Saat Ini</Label>
-            <Input id="currentUpr" value={currentUpr} readOnly disabled />
-            <p className="text-xs text-muted-foreground flex items-center">
-              <Info className="w-3 h-3 mr-1" /> ID UPR saat ini diatur secara sistem dan belum dapat diubah melalui UI ini.
-            </p>
-          </div>
+        <CardContent className="space-y-6">
+          <form onSubmit={handleUprNameChange} className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="currentUprName">Nama UPR Saat Ini (Nama Pengguna)</Label>
+              <Input 
+                id="currentUprName" 
+                value={newUprName} 
+                onChange={(e) => setNewUprName(e.target.value)}
+                placeholder="Masukkan Nama UPR / Nama Pengguna baru"
+                disabled={isSavingUprName}
+              />
+              <p className="text-xs text-muted-foreground flex items-center">
+                <Info className="w-3 h-3 mr-1 shrink-0" /> Mengubah ini akan mengubah nama pengguna Anda dan UPR ID yang digunakan untuk data baru. Data lama yang terkait dengan nama UPR sebelumnya tidak akan otomatis termigrasi.
+              </p>
+            </div>
+             <Button type="submit" disabled={isSavingUprName || !newUprName.trim() || newUprName.trim() === currentUprName}>
+                {isSavingUprName ? <Loader2 className="animate-spin" /> : <Save />}
+                Simpan Nama UPR
+              </Button>
+          </form>
 
-          <div className="space-y-1">
+          <div className="space-y-1.5 pt-4 border-t">
             <Label htmlFor="currentPeriod">Periode Aktif</Label>
             <Select value={selectedPeriod} onValueChange={handlePeriodChange}>
-              <SelectTrigger id="currentPeriod" className="w-[280px]">
+              <SelectTrigger id="currentPeriod" className="w-full md:w-[280px]">
                 <SelectValue placeholder="Pilih periode" />
               </SelectTrigger>
               <SelectContent>
@@ -104,8 +185,8 @@ export default function SettingsPage() {
           <CardDescription>Tambahkan periode pelaporan baru ke sistem.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex items-end gap-2">
-            <div className="flex-grow space-y-1">
+          <div className="flex flex-col sm:flex-row sm:items-end gap-2">
+            <div className="flex-grow space-y-1.5">
               <Label htmlFor="newPeriod">Periode Baru (mis., 2026, 2025/2026, 2025-S1)</Label>
               <Input
                 id="newPeriod"
@@ -114,7 +195,7 @@ export default function SettingsPage() {
                 placeholder="Masukkan periode baru"
               />
             </div>
-            <Button onClick={handleAddNewPeriod} type="button">
+            <Button onClick={handleAddNewPeriod} type="button" className="w-full sm:w-auto">
               <PlusCircle className="mr-2 h-4 w-4" /> Tambah Periode
             </Button>
           </div>
