@@ -23,7 +23,7 @@ import {
     RISK_CAUSES_COLLECTION,
     CONTROL_MEASURES_COLLECTION
 } from './collectionNames';
-import { getRiskCausesByPotentialRiskId, deleteRiskCauseAndSubCollections } from './riskCauseService';
+import { deleteRiskCauseAndSubCollections } from './riskCauseService'; // Pastikan ini diimpor
 
 export async function addPotentialRisk(
   data: Omit<PotentialRisk, 'id' | 'identifiedAt' | 'uprId' | 'period' | 'userId' | 'sequenceNumber'>,
@@ -41,6 +41,8 @@ export async function addPotentialRisk(
       period,
       userId,
       sequenceNumber,
+      category: data.category || null,
+      owner: data.owner || null,
       identifiedAt: serverTimestamp(),
     });
     return {
@@ -51,11 +53,11 @@ export async function addPotentialRisk(
       period,
       userId,
       sequenceNumber,
-      identifiedAt: new Date().toISOString(), // Placeholder
+      identifiedAt: new Date().toISOString(), // Placeholder, server akan mengisi yang sebenarnya
     };
-  } catch (error) {
-    console.error("Error adding potential risk to Firestore: ", error);
-    throw new Error("Gagal menambahkan potensi risiko ke database.");
+  } catch (error: any) {
+    console.error("Error adding potential risk to Firestore: ", error.message, error.code, error);
+    throw new Error(`Gagal menambahkan potensi risiko ke database. Pesan: ${error.message}`);
   }
 }
 
@@ -72,15 +74,39 @@ export async function getPotentialRisksByGoalId(goalId: string, uprId: string, p
     const potentialRisks: PotentialRisk[] = [];
     querySnapshot.forEach((doc) => {
       const data = doc.data();
-      const identifiedAtISO = data.identifiedAt instanceof Timestamp
-                           ? data.identifiedAt.toDate().toISOString()
-                           : (data.identifiedAt ? new Date(data.identifiedAt).toISOString() : new Date().toISOString());
-      potentialRisks.push({ id: doc.id, ...data, identifiedAt: identifiedAtISO } as PotentialRisk);
+      const identifiedAtTimestamp = data.identifiedAt as Timestamp | undefined;
+      const identifiedAtISO = identifiedAtTimestamp
+                           ? identifiedAtTimestamp.toDate().toISOString()
+                           : (data.identifiedAt && typeof data.identifiedAt === 'string' ? new Date(data.identifiedAt).toISOString() : new Date().toISOString());
+      
+      const updatedAtTimestamp = data.updatedAt as Timestamp | undefined;
+      const updatedAtISO = updatedAtTimestamp
+                           ? updatedAtTimestamp.toDate().toISOString()
+                           : (data.updatedAt && typeof data.updatedAt === 'string' ? new Date(data.updatedAt).toISOString() : undefined);
+
+      potentialRisks.push({ 
+        id: doc.id, 
+        ...data, 
+        identifiedAt: identifiedAtISO,
+        updatedAt: updatedAtISO,
+        category: data.category || null,
+        owner: data.owner || null,
+      } as PotentialRisk);
     });
     return potentialRisks;
-  } catch (error) {
-    console.error("Error getting potential risks from Firestore: ", error);
-    throw new Error("Gagal mengambil daftar potensi risiko dari database.");
+  } catch (error: any) {
+    console.error("Error getting potential risks from Firestore: ", error.message, error.code, error.details);
+    let detailedErrorMessage = "Gagal mengambil daftar potensi risiko dari database.";
+    if (error.message) {
+      detailedErrorMessage += ` Pesan Asli: ${error.message}`;
+    }
+    if (error.code) {
+      detailedErrorMessage += ` Kode Error: ${error.code}`;
+      if (error.code === 'failed-precondition' && error.message && error.message.toLowerCase().includes('index')) {
+        detailedErrorMessage += " Kemungkinan besar ini disebabkan oleh indeks komposit yang hilang di Firestore. Silakan periksa Firebase Console Anda (Firestore Database > Indexes) untuk membuat indeks yang diperlukan. Link untuk membuat indeks mungkin ada di log error server/konsol browser Anda.";
+      }
+    }
+    throw new Error(detailedErrorMessage);
   }
 }
 
@@ -90,15 +116,29 @@ export async function getPotentialRiskById(id: string): Promise<PotentialRisk | 
     const docSnap = await getDoc(docRef);
     if (docSnap.exists()) {
       const data = docSnap.data();
-      const identifiedAtISO = data.identifiedAt instanceof Timestamp
-                           ? data.identifiedAt.toDate().toISOString()
-                           : (data.identifiedAt ? new Date(data.identifiedAt).toISOString() : new Date().toISOString());
-      return { id: docSnap.id, ...data, identifiedAt: identifiedAtISO } as PotentialRisk;
+      const identifiedAtTimestamp = data.identifiedAt as Timestamp | undefined;
+      const identifiedAtISO = identifiedAtTimestamp
+                           ? identifiedAtTimestamp.toDate().toISOString()
+                           : (data.identifiedAt && typeof data.identifiedAt === 'string' ? new Date(data.identifiedAt).toISOString() : new Date().toISOString());
+      
+      const updatedAtTimestamp = data.updatedAt as Timestamp | undefined;
+      const updatedAtISO = updatedAtTimestamp
+                           ? updatedAtTimestamp.toDate().toISOString()
+                           : (data.updatedAt && typeof data.updatedAt === 'string' ? new Date(data.updatedAt).toISOString() : undefined);
+
+      return { 
+        id: docSnap.id, 
+        ...data, 
+        identifiedAt: identifiedAtISO,
+        updatedAt: updatedAtISO,
+        category: data.category || null,
+        owner: data.owner || null,
+      } as PotentialRisk;
     }
     return null;
-  } catch (error) {
-    console.error("Error getting potential risk by ID from Firestore: ", error);
-    throw new Error("Gagal mengambil detail potensi risiko dari database.");
+  } catch (error: any) {
+    console.error("Error getting potential risk by ID from Firestore: ", error.message, error.code, error);
+    throw new Error(`Gagal mengambil detail potensi risiko dari database. Pesan: ${error.message}`);
   }
 }
 
@@ -107,32 +147,35 @@ export async function updatePotentialRisk(id: string, data: Partial<Omit<Potenti
     const docRef = doc(db, POTENTIAL_RISKS_COLLECTION, id);
     await updateDoc(docRef, {
         ...data,
+        category: data.category || null,
+        owner: data.owner || null,
         updatedAt: serverTimestamp() 
     });
-  } catch (error) {
-    console.error("Error updating potential risk in Firestore: ", error);
-    throw new Error("Gagal memperbarui potensi risiko di database.");
+  } catch (error: any) {
+    console.error("Error updating potential risk in Firestore: ", error.message, error.code, error);
+    throw new Error(`Gagal memperbarui potensi risiko di database. Pesan: ${error.message}`);
   }
 }
 
-export async function deletePotentialRiskAndSubCollections(potentialRiskId: string, uprId: string, period: string): Promise<void> {
-  const batch = writeBatch(db);
+export async function deletePotentialRiskAndSubCollections(potentialRiskId: string, uprId: string, period: string, batch?: WriteBatch): Promise<void> {
+  const localBatch = batch || writeBatch(db);
   try {
-    // 1. Get all RiskCauses for this PotentialRisk
     const riskCauses = await getRiskCausesByPotentialRiskId(potentialRiskId, uprId, period);
 
     for (const riskCause of riskCauses) {
-      // For each RiskCause, delete it and its ControlMeasures (delegated to riskCauseService)
-      await deleteRiskCauseAndSubCollections(riskCause.id, uprId, period, batch); // Pass the batch
+      await deleteRiskCauseAndSubCollections(riskCause.id, uprId, period, localBatch);
     }
 
-    // 2. Delete the PotentialRisk document itself
     const potentialRiskRef = doc(db, POTENTIAL_RISKS_COLLECTION, potentialRiskId);
-    batch.delete(potentialRiskRef);
+    localBatch.delete(potentialRiskRef);
 
-    await batch.commit();
-  } catch (error) {
-    console.error("Error deleting potential risk and its sub-collections: ", error);
-    throw new Error("Gagal menghapus potensi risiko dan data terkaitnya.");
+    if (!batch) {
+      await localBatch.commit();
+    }
+  } catch (error: any) {
+    console.error("Error deleting potential risk and its sub-collections: ", error.message, error.code, error);
+    throw new Error(`Gagal menghapus potensi risiko dan data terkaitnya. Pesan: ${error.message}`);
   }
 }
+
+    
