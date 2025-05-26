@@ -4,14 +4,23 @@ import { initializeApp, getApps, type FirebaseApp } from "firebase/app";
 import { getAuth, type Auth } from "firebase/auth";
 import { getFirestore, type Firestore } from "firebase/firestore"; // Import Firestore
 
+// const firebaseConfig = {
+//   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "YOUR_API_KEY_REPLACE_ME",
+//   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "YOUR_AUTH_DOMAIN_REPLACE_ME",
+//   projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "YOUR_PROJECT_ID_REPLACE_ME",
+//   storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "YOUR_STORAGE_BUCKET_REPLACE_ME",
+//   messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "YOUR_MESSAGING_SENDER_ID_REPLACE_ME",
+//   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "YOUR_APP_ID_REPLACE_ME",
+//   measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID, // Opsional
+// };
+
 const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "YOUR_API_KEY_REPLACE_ME",
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "YOUR_AUTH_DOMAIN_REPLACE_ME",
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "YOUR_PROJECT_ID_REPLACE_ME",
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "YOUR_STORAGE_BUCKET_REPLACE_ME",
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "YOUR_MESSAGING_SENDER_ID_REPLACE_ME",
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "YOUR_APP_ID_REPLACE_ME",
-  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID, // Opsional
+  apiKey: "AIzaSyDu5rXL6LJ3BcPgSVVwPXDU3N-m42mWbsM",
+  authDomain: "riskmanagement-f6c03.firebaseapp.com",
+  projectId: "riskmanagement-f6c03",
+  storageBucket: "riskmanagement-f6c03.firebasestorage.app",
+  messagingSenderId: "324280335694",
+  appId: "1:324280335694:web:6cec8b52423b62fdbeb21f"
 };
 
 // Inisialisasi Firebase
