@@ -44,44 +44,41 @@ export default function LoginPage() {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       firebaseUser = userCredential.user;
       
-      // Pastikan dokumen pengguna ada/dibuat di Firestore
-      await checkAndCreateUserDocument(firebaseUser, 'userSatker');
+      await checkAndCreateUserDocument(firebaseUser);
       
       toast({ title: 'Login Berhasil', description: 'Selamat datang kembali!' });
       router.push('/');
     } catch (error: any) {
-      console.error("Kesalahan pada proses login email/password:", error.message, error.code);
+      console.error("Kesalahan pada proses login email/password:", error instanceof Error ? error.message : String(error));
+      let toastTitle = 'Login Gagal';
+      let toastDescription = 'Terjadi kesalahan. Silakan coba lagi.';
+
       if (firebaseUser) { // Autentikasi Firebase berhasil, tapi Firestore gagal
-        toast({ 
-          title: 'Autentikasi Berhasil, Profil Gagal Disinkronkan', 
-          description: `Gagal menyimpan/memperbarui profil Anda di database. Pesan: ${error.message || String(error)}. Silakan coba lagi atau hubungi administrator.`, 
-          variant: 'destructive',
-          duration: 7000
-        });
-        // Pengguna sudah diautentikasi oleh Firebase Auth, jadi tetap arahkan ke dashboard
-        // AppLayout akan menangani redirect berdasarkan status currentUser
-        router.push('/'); 
+        toastTitle = 'Autentikasi Berhasil, Profil Gagal Disinkronkan';
+        toastDescription = `Gagal menyimpan/memperbarui profil Anda di database. Pesan: ${error instanceof Error && error.message ? error.message : String(error)}. Silakan coba lagi atau hubungi administrator.`;
+        router.push('/'); // Tetap arahkan karena Auth berhasil
       } else { // Autentikasi Firebase itu sendiri yang gagal
-        let errorMessage = 'Gagal masuk. Periksa email dan password Anda.';
         if (error.code) {
           switch (error.code) {
             case 'auth/user-not-found':
             case 'auth/wrong-password':
             case 'auth/invalid-credential':
-              errorMessage = 'Email atau password salah.';
+              toastDescription = 'Email atau password salah.';
               break;
             case 'auth/invalid-email':
-              errorMessage = 'Format email tidak valid.';
+              toastDescription = 'Format email tidak valid.';
               break;
             case 'auth/user-disabled':
-              errorMessage = 'Akun pengguna ini telah dinonaktifkan.';
+              toastDescription = 'Akun pengguna ini telah dinonaktifkan.';
               break;
             default:
-              errorMessage = `Login gagal: ${error.message || 'Error tidak diketahui.'}`;
+              toastDescription = `Login gagal: ${error.message || 'Error tidak diketahui.'}`;
           }
+        } else if (error instanceof Error && error.message) {
+            toastDescription = error.message;
         }
-        toast({ title: 'Login Gagal', description: errorMessage, variant: 'destructive' });
       }
+      toast({ title: toastTitle, description: toastDescription, variant: 'destructive', duration: 7000 });
     } finally {
       setIsLoading(false);
     }
@@ -95,38 +92,36 @@ export default function LoginPage() {
       const result = await signInWithPopup(auth, provider);
       firebaseUser = result.user;
       
-      // Pastikan dokumen pengguna ada/dibuat di Firestore
-      // Untuk Google, displayName dan photoURL diambil dari Google. uprName tidak ada di sini.
-      await checkAndCreateUserDocument(firebaseUser, 'userSatker', firebaseUser.displayName || firebaseUser.email || undefined);
+      await checkAndCreateUserDocument(firebaseUser);
       
       toast({ title: 'Login Google Berhasil', description: `Selamat datang, ${firebaseUser.displayName || firebaseUser.email}!` });
       router.push('/');
     } catch (error: any) {
-      console.error("Kesalahan pada proses login Google:", error.message, error.code);
+      console.error("Kesalahan pada proses login Google:", error instanceof Error ? error.message : String(error));
+      let toastTitle = 'Login Google Gagal';
+      let toastDescription = 'Terjadi kesalahan. Silakan coba lagi.';
+
       if (firebaseUser) { // Autentikasi Google berhasil, tapi Firestore gagal
-         toast({ 
-          title: 'Autentikasi Google Berhasil, Profil Gagal Disinkronkan', 
-          description: `Gagal menyimpan/memperbarui profil Anda di database. Pesan: ${error.message || String(error)}. Silakan coba lagi atau hubungi administrator.`, 
-          variant: 'destructive',
-          duration: 7000
-        });
-        router.push('/');
+         toastTitle = 'Autentikasi Google Berhasil, Profil Gagal Disinkronkan';
+         toastDescription = `Gagal menyimpan/memperbarui profil Anda di database. Pesan: ${error instanceof Error && error.message ? error.message : String(error)}. Silakan coba lagi atau hubungi administrator.`;
+         router.push('/'); // Tetap arahkan karena Auth berhasil
       } else { // Autentikasi Google itu sendiri yang gagal
-        let errorMessage = 'Gagal masuk dengan Google. Silakan coba lagi.';
         if (error.code) {
             switch (error.code) {
                 case 'auth/popup-closed-by-user':
-                errorMessage = 'Proses login Google dibatalkan oleh pengguna.';
+                toastDescription = 'Proses login Google dibatalkan oleh pengguna.';
                 break;
                 case 'auth/account-exists-with-different-credential':
-                errorMessage = 'Akun sudah ada dengan metode login lain. Coba masuk dengan metode tersebut.';
+                toastDescription = 'Akun sudah ada dengan metode login lain. Coba masuk dengan metode tersebut.';
                 break;
                 default:
-                errorMessage = `Login Google gagal: ${error.message || 'Error tidak diketahui.'}`;
+                toastDescription = `Login Google gagal: ${error.message || 'Error tidak diketahui.'}`;
             }
+        } else if (error instanceof Error && error.message) {
+            toastDescription = error.message;
         }
-        toast({ title: 'Login Google Gagal', description: errorMessage, variant: 'destructive' });
       }
+      toast({ title: toastTitle, description: toastDescription, variant: 'destructive', duration: 7000 });
     } finally {
       setIsGoogleLoading(false);
     }
@@ -211,6 +206,4 @@ export default function LoginPage() {
     </div>
   );
 }
-
-
     
