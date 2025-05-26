@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo, Fragment } from 'react';
-import Link from 'next/link';
+import NextLink from 'next/link'; // Renamed to avoid conflict
 import { useRouter } from 'next/navigation';
 import { PageHeader } from '@/components/ui/page-header';
 import { Button } from '@/components/ui/button';
@@ -74,7 +74,7 @@ export default function AllRisksPage() {
       const uniqueOwners = new Set<string>();
       const causeCounts: Record<string, number> = {};
 
-      for (const goal of loadedGoals) { // Iterate over loadedGoals which is guaranteed to be an array
+      for (const goal of loadedGoals) { 
         const goalPotentialRisks = await getPotentialRisksByGoalId(goal.id, currentUprId, currentPeriod);
         for (const pRisk of goalPotentialRisks) {
           collectedPotentialRisks.push(pRisk);
@@ -88,8 +88,8 @@ export default function AllRisksPage() {
       setRiskCauseCounts(causeCounts);
       setSelectedRiskIds([]);
     } catch (error: any) {
-        console.error("Error loading data for AllRisksPage:", error);
-        toast({title: "Gagal Memuat Data", description: error.message || "Tidak dapat mengambil daftar risiko.", variant: "destructive"});
+        console.error("Error loading data for AllRisksPage:", error.message);
+        toast({title: "Gagal Memuat Data", description: `Tidak dapat mengambil daftar risiko: ${error.message}`, variant: "destructive"});
     } finally {
         setIsLoading(false);
     }
@@ -112,7 +112,7 @@ export default function AllRisksPage() {
   }, [loadData, currentUprId, currentPeriod, currentUser]);
   
   const handleOpenAddPotentialRiskPage = () => {
-    if (!Array.isArray(goals) || goals.length === 0) {
+    if (!Array.isArray(goals) || goals.length === 0) { // Check if goals is an array and has items
         toast({ title: "Tidak Dapat Menambah Potensi Risiko", description: "Harap buat setidaknya satu sasaran untuk UPR/Periode saat ini sebelum menambahkan potensi risiko.", variant: "destructive"});
         return;
     }
@@ -136,7 +136,7 @@ export default function AllRisksPage() {
       toast({ title: "Potensi Risiko Dihapus", description: `Potensi risiko "${riskToDelete.description}" dan semua data terkait telah dihapus.`, variant: "destructive" });
       loadData(); 
     } catch (error: any) {
-        console.error("Error deleting potential risk:", error);
+        console.error("Error deleting potential risk:", error.message);
         toast({ title: "Gagal Menghapus", description: error.message || "Terjadi kesalahan saat menghapus potensi risiko.", variant: "destructive" });
     } finally {
         setIsDeleteDialogOpen(false);
@@ -273,7 +273,7 @@ export default function AllRisksPage() {
         }
         loadData(); 
     } catch (error: any) {
-        console.error("Error during bulk delete process:", error);
+        console.error("Error during bulk delete process:", error.message);
     } finally {
         setIsBulkDeleteDialogOpen(false);
         setSelectedRiskIds([]);
@@ -305,7 +305,7 @@ export default function AllRisksPage() {
   }
 
   const relevantGoals = Array.isArray(goals) ? goals.filter(g => g.uprId === currentUprId && g.period === currentPeriod) : [];
-  const totalTableColumns = 7; 
+  const totalTableColumns = 8; // Adjusted for new expand icon and checkbox columns
 
   return (
     <div className="space-y-6">
@@ -313,10 +313,12 @@ export default function AllRisksPage() {
         title={`Identifikasi Risiko`}
         description={`Kelola semua potensi risiko yang teridentifikasi di semua sasaran untuk UPR: ${currentUprId}, Periode: ${currentPeriod}.`}
         actions={
-          <Button onClick={handleOpenAddPotentialRiskPage} disabled={relevantGoals.length === 0 || !currentUser}>
-            <PlusCircle className="mr-2 h-4 w-4" /> Tambah Potensi Risiko Baru
-            {relevantGoals.length === 0 && <span className="ml-2 text-xs">(Buat sasaran terlebih dahulu)</span>}
-          </Button>
+          <NextLink href="/all-risks/manage/new" passHref>
+            <Button disabled={relevantGoals.length === 0 || !currentUser}>
+              <PlusCircle className="mr-2 h-4 w-4" /> Tambah Potensi Risiko Baru
+              {relevantGoals.length === 0 && <span className="ml-2 text-xs">(Buat sasaran terlebih dahulu)</span>}
+            </Button>
+          </NextLink>
         }
       />
 
@@ -458,7 +460,7 @@ export default function AllRisksPage() {
                     <TableHead className="min-w-[150px]">Pemilik</TableHead>
                     <TableHead className="min-w-[200px]">Sasaran Terkait</TableHead>
                     <TableHead className="min-w-[100px] text-center">Penyebab</TableHead>
-                    {/* <TableHead className="text-right min-w-[100px] sticky right-0 bg-background z-10">Aksi</TableHead> */}
+                    
                     <TableHead className="text-right min-w-[100px] sticky right-0 bg-background z-10 pr-4">Aksi</TableHead>
                     </TableRow>
                 </TableHeader>
@@ -477,6 +479,8 @@ export default function AllRisksPage() {
                     const associatedGoalTitle = associatedGoal
                         ? `Sasaran ${goalCodeDisplay}: ${associatedGoal.name} - ${associatedGoal.description}`
                         : 'Sasaran tidak ditemukan';
+                    
+                    const returnPath = `/all-risks`;
 
                     return (
                         <Fragment key={pRisk.id}>
@@ -508,6 +512,7 @@ export default function AllRisksPage() {
                             {associatedGoalText}
                             </TableCell>
                             <TableCell className="text-center text-xs">{riskCauseCounts[pRisk.id] || 0}</TableCell>
+                            
                             <TableCell className="text-right sticky right-0 bg-background z-10 pr-4">
                             <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
@@ -519,7 +524,7 @@ export default function AllRisksPage() {
                                 <DropdownMenuItem onClick={() => handleOpenEditPotentialRiskPage(pRisk.id)}>
                                     <Edit className="mr-2 h-4 w-4" /> Edit Detail & Penyebab
                                 </DropdownMenuItem>
-                                 <DropdownMenuItem onClick={() => router.push(`/risk-analysis?potentialRiskId=${pRisk.id}`)}>
+                                 <DropdownMenuItem onClick={() => router.push(`/risk-analysis?potentialRiskId=${pRisk.id}&from=${encodeURIComponent(returnPath)}`)}>
                                     <BarChart3 className="mr-2 h-4 w-4" /> Analisis Semua Penyebab
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator />
@@ -577,7 +582,7 @@ export default function AllRisksPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Batal</AlertDialogCancel>
+            <AlertDialogCancel onClick={() => setIsBulkDeleteDialogOpen(false)}>Batal</AlertDialogCancel>
             <AlertDialogAction onClick={confirmDeleteSelectedRisks} className="bg-destructive hover:bg-destructive/90">Hapus ({selectedRiskIds.length})</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -586,6 +591,3 @@ export default function AllRisksPage() {
     </div>
   );
 }
-
-
-    
