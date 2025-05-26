@@ -56,9 +56,9 @@ export async function addRiskCause(
       sequenceNumber,
       createdAt: new Date().toISOString(), // Placeholder
     };
-  } catch (error) {
-    console.error("Error adding risk cause to Firestore: ", error);
-    throw new Error("Gagal menambahkan penyebab risiko ke database.");
+  } catch (error: any) {
+    console.error("Error adding risk cause to Firestore: ", error.message, error.code, error);
+    throw new Error(`Gagal menambahkan penyebab risiko ke database. Pesan: ${error.message}`);
   }
 }
 
@@ -77,16 +77,32 @@ export async function getRiskCausesByPotentialRiskId(potentialRiskId: string, up
       const data = doc.data();
       const createdAtISO = data.createdAt instanceof Timestamp
                            ? data.createdAt.toDate().toISOString()
-                           : (data.createdAt ? new Date(data.createdAt).toISOString() : new Date().toISOString());
+                           : (data.createdAt && typeof data.createdAt === 'string' ? new Date(data.createdAt).toISOString() : new Date().toISOString());
       const analysisUpdatedAtISO = data.analysisUpdatedAt instanceof Timestamp
                            ? data.analysisUpdatedAt.toDate().toISOString()
-                           : (data.analysisUpdatedAt ? new Date(data.analysisUpdatedAt).toISOString() : undefined);
-      riskCauses.push({ id: doc.id, ...data, createdAt: createdAtISO, analysisUpdatedAt: analysisUpdatedAtISO } as RiskCause);
+                           : (data.analysisUpdatedAt && typeof data.analysisUpdatedAt === 'string' ? new Date(data.analysisUpdatedAt).toISOString() : undefined);
+      
+      riskCauses.push({ 
+        id: doc.id, 
+        ...data, 
+        createdAt: createdAtISO, 
+        analysisUpdatedAt: analysisUpdatedAtISO,
+        keyRiskIndicator: data.keyRiskIndicator || null,
+        riskTolerance: data.riskTolerance || null,
+        likelihood: data.likelihood || null,
+        impact: data.impact || null,
+      } as RiskCause);
     });
     return riskCauses;
-  } catch (error) {
-    console.error("Error getting risk causes from Firestore: ", error);
-    throw new Error("Gagal mengambil daftar penyebab risiko dari database.");
+  } catch (error: any) {
+    console.error("Error getting risk causes from Firestore: ", error.message, error.code, error.details);
+    let detailedErrorMessage = "Gagal mengambil daftar penyebab risiko dari database.";
+    if (error.code === 'failed-precondition') {
+        detailedErrorMessage += " Ini seringkali disebabkan oleh indeks komposit yang hilang di Firestore. Silakan periksa Firebase Console Anda (Firestore Database > Indexes) untuk membuat indeks yang diperlukan. Link untuk membuat indeks mungkin ada di log error server/konsol browser Anda.";
+    } else if (error.message) {
+        detailedErrorMessage += ` Pesan Asli: ${error.message}`;
+    }
+    throw new Error(detailedErrorMessage);
   }
 }
 
@@ -98,37 +114,48 @@ export async function getRiskCauseById(id: string): Promise<RiskCause | null> {
       const data = docSnap.data();
        const createdAtISO = data.createdAt instanceof Timestamp
                            ? data.createdAt.toDate().toISOString()
-                           : (data.createdAt ? new Date(data.createdAt).toISOString() : new Date().toISOString());
+                           : (data.createdAt && typeof data.createdAt === 'string' ? new Date(data.createdAt).toISOString() : new Date().toISOString());
       const analysisUpdatedAtISO = data.analysisUpdatedAt instanceof Timestamp
                            ? data.analysisUpdatedAt.toDate().toISOString()
-                           : (data.analysisUpdatedAt ? new Date(data.analysisUpdatedAt).toISOString() : undefined);
-      return { id: docSnap.id, ...data, createdAt: createdAtISO, analysisUpdatedAt: analysisUpdatedAtISO } as RiskCause;
+                           : (data.analysisUpdatedAt && typeof data.analysisUpdatedAt === 'string' ? new Date(data.analysisUpdatedAt).toISOString() : undefined);
+      return { 
+        id: docSnap.id, 
+        ...data, 
+        createdAt: createdAtISO, 
+        analysisUpdatedAt: analysisUpdatedAtISO,
+        keyRiskIndicator: data.keyRiskIndicator || null,
+        riskTolerance: data.riskTolerance || null,
+        likelihood: data.likelihood || null,
+        impact: data.impact || null,
+      } as RiskCause;
     }
     return null;
-  } catch (error) {
-    console.error("Error getting risk cause by ID from Firestore: ", error);
-    throw new Error("Gagal mengambil detail penyebab risiko dari database.");
+  } catch (error: any) {
+    console.error("Error getting risk cause by ID from Firestore: ", error.message, error.code, error);
+    throw new Error(`Gagal mengambil detail penyebab risiko dari database. Pesan: ${error.message}`);
   }
 }
 
-export async function updateRiskCause(id: string, data: Partial<Omit<RiskCause, 'id' | 'potentialRiskId' | 'goalId' | 'uprId' | 'period' | 'userId'>>): Promise<void> {
+export async function updateRiskCause(id: string, data: Partial<Omit<RiskCause, 'id' | 'potentialRiskId' | 'goalId' | 'uprId' | 'period' | 'userId' | 'createdAt' | 'sequenceNumber'>>): Promise<void> {
   try {
     const docRef = doc(db, RISK_CAUSES_COLLECTION, id);
     await updateDoc(docRef, {
         ...data,
+        keyRiskIndicator: data.keyRiskIndicator === undefined ? undefined : (data.keyRiskIndicator || null),
+        riskTolerance: data.riskTolerance === undefined ? undefined : (data.riskTolerance || null),
+        likelihood: data.likelihood === undefined ? undefined : (data.likelihood || null),
+        impact: data.impact === undefined ? undefined : (data.impact || null),
         analysisUpdatedAt: serverTimestamp()
     });
-  } catch (error) {
-    console.error("Error updating risk cause in Firestore: ", error);
-    throw new Error("Gagal memperbarui penyebab risiko di database.");
+  } catch (error: any) {
+    console.error("Error updating risk cause in Firestore: ", error.message, error.code, error);
+    throw new Error(`Gagal memperbarui penyebab risiko di database. Pesan: ${error.message}`);
   }
 }
 
-// Modified to accept an optional batch
 export async function deleteRiskCauseAndSubCollections(riskCauseId: string, uprId: string, period: string, batch?: WriteBatch): Promise<void> {
   const localBatch = batch || writeBatch(db);
   try {
-    // 1. Get and delete all ControlMeasures for this RiskCause
     const controlsQuery = query(
       collection(db, CONTROL_MEASURES_COLLECTION),
       where("riskCauseId", "==", riskCauseId),
@@ -140,16 +167,14 @@ export async function deleteRiskCauseAndSubCollections(riskCauseId: string, uprI
       localBatch.delete(doc.ref);
     });
 
-    // 2. Delete the RiskCause document itself
     const riskCauseRef = doc(db, RISK_CAUSES_COLLECTION, riskCauseId);
     localBatch.delete(riskCauseRef);
 
-    // If a batch was not passed in, commit the local batch
     if (!batch) {
       await localBatch.commit();
     }
-  } catch (error) {
-    console.error("Error deleting risk cause and its control measures: ", error);
-    throw new Error("Gagal menghapus penyebab risiko dan tindakan pengendalian terkait.");
+  } catch (error: any) {
+    console.error("Error deleting risk cause and its control measures: ", error.message, error.code, error);
+    throw new Error(`Gagal menghapus penyebab risiko dan tindakan pengendalian terkait. Pesan: ${error.message}`);
   }
 }
