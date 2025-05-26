@@ -81,21 +81,33 @@ export async function addGoal(
   }
 }
 
-export async function getGoals(uprId: string, period: string): Promise<Goal[]> {
+export async function getGoals(uprId: string | null | undefined, period: string): Promise<GoalsResult> {
   try {
+    // 1. Cek uprId di awal
+    if (!uprId || uprId.trim() === '') {
+      console.warn("uprId belum tersedia. Membutuhkan uprId dari Admin.");
+      return {
+        success: false,
+        message: "Untuk melihat sasaran, Anda memerlukan uprId yang akan diberikan oleh Admin.",
+        code: 'NO_UPRID'
+      };
+    }
+
     const q = query(
       collection(db, GOALS_COLLECTION),
       where("uprId", "==", uprId),
       where("period", "==", period),
       orderBy("code", "asc")
     );
+
     const querySnapshot = await getDocs(q);
     const goals: Goal[] = [];
+
     querySnapshot.forEach((doc) => {
       const data = doc.data();
       const createdAtISO = data.createdAt instanceof Timestamp
-                           ? data.createdAt.toDate().toISOString()
-                           : (data.createdAt ? new Date(data.createdAt).toISOString() : new Date().toISOString());
+                             ? data.createdAt.toDate().toISOString()
+                             : (data.createdAt ? new Date(data.createdAt).toISOString() : new Date().toISOString());
       goals.push({
         id: doc.id,
         name: data.name,
@@ -107,10 +119,20 @@ export async function getGoals(uprId: string, period: string): Promise<Goal[]> {
         userId: data.userId,
       } as Goal);
     });
-    return goals.sort((a, b) => (a.code || '').localeCompare(b.code || '', undefined, {numeric: true, sensitivity: 'base'}));
+
+    // Urutkan hasil akhir
+    const sortedGoals = goals.sort((a, b) => (a.code || '').localeCompare(b.code || '', undefined, {numeric: true, sensitivity: 'base'}));
+
+    return { success: true, goals: sortedGoals }; // Mengembalikan sukses dengan data
   } catch (error) {
     console.error("Error getting goals from Firestore: ", error);
-    throw new Error("Gagal mengambil daftar sasaran dari database.");
+    // Jika ada error lain (misalnya dari Firestore Security Rules),
+    // kita tetap mengembalikan error tapi dengan kode yang berbeda
+    return {
+      success: false,
+      message: "Terjadi kesalahan saat mengambil daftar sasaran dari database.",
+      code: 'UNKNOWN_ERROR'
+    };
   }
 }
 

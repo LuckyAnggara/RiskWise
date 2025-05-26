@@ -25,7 +25,6 @@ export async function getUserDocument(uid: string): Promise<AppUser | null> {
     return null;
   } catch (error) {
     console.error("Error getting user document from Firestore: ", error);
-    // Potentially re-throw or return a more specific error if needed by callers
     return null;
   }
 }
@@ -44,44 +43,55 @@ export async function checkAndCreateUserDocument(
   const existingUserDoc = await getUserDocument(firebaseUser.uid);
 
   if (existingUserDoc) {
-    // Optionally, update fields like displayName or photoURL if they've changed in Firebase Auth
-    // For now, just return the existing document
     return existingUserDoc;
   }
 
-  // User document doesn't exist, create it
-  const newUser: Omit<AppUser, 'createdAt' | 'id'> = { // Omit 'id' as it's the doc name
+  const newUserDocData = {
     uid: firebaseUser.uid,
     email: firebaseUser.email,
-    displayName: firebaseUser.displayName,
-    photoURL: firebaseUser.photoURL,
+    displayName: firebaseUser.displayName || null, // Ensure null if undefined or falsy
+    photoURL: firebaseUser.photoURL || null,     // Ensure null if undefined or falsy
     role: defaultRole,
-    uprId: null, // Default UPR ID, can be set later by an admin
-    // createdAt will be set by serverTimestamp
+    uprId: null, 
+    createdAt: serverTimestamp(),
   };
 
   try {
     const userDocRef = doc(db, USERS_COLLECTION, firebaseUser.uid);
-    await setDoc(userDocRef, {
-      ...newUser,
-      createdAt: serverTimestamp(),
-    });
+    await setDoc(userDocRef, newUserDocData);
     
     // Fetch the newly created document to get the server timestamp resolved
+    // This step is good practice but can be omitted if client-side timestamp is acceptable for immediate use
     const createdDocSnap = await getDoc(userDocRef);
     if (createdDocSnap.exists()) {
         const data = createdDocSnap.data();
-        const createdAt = data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : new Date().toISOString();
-        return { uid: createdDocSnap.id, ...data, createdAt } as AppUser;
+        const createdAt = data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : new Date().toISOString(); // Handle server timestamp
+        return { 
+            uid: createdDocSnap.id, 
+            email: data.email,
+            displayName: data.displayName,
+            photoURL: data.photoURL,
+            role: data.role,
+            uprId: data.uprId,
+            createdAt 
+        } as AppUser;
     } else {
-        // This case should ideally not happen if setDoc was successful
         console.error("Failed to fetch newly created user document.");
-        // Fallback to client-side timestamp if fetching fails, though not ideal
-        return { ...newUser, createdAt: new Date().toISOString() } as AppUser;
+        // Fallback to client-side timestamp and data, though serverTimestamp is preferred
+        return { 
+            uid: firebaseUser.uid,
+            email: newUserDocData.email,
+            displayName: newUserDocData.displayName,
+            photoURL: newUserDocData.photoURL,
+            role: newUserDocData.role,
+            uprId: newUserDocData.uprId,
+            createdAt: new Date().toISOString() 
+        } as AppUser;
     }
-
   } catch (error) {
     console.error("Error creating user document in Firestore: ", error);
     throw new Error("Gagal membuat dokumen pengguna di database.");
   }
 }
+
+    

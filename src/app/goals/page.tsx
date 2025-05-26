@@ -2,6 +2,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { PageHeader } from '@/components/ui/page-header';
 import { GoalCard } from '@/components/goals/goal-card';
 import { AddGoalDialog } from '@/components/goals/add-goal-dialog';
@@ -12,7 +13,8 @@ import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { getCurrentUprId, getCurrentPeriod, initializeAppContext } from '@/lib/upr-period-context';
 import { useAuth } from '@/contexts/auth-context';
-import { addGoal, getGoals, updateGoal, deleteGoal } from '@/services/goalService';
+import { addGoal, getGoals, updateGoal, deleteGoal, type GoalsResult } from '@/services/goalService'; // Import GoalsResult
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
 export default function GoalsPage() {
   const [goals, setGoals] = useState<Goal[]>([]);
@@ -22,6 +24,10 @@ export default function GoalsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const { toast } = useToast();
   const { currentUser } = useAuth();
+  const router = useRouter();
+
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [goalToDelete, setGoalToDelete] = useState<Goal | null>(null);
 
   const loadGoals = useCallback(async () => {
     if (!currentUser || !currentUprId || !currentPeriod) {
@@ -31,11 +37,19 @@ export default function GoalsPage() {
     }
     setIsLoading(true);
     try {
-      const fetchedGoals = await getGoals(currentUprId, currentPeriod);
-      setGoals(fetchedGoals);
+      const result: GoalsResult = await getGoals(currentUprId, currentPeriod);
+      if (result.success && result.goals) {
+        setGoals(result.goals);
+      } else if (!result.success && result.code === 'NO_UPRID' && result.message) {
+        toast({ title: "Informasi", description: result.message, variant: "default", duration: 7000 });
+        setGoals([]);
+      } else {
+        toast({ title: "Kesalahan", description: result.message || "Gagal memuat daftar sasaran.", variant: "destructive" });
+        setGoals([]);
+      }
     } catch (error) {
       console.error("Gagal memuat sasaran:", error);
-      toast({ title: "Kesalahan", description: "Gagal memuat daftar sasaran.", variant: "destructive" });
+      toast({ title: "Kesalahan Fatal", description: "Terjadi kesalahan fatal saat memuat sasaran.", variant: "destructive" });
       setGoals([]);
     } finally {
       setIsLoading(false);
@@ -71,7 +85,7 @@ export default function GoalsPage() {
         const editedGoal = goals.find(g => g.id === existingGoalId);
         toast({ title: "Sasaran Diperbarui", description: `Sasaran "${goalData.name}" (${editedGoal?.code}) telah berhasil diperbarui.` });
       } else {
-        const newGoal = await addGoal(goalData, currentUprId, currentPeriod, currentUser.uid);
+        const newGoal = await addGoal(goalData, currentUprId, currentPeriod, currentUser.uid, goals);
         toast({ title: "Sasaran Ditambahkan", description: `Sasaran baru "${newGoal.name}" (${newGoal.code}) telah berhasil ditambahkan.` });
       }
       loadGoals(); 
@@ -81,25 +95,30 @@ export default function GoalsPage() {
     }
   };
 
-  const handleGoalDelete = async (goalId: string) => {
-    const goalToDelete = goals.find(g => g.id === goalId);
-    if (!goalToDelete || !currentUprId || !currentPeriod) return;
-
-    const confirmed = window.confirm(`Apakah Anda yakin ingin menghapus sasaran "${goalToDelete.name}" (${goalToDelete.code})? Semua potensi risiko, penyebab, dan rencana pengendalian terkait juga akan dihapus.`);
-    if (!confirmed) return;
-
+  const confirmDelete = async () => {
+    if (!goalToDelete || !currentUprId || !currentPeriod || !currentUser) return;
     try {
-      await deleteGoal(goalId, currentUprId, currentPeriod);
+      await deleteGoal(goalToDelete.id, currentUprId, currentPeriod);
       toast({ title: "Sasaran Dihapus", description: `Sasaran "${goalToDelete.name}" (${goalToDelete.code}) dan semua data terkait telah dihapus.`, variant: "destructive" });
+      setGoalToDelete(null);
+      setIsDeleteDialogOpen(false);
       loadGoals(); 
     } catch (error: any) {
       console.error("Gagal menghapus sasaran:", error);
       toast({ title: "Kesalahan", description: error.message || "Gagal menghapus sasaran.", variant: "destructive" });
+      setGoalToDelete(null);
+      setIsDeleteDialogOpen(false);
     }
   };
+  
+  const handleDeleteGoal = (goal: Goal) => {
+    setGoalToDelete(goal);
+    setIsDeleteDialogOpen(true);
+  };
+
 
   const filteredGoals = useMemo(() => {
-    let sortedGoals = [...goals]; 
+    let sortedGoals = Array.isArray(goals) ? [...goals] : [];
     if (!searchTerm) {
       return sortedGoals;
     }
@@ -110,25 +129,35 @@ export default function GoalsPage() {
     );
   }, [goals, searchTerm]);
   
-  if (isLoading) {
-    return (
+  if (isLoading && !currentUser) { // Initial check before context might be ready
+     return (
       <div className="flex flex-col items-center justify-center h-screen">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
-        <p className="text-xl text-muted-foreground">Memuat data sasaran...</p>
+        <p className="text-xl text-muted-foreground">Memverifikasi sesi...</p>
       </div>
     );
   }
-   if (!currentUser && !isLoading) {
+
+  if (!currentUser && !isLoading) {
     return (
       <div className="flex flex-col items-center justify-center h-screen">
         <Target className="mx-auto h-12 w-12 text-muted-foreground" />
         <h3 className="mt-4 text-xl font-medium">Akses Dibatasi</h3>
         <p className="mt-2 text-sm text-muted-foreground">
-          Silakan login untuk mengakses halaman ini.
+          Silakan login untuk mengakses halaman Sasaran.
         </p>
         <Button onClick={() => router.push('/login')} className="mt-6">
             Ke Halaman Login
         </Button>
+      </div>
+    );
+  }
+  
+  if (isLoading) {
+     return (
+      <div className="flex flex-col items-center justify-center h-screen">
+        <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
+        <p className="text-xl text-muted-foreground">Memuat data sasaran...</p>
       </div>
     );
   }
@@ -142,6 +171,7 @@ export default function GoalsPage() {
         actions={
           <AddGoalDialog 
             onGoalSave={handleGoalSave}
+            existingGoals={goals} // Pass existing goals to help with code generation
             triggerButton={
               <Button disabled={!currentUser}>
                 <PlusCircle className="mr-2 h-4 w-4" /> Tambah Sasaran Baru
@@ -184,6 +214,7 @@ export default function GoalsPage() {
           <div className="mt-6">
             <AddGoalDialog 
               onGoalSave={handleGoalSave} 
+              existingGoals={goals}
               triggerButton={
                 <Button disabled={!currentUser}>
                   <PlusCircle className="mr-2 h-4 w-4" /> Tambah Sasaran Baru
@@ -201,11 +232,27 @@ export default function GoalsPage() {
               key={goal.id} 
               goal={goal} 
               onEditGoal={(editedGoalData) => handleGoalSave(editedGoalData, goal.id)} 
-              onDeleteGoal={handleGoalDelete}
+              onDeleteGoal={() => handleDeleteGoal(goal)}
             />
           ))}
         </div>
       )}
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Konfirmasi Hapus Sasaran</AlertDialogTitle>
+            <AlertDialogDescription>
+              Apakah Anda yakin ingin menghapus sasaran "{goalToDelete?.name}" ({goalToDelete?.code})? Semua potensi risiko, penyebab, dan rencana pengendalian terkait juga akan dihapus. Tindakan ini tidak dapat dibatalkan.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => {setIsDeleteDialogOpen(false); setGoalToDelete(null);}}>Batal</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDelete} className="bg-destructive hover:bg-destructive/90">Hapus</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
+
+    

@@ -15,13 +15,14 @@ import { getFirestore, type Firestore } from "firebase/firestore"; // Import Fir
 // };
 
 const firebaseConfig = {
-  apiKey: "AIzaSyDu5rXL6LJ3BcPgSVVwPXDU3N-m42mWbsM",
-  authDomain: "riskmanagement-f6c03.firebaseapp.com",
-  projectId: "riskmanagement-f6c03",
-  storageBucket: "riskmanagement-f6c03.firebasestorage.app",
-  messagingSenderId: "324280335694",
-  appId: "1:324280335694:web:6cec8b52423b62fdbeb21f"
+  apiKey: "AIzaSyDQZb6sBL2gt0NQOfnX4NJ9GTG7P99NpKQ",
+  authDomain: "rikswise-d5d7f.firebaseapp.com",
+  projectId: "rikswise-d5d7f",
+  storageBucket: "rikswise-d5d7f.firebasestorage.app",
+  messagingSenderId: "1092348163361",
+  appId: "1:1092348163361:web:4554ae2c6a478953cf7a60"
 };
+
 
 // Inisialisasi Firebase
 let app: FirebaseApp;
