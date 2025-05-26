@@ -4,17 +4,19 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, type User as FirebaseUser } from 'firebase/auth';
+import { GoogleAuthProvider, signInWithPopup, type User as FirebaseUser } from 'firebase/auth';
 import { auth } from '@/lib/firebase/config';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+// Input dan Label tidak lagi diperlukan untuk form email/password
+// import { Input } from '@/components/ui/input';
+// import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, LogIn, Mail } from 'lucide-react'; // Mail icon for Google
+import { Loader2 } from 'lucide-react'; 
 import { AppLogo } from '@/components/icons';
-import { checkAndCreateUserDocument } from '@/services/userService'; // Import user service
-import { Separator } from '@/components/ui/separator';
+import { checkAndCreateUserDocument } from '@/services/userService'; 
+// Separator tidak lagi diperlukan
+// import { Separator } from '@/components/ui/separator';
 
 // Google Icon SVG (simple version)
 const GoogleIcon = (props: React.SVGProps<SVGSVGElement>) => (
@@ -29,46 +31,24 @@ const GoogleIcon = (props: React.SVGProps<SVGSVGElement>) => (
 
 
 export default function LoginPage() {
+  // State untuk email dan password tidak lagi diperlukan
   // const [email, setEmail] = useState('');
   // const [password, setPassword] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  // const [isLoading, setIsLoading] = useState(false); // isLoading untuk email/password login
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
 
-  // const handleLogin = async (e: React.FormEvent) => {
-  //   e.preventDefault();
-  //   setIsLoading(true);
-  //   try {
-  //     const userCredential = await signInWithEmailAndPassword(auth, email, password);
-  //     await checkAndCreateUserDocument(userCredential.user);
-  //     toast({ title: 'Login Berhasil', description: 'Selamat datang kembali!' });
-  //     router.push('/'); 
-  //   } catch (error: any) {
-  //     console.error("Error login:", error);
-  //     let errorMessage = 'Gagal melakukan login. Silakan coba lagi.';
-  //     if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
-  //       errorMessage = 'Email atau password salah.';
-  //     } else if (error.code === 'auth/invalid-email') {
-  //       errorMessage = 'Format email tidak valid.';
-  //     }
-  //     toast({ title: 'Login Gagal', description: errorMessage, variant: 'destructive' });
-  //   } finally {
-  //     setIsLoading(false);
-  //   }
-  // };
+  // Fungsi handleLogin untuk email/password tidak lagi diperlukan
+  // const handleLogin = async (e: React.FormEvent) => { ... };
 
   const handleGoogleSignIn = async () => {
     setIsGoogleLoading(true);
     const provider = new GoogleAuthProvider();
     try {
       const result = await signInWithPopup(auth, provider);
-      // This gives you a Google Access Token. You can use it to access the Google API.
-      // const credential = GoogleAuthProvider.credentialFromResult(result);
-      // const token = credential?.accessToken;
-      // The signed-in user info.
       const user = result.user;
-      await checkAndCreateUserDocument(user, 'userSatker'); // Create user doc if not exists, with default role
+      await checkAndCreateUserDocument(user, 'userSatker'); 
       toast({ title: 'Login Google Berhasil', description: `Selamat datang, ${user.displayName || user.email}!` });
       router.push('/');
     } catch (error: any) {
@@ -91,14 +71,14 @@ export default function LoginPage() {
         <CardHeader className="space-y-1 text-center">
           <AppLogo className="mx-auto h-12 w-12 text-primary mb-2" />
           <CardTitle className="text-2xl">Masuk ke RiskWise</CardTitle>
-          <CardDescription>Gunakan akun Google Anda untuk melanjutkan</CardDescription>
+          <CardDescription>Gunakan akun Google Anda untuk melanjutkan.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <Button 
             variant="outline" 
             className="w-full" 
             onClick={handleGoogleSignIn} 
-            disabled={isGoogleLoading || isLoading}
+            disabled={isGoogleLoading} // Hanya disabled oleh isGoogleLoading
           >
             {isGoogleLoading ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -108,6 +88,7 @@ export default function LoginPage() {
             Masuk dengan Google
           </Button>
 
+          {/* Bagian untuk form login email/password dihapus/dikomentari */}
           {/* 
           <div className="relative">
             <div className="absolute inset-0 flex items-center">
@@ -149,7 +130,7 @@ export default function LoginPage() {
               {isLoading ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
-                <LogIn className="mr-2 h-4 w-4" />
+                <LogIn className="mr-2 h-4 w-4" /> // LogIn juga perlu diimpor jika digunakan
               )}
               Masuk dengan Email
             </Button>
@@ -163,3 +144,4 @@ export default function LoginPage() {
     </div>
   );
 }
+
