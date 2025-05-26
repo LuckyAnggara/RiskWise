@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo, Fragment } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import NextLink from 'next/link'; 
+import NextLink from 'next/link';
 import { PageHeader } from '@/components/ui/page-header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -26,7 +26,8 @@ import { useAuth } from '@/contexts/auth-context';
 import { getGoals } from '@/services/goalService';
 import { getPotentialRisksByGoalId, addPotentialRisk, deletePotentialRiskAndSubCollections } from '@/services/potentialRiskService';
 import { getRiskCausesByPotentialRiskId, addRiskCause, deleteRiskCauseAndSubCollections as deleteRiskCausesForPR } from '@/services/riskCauseService';
-// ControlMeasureService is not directly used for control creation from this page anymore.
+import { getControlMeasuresByRiskCauseId, deleteControlMeasure } from '@/services/controlMeasureService';
+
 
 export default function GoalRisksPage() {
   const router = useRouter();
@@ -38,8 +39,6 @@ export default function GoalRisksPage() {
   const [currentPeriod, setCurrentPeriod] = useState('');
   const [goal, setGoal] = useState<Goal | null>(null);
   const [potentialRisks, setPotentialRisks] = useState<PotentialRisk[]>([]);
-  // Controls are now managed at riskCause level, so no top-level controls state here.
-  // const [controls, setControls] = useState<Control[]>([]);
   const [riskCauseCounts, setRiskCauseCounts] = useState<Record<string, number>>({});
   
   const [isLoading, setIsLoading] = useState(true);
@@ -69,9 +68,20 @@ export default function GoalRisksPage() {
     }
     setIsLoading(true);
     try {
-      const allGoals = await getGoals(currentUprId, currentPeriod);
-      const currentGoal = allGoals.find(g => g.id === goalId);
-      setGoal(currentGoal || null);
+      const goalsResult = await getGoals(currentUprId, currentPeriod);
+      let currentGoal: Goal | null = null;
+
+      if (goalsResult.success && goalsResult.goals) {
+        currentGoal = goalsResult.goals.find(g => g.id === goalId) || null;
+        setGoal(currentGoal);
+      } else {
+        setGoal(null);
+        toast({
+          title: "Kesalahan Memuat Sasaran Induk",
+          description: goalsResult.message || "Tidak dapat memuat data sasaran.",
+          variant: "destructive",
+        });
+      }
 
       const uniqueOwners = new Set<string>();
       const causeCounts: Record<string,number> = {};
@@ -84,15 +94,15 @@ export default function GoalRisksPage() {
           causeCounts[pRisk.id] = causes.length;
         }
       } else {
-        setPotentialRisks([]);
+        setPotentialRisks([]); // Ensure potential risks are cleared if goal isn't found/loaded
       }
       setAllRiskOwnersForGoal(Array.from(uniqueOwners).sort());
       setRiskCauseCounts(causeCounts);
-      setSelectedRiskIds([]); // Reset selection
+      setSelectedRiskIds([]); 
     } catch (error) {
         console.error("Error loading data for GoalRisksPage:", error);
         toast({title: "Gagal Memuat Data", description: "Tidak dapat mengambil data sasaran dan risiko.", variant: "destructive"});
-        setGoal(null); // Ensure goal is null on error
+        setGoal(null); 
     } finally {
         setIsLoading(false);
     }
@@ -110,17 +120,42 @@ export default function GoalRisksPage() {
     if (currentUprId && currentPeriod && goalId && currentUser) {
       loadData();
     } else if (!currentUser && goalId && currentUprId && currentPeriod) {
-      setIsLoading(false); // Stop loading if no user but context is set
+      setIsLoading(false); 
     }
   }, [loadData, currentUprId, currentPeriod, goalId, currentUser]);
 
-  const handlePotentialRisksIdentified = (newPRs: PotentialRisk[]) => {
-    // No need to manually add to state if addPotentialRisk in service works and we reload
-    toast({
-        title: "Potensi Risiko Teridentifikasi!",
-        description: `${newPRs.length} potensi risiko telah disimpan ke Firestore.`,
+  const handlePotentialRisksIdentified = async (newPRSuggestions: Array<{ description: string; category: RiskCategory | null }>) => {
+    if (!goal || !currentUser) {
+        toast({ title: "Konteks Tidak Lengkap", description: "Sasaran atau pengguna tidak ditemukan.", variant: "destructive" });
+        return;
+    }
+    setIsLoading(true);
+    let currentSequence = potentialRisks.length;
+    const creationPromises = newPRSuggestions.map(suggestion => {
+        currentSequence++;
+        const newRiskData: Omit<PotentialRisk, 'id' | 'identifiedAt' | 'uprId' | 'period' | 'userId' | 'sequenceNumber'> = {
+            goalId: goal.id,
+            description: suggestion.description,
+            category: suggestion.category,
+            owner: null, 
+        };
+        return addPotentialRisk(newRiskData, goal.id, goal.uprId, goal.period, currentUser.uid, currentSequence);
     });
-    loadData(); // Reload data to reflect new additions
+
+    try {
+        const createdRisks = await Promise.all(creationPromises);
+        toast({
+            title: "Potensi Risiko Disimpan!",
+            description: `${createdRisks.length} potensi risiko baru telah ditambahkan dari saran AI.`,
+        });
+        loadData(); 
+    } catch (error) {
+        console.error("Error saving AI suggested risks:", error);
+        const errorMessage = error instanceof Error ? error.message : "Gagal menyimpan saran risiko dari AI.";
+        toast({ title: "Gagal Menyimpan Risiko", description: errorMessage, variant: "destructive" });
+    } finally {
+        setIsLoading(false);
+    }
   };
   
   const handleDeleteSingleRisk = (pRisk: PotentialRisk) => {
@@ -134,10 +169,11 @@ export default function GoalRisksPage() {
     try {
       await deletePotentialRiskAndSubCollections(riskToDelete.id, currentUprId, currentPeriod);
       toast({ title: "Potensi Risiko Dihapus", description: `Potensi risiko "${riskToDelete.description}" dan semua data terkait telah dihapus.`, variant: "destructive" });
-      loadData(); // Refresh data
+      loadData(); 
     } catch (error) {
         console.error("Error deleting single potential risk:", error);
-        toast({ title: "Gagal Menghapus", description: "Terjadi kesalahan saat menghapus potensi risiko.", variant: "destructive" });
+        const errorMessage = error instanceof Error ? error.message : "Terjadi kesalahan saat menghapus potensi risiko.";
+        toast({ title: "Gagal Menghapus", description: errorMessage, variant: "destructive" });
     } finally {
         setIsSingleDeleteDialogOpen(false);
         setRiskToDelete(null);
@@ -162,7 +198,7 @@ export default function GoalRisksPage() {
     if (selectedOwners.length > 0) {
       tempRisks = tempRisks.filter(pr => pr.owner && selectedOwners.includes(pr.owner));
     }
-    return tempRisks; 
+    return tempRisks.sort((a, b) => (a.sequenceNumber || 0) - (b.sequenceNumber || 0));
   }, [potentialRisks, searchTerm, selectedCategories, selectedOwners, goal?.code]);
 
   const handleSelectRisk = (riskId: string, checked: boolean) => {
@@ -189,6 +225,7 @@ export default function GoalRisksPage() {
 
   const confirmDeleteSelectedRisks = async () => {
     if (!goal || !currentUser || !currentUprId || !currentPeriod ) return;
+    setIsLoading(true);
     let deletedCount = 0;
     
     const deletionPromises = selectedRiskIds.map(riskId => {
@@ -214,13 +251,14 @@ export default function GoalRisksPage() {
     } finally {
         setIsBulkDeleteDialogOpen(false);
         setSelectedRiskIds([]);
+        setIsLoading(false);
     }
   };
 
   const handleDuplicateRisk = async (riskToDuplicate: PotentialRisk) => {
     if (!goal || !currentUser || !currentUprId || !currentPeriod) return;
 
-    setIsLoading(true); // Indicate loading
+    setIsLoading(true); 
     try {
         const existingPRsForGoal = await getPotentialRisksByGoalId(goal.id, currentUprId, currentPeriod);
         const newSequenceNumber = existingPRsForGoal.length + 1;
@@ -237,7 +275,7 @@ export default function GoalRisksPage() {
         let causeSeq = 0;
         for (const cause of originalCauses) {
             causeSeq++;
-            const newCauseData: Omit<RiskCause, 'id' | 'createdAt' | 'uprId' | 'period' | 'userId' | 'potentialRiskId' | 'goalId' | 'sequenceNumber'> = {
+            const newCauseData: Omit<RiskCause, 'id' | 'createdAt' | 'uprId' | 'period' | 'userId' | 'potentialRiskId' | 'goalId' | 'sequenceNumber' > = {
                 description: cause.description,
                 source: cause.source,
                 keyRiskIndicator: cause.keyRiskIndicator,
@@ -245,16 +283,33 @@ export default function GoalRisksPage() {
                 likelihood: cause.likelihood,
                 impact: cause.impact,
             };
-            // Controls for this cause would need to be duplicated too if we go deeper.
-            // For now, just duplicating cause.
-            await addRiskCause(newCauseData, newPotentialRisk.id, newPotentialRisk.goalId, currentUprId, currentPeriod, currentUser.uid, causeSeq);
+            
+            const newDuplicatedCause = await addRiskCause(newCauseData, newPotentialRisk.id, newPotentialRisk.goalId, currentUprId, currentPeriod, currentUser.uid, causeSeq);
+
+            // Duplicate ControlMeasures for the new cause
+            const originalControls = await getControlMeasuresByRiskCauseId(cause.id, currentUprId, currentPeriod);
+            let controlSeq = 0;
+            for (const control of originalControls) {
+              controlSeq++;
+              const newControlData: Omit<any, 'id'|'createdAt'|'uprId'|'period'|'userId'|'riskCauseId'|'potentialRiskId'|'goalId'|'sequenceNumber'> = {
+                controlType: control.controlType,
+                description: control.description,
+                keyControlIndicator: control.keyControlIndicator,
+                target: control.target,
+                responsiblePerson: control.responsiblePerson,
+                deadline: control.deadline,
+                budget: control.budget,
+              };
+              await addControlMeasure(newControlData, newDuplicatedCause.id, newPotentialRisk.id, newPotentialRisk.goalId, currentUprId, currentPeriod, currentUser.uid, controlSeq);
+            }
         }
 
-        toast({ title: "Risiko Diduplikasi", description: `Potensi risiko "${newPotentialRisk.description}" telah berhasil diduplikasi.`});
+        toast({ title: "Risiko Diduplikasi", description: `Potensi risiko "${newPotentialRisk.description}" dan penyebabnya telah berhasil diduplikasi.`});
         loadData(); 
     } catch (error) {
         console.error("Error duplicating risk:", error);
-        toast({ title: "Gagal Menduplikasi", description: "Terjadi kesalahan saat menduplikasi potensi risiko.", variant: "destructive" });
+        const errorMessage = error instanceof Error ? error.message : "Terjadi kesalahan saat menduplikasi potensi risiko.";
+        toast({ title: "Gagal Menduplikasi", description: errorMessage, variant: "destructive" });
     } finally {
         setIsLoading(false);
     }
@@ -264,7 +319,7 @@ export default function GoalRisksPage() {
     setExpandedRiskId(currentId => (currentId === riskId ? null : riskId));
   };
 
-  if (isLoading) { 
+  if (isLoading && (!goal || potentialRisks.length === 0)) { 
     return (
       <div className="flex flex-col items-center justify-center h-screen">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
@@ -299,7 +354,7 @@ export default function GoalRisksPage() {
   
   if (!goal) return null; 
 
-  const totalTableColumns = 8;
+  const totalTableColumns = 7; // Adjusted for checkbox and expand
 
   return (
     <div className="space-y-8">
@@ -323,7 +378,7 @@ export default function GoalRisksPage() {
               <h2 className="text-xl font-semibold whitespace-nowrap">Potensi Risiko Teridentifikasi ({filteredPotentialRisks.length} / {potentialRisks.length})</h2>
               <div className="flex items-center space-x-1">
                   <Button 
-                      variant={viewMode === 'card' ? 'default' : 'outline'} 
+                      variant={viewMode === 'card' ? 'secondary' : 'outline'} 
                       size="icon" 
                       onClick={() => setViewMode('card')}
                       aria-label="Tampilan Kartu"
@@ -331,7 +386,7 @@ export default function GoalRisksPage() {
                       <LayoutGrid className="h-4 w-4" />
                   </Button>
                   <Button 
-                      variant={viewMode === 'table' ? 'default' : 'outline'} 
+                      variant={viewMode === 'table' ? 'secondary' : 'outline'} 
                       size="icon" 
                       onClick={() => setViewMode('table')}
                       aria-label="Tampilan Tabel"
@@ -344,7 +399,7 @@ export default function GoalRisksPage() {
                 <div className="relative flex-grow md:flex-grow-0">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
-                        placeholder="Cari kode, deskripsi, kategori..."
+                        placeholder="Cari kode, deskripsi..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                         className="pl-10 w-full md:w-64"
@@ -442,14 +497,13 @@ export default function GoalRisksPage() {
                 key={pRisk.id}
                 potentialRisk={pRisk}
                 goalCode={goal.code}
-                riskCausesCount={riskCauseCounts[pRisk.id] || 0} // Pass cause count
-                // Controls are now managed at cause level, so not passed here
+                riskCausesCount={riskCauseCounts[pRisk.id] || 0}
                 onEditDetails={() => router.push(`/all-risks/manage/${pRisk.id}?from=${encodeURIComponent(`/risks/${goal.id}`)}`)} 
                 onDeletePotentialRisk={() => handleDeleteSingleRisk(pRisk)}
                 isSelected={selectedRiskIds.includes(pRisk.id)}
                 onSelectRisk={(checked) => handleSelectRisk(pRisk.id, checked)}
                 onDuplicateRisk={() => handleDuplicateRisk(pRisk)}
-                canDelete={!!currentUser} // Pass canDelete based on user login
+                canDelete={!!currentUser}
               />
             ))}
           </div>
@@ -468,13 +522,12 @@ export default function GoalRisksPage() {
                             disabled={filteredPotentialRisks.length === 0 || !currentUser}
                         />
                       </TableHead>
-                      <TableHead className="w-[40px] sticky left-10 bg-background z-10"></TableHead> {/* For expand button */}
+                      <TableHead className="w-[40px] sticky left-10 bg-background z-10"></TableHead> 
                       <TableHead className="min-w-[120px] sticky left-[72px] bg-background z-10">Kode</TableHead>
                       <TableHead className="min-w-[300px]">Deskripsi</TableHead>
                       <TableHead className="min-w-[120px]">Kategori</TableHead>
                       <TableHead className="min-w-[150px]">Pemilik</TableHead>
                       <TableHead className="min-w-[100px] text-center">Penyebab</TableHead>
-                      {/* Controls count column removed as controls are per cause now */}
                       <TableHead className="text-right min-w-[100px] sticky right-0 bg-background z-10">Aksi</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -505,7 +558,6 @@ export default function GoalRisksPage() {
                             <TableCell><Badge variant={pRisk.category ? "secondary" : "outline"} className="text-xs">{pRisk.category || 'N/A'}</Badge></TableCell>
                             <TableCell className="text-xs truncate max-w-[150px]" title={pRisk.owner || ''}>{pRisk.owner || 'N/A'}</TableCell>
                             <TableCell className="text-center text-xs">{riskCauseCounts[pRisk.id] || 0}</TableCell>
-                            {/* Controls count cell removed */}
                             <TableCell className="text-right sticky right-0 bg-background z-10">
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
@@ -536,7 +588,7 @@ export default function GoalRisksPage() {
                               <TableCell className="sticky left-0 bg-muted/30 z-10" /> 
                               <TableCell className="sticky left-10 bg-muted/30 z-10" />
                               <TableCell className="sticky left-[72px] bg-muted/30 z-10" />
-                              <TableCell colSpan={totalTableColumns - 3} className="p-0"> {/* Adjusted colSpan */}
+                              <TableCell colSpan={totalTableColumns - 3} className="p-0"> 
                                 <div className="p-3 space-y-1 text-xs">
                                   <h4 className="font-semibold text-foreground">Deskripsi Lengkap:</h4>
                                   <p className="text-muted-foreground whitespace-pre-wrap">{pRisk.description}</p>
@@ -588,3 +640,5 @@ export default function GoalRisksPage() {
     </div>
   );
 }
+
+    
