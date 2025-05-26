@@ -20,10 +20,10 @@ import {
 } from 'firebase/firestore';
 import { 
     POTENTIAL_RISKS_COLLECTION,
-    RISK_CAUSES_COLLECTION,
-    CONTROL_MEASURES_COLLECTION
+    // RISK_CAUSES_COLLECTION, // No longer directly used here for querying causes
+    // CONTROL_MEASURES_COLLECTION // No longer directly used here for querying controls
 } from './collectionNames';
-import { deleteRiskCauseAndSubCollections } from './riskCauseService'; // Pastikan ini diimpor
+import { getRiskCausesByPotentialRiskId, deleteRiskCauseAndSubCollections } from './riskCauseService'; // Corrected import
 
 export async function addPotentialRisk(
   data: Omit<PotentialRisk, 'id' | 'identifiedAt' | 'uprId' | 'period' | 'userId' | 'sequenceNumber'>,
@@ -95,16 +95,12 @@ export async function getPotentialRisksByGoalId(goalId: string, uprId: string, p
     });
     return potentialRisks;
   } catch (error: any) {
-    console.error("Error getting potential risks from Firestore: ", error.message, error.code, error.details);
+    console.error("Error getting potential risks from Firestore: ", error.message);
     let detailedErrorMessage = "Gagal mengambil daftar potensi risiko dari database.";
-    if (error.message) {
-      detailedErrorMessage += ` Pesan Asli: ${error.message}`;
-    }
-    if (error.code) {
-      detailedErrorMessage += ` Kode Error: ${error.code}`;
-      if (error.code === 'failed-precondition' && error.message && error.message.toLowerCase().includes('index')) {
-        detailedErrorMessage += " Kemungkinan besar ini disebabkan oleh indeks komposit yang hilang di Firestore. Silakan periksa Firebase Console Anda (Firestore Database > Indexes) untuk membuat indeks yang diperlukan. Link untuk membuat indeks mungkin ada di log error server/konsol browser Anda.";
-      }
+    if (error.code === 'failed-precondition') {
+        detailedErrorMessage += " Ini seringkali disebabkan oleh indeks komposit yang hilang di Firestore. Silakan periksa Firebase Console Anda (Firestore Database > Indexes) untuk membuat indeks yang diperlukan. Link untuk membuat indeks mungkin ada di log error server/konsol browser Anda.";
+    } else if (error.message) {
+        detailedErrorMessage += ` Pesan Asli: ${error.message}`;
     }
     throw new Error(detailedErrorMessage);
   }
@@ -137,22 +133,22 @@ export async function getPotentialRiskById(id: string): Promise<PotentialRisk | 
     }
     return null;
   } catch (error: any) {
-    console.error("Error getting potential risk by ID from Firestore: ", error.message, error.code, error);
+    console.error("Error getting potential risk by ID from Firestore: ", error.message);
     throw new Error(`Gagal mengambil detail potensi risiko dari database. Pesan: ${error.message}`);
   }
 }
 
-export async function updatePotentialRisk(id: string, data: Partial<Omit<PotentialRisk, 'id' | 'uprId' | 'period' | 'userId' | 'goalId'>>): Promise<void> {
+export async function updatePotentialRisk(id: string, data: Partial<Omit<PotentialRisk, 'id' | 'uprId' | 'period' | 'userId' | 'goalId' | 'identifiedAt' | 'sequenceNumber'>>): Promise<void> {
   try {
     const docRef = doc(db, POTENTIAL_RISKS_COLLECTION, id);
     await updateDoc(docRef, {
         ...data,
-        category: data.category || null,
-        owner: data.owner || null,
+        category: data.category === undefined ? undefined : (data.category || null),
+        owner: data.owner === undefined ? undefined : (data.owner || null),
         updatedAt: serverTimestamp() 
     });
   } catch (error: any) {
-    console.error("Error updating potential risk in Firestore: ", error.message, error.code, error);
+    console.error("Error updating potential risk in Firestore: ", error.message);
     throw new Error(`Gagal memperbarui potensi risiko di database. Pesan: ${error.message}`);
   }
 }
@@ -160,22 +156,25 @@ export async function updatePotentialRisk(id: string, data: Partial<Omit<Potenti
 export async function deletePotentialRiskAndSubCollections(potentialRiskId: string, uprId: string, period: string, batch?: WriteBatch): Promise<void> {
   const localBatch = batch || writeBatch(db);
   try {
+    // 1. Get all RiskCauses associated with this PotentialRisk
     const riskCauses = await getRiskCausesByPotentialRiskId(potentialRiskId, uprId, period);
 
+    // 2. For each RiskCause, delete it and its sub-collections (ControlMeasures)
     for (const riskCause of riskCauses) {
+      // deleteRiskCauseAndSubCollections will handle deleting ControlMeasures for this RiskCause
       await deleteRiskCauseAndSubCollections(riskCause.id, uprId, period, localBatch);
     }
 
+    // 3. Delete the PotentialRisk document itself
     const potentialRiskRef = doc(db, POTENTIAL_RISKS_COLLECTION, potentialRiskId);
     localBatch.delete(potentialRiskRef);
 
+    // 4. Commit the batch only if it's not an externally provided batch
     if (!batch) {
       await localBatch.commit();
     }
   } catch (error: any) {
-    console.error("Error deleting potential risk and its sub-collections: ", error.message, error.code, error);
+    console.error("Error deleting potential risk and its sub-collections: ", error.message);
     throw new Error(`Gagal menghapus potensi risiko dan data terkaitnya. Pesan: ${error.message}`);
   }
 }
-
-    
