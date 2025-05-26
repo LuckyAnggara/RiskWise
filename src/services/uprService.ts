@@ -23,27 +23,22 @@ import {
  */
 export async function getUprByName(name: string): Promise<UPR | null> {
   try {
-    const q = query(
-      collection(db, UPRS_COLLECTION),
-      where("name", "==", name) // Firestore 'where' is case-sensitive. Client-side check needed or use lowercase.
-                                 // For simplicity here, we assume client sends consistent case or handles it.
-                                 // A more robust solution might store a lowercase version of the name for querying.
-    );
-    const querySnapshot = await getDocs(q);
-    if (!querySnapshot.empty) {
-      const doc = querySnapshot.docs[0]; // Assuming name is unique
-      const data = doc.data();
+    const uprsSnapshot = await getDocs(collection(db, UPRS_COLLECTION));
+    const uprDoc = uprsSnapshot.docs.find(doc => doc.data().name.toLowerCase() === name.toLowerCase());
+
+    if (uprDoc) {
+      const data = uprDoc.data();
       return {
-        id: doc.id,
+        id: uprDoc.id,
         code: data.code,
         name: data.name,
         createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : new Date().toISOString(),
       } as UPR;
     }
     return null;
-  } catch (error) {
-    console.error("Error getting UPR by name from Firestore: ", error);
-    throw new Error("Gagal mengambil data UPR berdasarkan nama.");
+  } catch (error: any) {
+    console.error("Error getting UPR by name from Firestore. Message:", error.message);
+    throw new Error(`Gagal mengambil data UPR berdasarkan nama: ${error.message || error}`);
   }
 }
 
@@ -53,7 +48,7 @@ export async function getUprByName(name: string): Promise<UPR | null> {
  */
 export async function getAllUprs(): Promise<UPR[]> {
   try {
-    const q = query(collection(db, UPRS_COLLECTION), orderBy("createdAt", "asc"));
+    const q = query(collection(db, UPRS_COLLECTION), orderBy("createdAt", "asc")); // Assuming createdAt helps in sequencing if codes are not purely numeric
     const querySnapshot = await getDocs(q);
     const uprs: UPR[] = [];
     querySnapshot.forEach((doc) => {
@@ -66,9 +61,9 @@ export async function getAllUprs(): Promise<UPR[]> {
       } as UPR);
     });
     return uprs;
-  } catch (error) {
-    console.error("Error getting all UPRs from Firestore: ", error);
-    throw new Error("Gagal mengambil semua data UPR.");
+  } catch (error: any) {
+    console.error("Error getting all UPRs from Firestore. Message:", error.message);
+    throw new Error(`Gagal mengambil semua data UPR: ${error.message || error}`);
   }
 }
 
@@ -82,36 +77,40 @@ export async function getAllUprs(): Promise<UPR[]> {
  */
 export async function createUpr(name: string): Promise<UPR> {
   try {
-    // Case-insensitive check for existing UPR name
-    const uprsSnapshot = await getDocs(collection(db, UPRS_COLLECTION));
-    const existingUpr = uprsSnapshot.docs.find(doc => doc.data().name.toLowerCase() === name.toLowerCase());
-
+    const existingUpr = await getUprByName(name); // Handles case-insensitivity
     if (existingUpr) {
       throw new Error(`Nama UPR "${name}" sudah terdaftar. Silakan gunakan nama lain.`);
     }
 
-    const allUprs = uprsSnapshot.docs.map(doc => doc.data() as UPR);
-    const nextSequence = allUprs.length + 1;
+    const allUprs = await getAllUprs();
+    const existingCodes = allUprs.map(u => u.code).filter(c => c.startsWith("UPR"));
+    let nextSequence = 1;
+    if (existingCodes.length > 0) {
+      const numericParts = existingCodes.map(c => parseInt(c.replace("UPR", ""), 10)).filter(n => !isNaN(n));
+      if (numericParts.length > 0) {
+        nextSequence = Math.max(...numericParts) + 1;
+      }
+    }
     const newUprCode = `UPR${nextSequence}`;
 
     const docRef = await addDoc(collection(db, UPRS_COLLECTION), {
-      name: name,
+      name: name.trim(), // Trim whitespace
       code: newUprCode,
       createdAt: serverTimestamp(),
     });
 
     return {
       id: docRef.id,
-      name: name,
+      name: name.trim(),
       code: newUprCode,
       createdAt: new Date().toISOString(), // Placeholder, actual value is server-generated
     };
   } catch (error: any) {
-    console.error("Error creating UPR in Firestore: ", error.message);
-    // Re-throw the specific error message if it's the "name already exists" error
+    console.error("Error creating UPR in Firestore. Message:", error.message);
+    // Re-throw specific error messages or a generic one
     if (error.message.startsWith("Nama UPR")) {
         throw error;
     }
-    throw new Error("Gagal membuat UPR baru di database.");
+    throw new Error(`Gagal membuat UPR baru di database: ${error.message || error}`);
   }
 }

@@ -20,8 +20,8 @@ export default function RegisterPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [fullName, setFullName] = useState(''); // New state for full name
-  const [uprName, setUprName] = useState('');   // New state for UPR name
+  const [fullName, setFullName] = useState('');
+  const [uprName, setUprName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
@@ -47,38 +47,47 @@ export default function RegisterPage() {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       firebaseUser = userCredential.user;
 
-      // Update Firebase Auth profile with displayName
-      await updateProfile(firebaseUser, { displayName: fullName });
+      // Update Firebase Auth profile with displayName (best effort)
+      if (firebaseUser) {
+        try {
+            await updateProfile(firebaseUser, { displayName: fullName });
+        } catch (profileError: any) {
+            console.warn("Gagal memperbarui profil Firebase Auth (displayName). Pesan:", profileError.message);
+            // Continue even if profile update fails, Firestore document is more critical here
+        }
+      }
       
       // Attempt to create user document in Firestore with UPR info
-      try {
-        await checkAndCreateUserDocument(firebaseUser, fullName, uprName, 'userSatker');
-        toast({ title: 'Registrasi Berhasil', description: 'Akun Anda telah berhasil dibuat. Silakan masuk.' });
-        router.push('/login'); 
-      } catch (firestoreError: any) {
-        console.error("Error creating user document or UPR in Firestore:", firestoreError);
-        // User was created in Auth, but Firestore document/UPR failed
-        toast({ 
-          title: 'Registrasi Akun Berhasil, Profil/UPR Gagal Disimpan', 
-          description: `Akun Anda dibuat, tetapi gagal menyimpan profil/UPR: ${firestoreError.message}. Silakan coba login atau hubungi administrator.`, 
-          variant: 'destructive',
-          duration: 7000 
-        });
-        // Even if Firestore profile fails, Auth user exists. Redirect to login.
-        router.push('/login');
-      }
+      await checkAndCreateUserDocument(firebaseUser, fullName, uprName, 'userSatker');
+      toast({ title: 'Registrasi Berhasil', description: 'Akun Anda telah berhasil dibuat. Silakan masuk.' });
+      router.push('/login'); 
     
-    } catch (authError: any) {
-      console.error("Error with email/password registration:", authError);
-      let errorMessage = 'Gagal melakukan registrasi. Silakan coba lagi.';
-      if (authError.code === 'auth/email-already-in-use') {
-        errorMessage = 'Alamat email ini sudah terdaftar.';
-      } else if (authError.code === 'auth/weak-password') {
-        errorMessage = 'Password terlalu lemah. Minimal 6 karakter.';
-      } else if (authError.code === 'auth/invalid-email') {
-        errorMessage = 'Format email tidak valid.';
+    } catch (error: any) {
+      console.error("Kesalahan pada proses registrasi. Pesan:", error.message);
+      let userMessage = "Terjadi kesalahan pada proses registrasi.";
+      if (firebaseUser) { // Auth user created, but Firestore/UPR part failed
+        userMessage = `Registrasi Akun Berhasil, Profil/UPR Gagal Disimpan. Pesan: ${error.message || error}. Silakan coba login atau hubungi administrator.`;
+        // Redirect to login page because auth user was created
+        // No need to explicitly push to login here if we let finally handle setIsLoading
+        // and the user will likely try to login anyway.
+        // router.push('/login'); 
+      } else { // Auth user creation failed
+        if (error.code === 'auth/email-already-in-use') {
+          userMessage = 'Alamat email ini sudah terdaftar.';
+        } else if (error.code === 'auth/weak-password') {
+          userMessage = 'Password terlalu lemah. Minimal 6 karakter.';
+        } else if (error.code === 'auth/invalid-email') {
+          userMessage = 'Format email tidak valid.';
+        } else {
+          userMessage = `Registrasi Akun Gagal. Pesan: ${error.message || error}`;
+        }
       }
-      toast({ title: 'Registrasi Akun Gagal', description: errorMessage, variant: 'destructive' });
+      toast({ 
+        title: firebaseUser ? 'Registrasi Sebagian Berhasil' : 'Registrasi Akun Gagal', 
+        description: userMessage, 
+        variant: 'destructive',
+        duration: 7000 
+      });
     } finally {
       setIsLoading(false);
     }
