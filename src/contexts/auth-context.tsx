@@ -5,7 +5,7 @@ import React, { createContext, useContext, useEffect, useState, type ReactNode, 
 import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
 import { auth } from '@/lib/firebase/config';
 import { Loader2 } from 'lucide-react';
-import { getUserDocument, checkAndCreateUserDocument } from '@/services/userService'; // Import checkAndCreateUserDocument
+import { getUserDocument, checkAndCreateUserDocument } from '@/services/userService';
 import type { AppUser } from '@/lib/types';
 
 interface AuthContextType {
@@ -24,52 +24,55 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const fetchAppUser = useCallback(async (user: FirebaseUser | null) => {
     if (user) {
-      console.log(`[AuthContext] fetchAppUser called for UID: ${user.uid}`);
+      console.log(`[AuthContext] fetchAppUser attempting for UID: ${user.uid}`);
       try {
-        // Coba dapatkan, jika tidak ada, checkAndCreate akan membuatkan (penting untuk login pertama)
-        // Untuk login berikutnya, ini akan mengambil data yang sudah ada/diupdate.
-        const userDoc = await checkAndCreateUserDocument(user); // Menggunakan checkAndCreateUserDocument
-        console.log(`[AuthContext] fetchAppUser: AppUser data received/created:`, userDoc ? JSON.stringify(userDoc).substring(0,200) + "..." : "null");
+        const userDoc = await checkAndCreateUserDocument(user);
+        console.log(`[AuthContext] fetchAppUser: AppUser data received/created:`, userDoc ? `${userDoc.uid} - ${userDoc.displayName}` : "null");
         setAppUser(userDoc);
-      } catch (error) {
-        console.error("[AuthContext] fetchAppUser: Failed to fetch/create AppUser from Firestore:", error);
-        setAppUser(null);
+      } catch (error: any) {
+        console.error("[AuthContext] fetchAppUser: Failed to fetch/create AppUser from Firestore:", error.message || String(error));
+        setAppUser(null); // Ensure appUser is null on error
+        // Optionally, you could re-throw or set an error state here
       }
     } else {
       console.log("[AuthContext] fetchAppUser: No Firebase user, setting appUser to null.");
       setAppUser(null);
     }
-  }, []);
+  }, []); // Empty dependency array means this function reference is stable
 
   useEffect(() => {
-    setLoading(true); // Mulai loading saat listener auth state dipasang
+    setLoading(true);
+    console.log("[AuthContext] onAuthStateChanged listener attached.");
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       console.log("[AuthContext] onAuthStateChanged: Firebase user state changed. User:", user ? user.uid : "null");
       setCurrentUser(user);
       try {
         await fetchAppUser(user);
       } catch (error) {
-        // Error during fetchAppUser already logged
-        console.error("[AuthContext] onAuthStateChanged: Error during fetchAppUser call:", error);
+        // This catch might be redundant if fetchAppUser handles its own errors and doesn't re-throw them in a way that breaks this.
+        console.error("[AuthContext] onAuthStateChanged: Error during fetchAppUser call (should be handled within fetchAppUser):", error);
       } finally {
         console.log("[AuthContext] onAuthStateChanged: Setting loading to false.");
         setLoading(false);
       }
     });
 
-    return () => unsubscribe();
-  }, [fetchAppUser]);
+    return () => {
+      console.log("[AuthContext] onAuthStateChanged listener detached.");
+      unsubscribe();
+    };
+  }, [fetchAppUser]); // Removed fetchAppUser from here as its reference is stable due to useCallback with []
 
   const refreshAppUser = useCallback(async () => {
     if (currentUser) {
       console.log(`[AuthContext] refreshAppUser called for UID: ${currentUser.uid}`);
-      setLoading(true);
+      setLoading(true); // Indicate loading during refresh
       try {
         await fetchAppUser(currentUser);
       } catch (error) {
         console.error("[AuthContext] refreshAppUser: Error during fetchAppUser call:", error);
       } finally {
-        console.log("[AuthContext] refreshAppUser: Setting loading to false.");
+        console.log("[AuthContext] refreshAppUser: Setting loading to false after refresh attempt.");
         setLoading(false);
       }
     } else {
@@ -100,5 +103,3 @@ export function useAuth() {
   }
   return context;
 }
-
-    
