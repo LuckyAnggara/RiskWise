@@ -13,7 +13,7 @@ import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { getCurrentUprId, getCurrentPeriod, initializeAppContext } from '@/lib/upr-period-context';
 import { useAuth } from '@/contexts/auth-context';
-import { addGoal, getGoals, updateGoal, deleteGoal, type GoalsResult } from '@/services/goalService'; // Import GoalsResult
+import { addGoal, getGoals, updateGoal, deleteGoal, type GoalsResult } from '@/services/goalService';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
 export default function GoalsPage() {
@@ -47,9 +47,9 @@ export default function GoalsPage() {
         toast({ title: "Kesalahan", description: result.message || "Gagal memuat daftar sasaran.", variant: "destructive" });
         setGoals([]);
       }
-    } catch (error) {
-      console.error("Gagal memuat sasaran:", error);
-      toast({ title: "Kesalahan Fatal", description: "Terjadi kesalahan fatal saat memuat sasaran.", variant: "destructive" });
+    } catch (error: any) {
+      console.error("Gagal memuat sasaran. Pesan:", error.message);
+      toast({ title: "Kesalahan Fatal", description: (error instanceof Error ? error.message : "Terjadi kesalahan fatal saat memuat sasaran."), variant: "destructive" });
       setGoals([]);
     } finally {
       setIsLoading(false);
@@ -90,8 +90,8 @@ export default function GoalsPage() {
       }
       loadGoals(); 
     } catch (error: any) {
-      console.error("Gagal menyimpan sasaran:", error);
-      toast({ title: "Kesalahan", description: error.message || "Gagal menyimpan sasaran.", variant: "destructive" });
+      console.error("Gagal menyimpan sasaran. Pesan:", error.message);
+      toast({ title: "Kesalahan", description: (error instanceof Error ? error.message : "Gagal menyimpan sasaran."), variant: "destructive" });
     }
   };
 
@@ -104,8 +104,8 @@ export default function GoalsPage() {
       setIsDeleteDialogOpen(false);
       loadGoals(); 
     } catch (error: any) {
-      console.error("Gagal menghapus sasaran:", error);
-      toast({ title: "Kesalahan", description: error.message || "Gagal menghapus sasaran.", variant: "destructive" });
+      console.error("Gagal menghapus sasaran. Pesan:", error.message);
+      toast({ title: "Kesalahan", description: (error instanceof Error ? error.message : "Gagal menghapus sasaran."), variant: "destructive" });
       setGoalToDelete(null);
       setIsDeleteDialogOpen(false);
     }
@@ -129,7 +129,7 @@ export default function GoalsPage() {
     );
   }, [goals, searchTerm]);
   
-  if (isLoading && !currentUser) { // Initial check before context might be ready
+  if (isLoading && !currentUser) { 
      return (
       <div className="flex flex-col items-center justify-center h-screen">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
@@ -171,7 +171,7 @@ export default function GoalsPage() {
         actions={
           <AddGoalDialog 
             onGoalSave={handleGoalSave}
-            existingGoals={goals} // Pass existing goals to help with code generation
+            existingGoals={goals} 
             triggerButton={
               <Button disabled={!currentUser}>
                 <PlusCircle className="mr-2 h-4 w-4" /> Tambah Sasaran Baru
@@ -254,5 +254,3 @@ export default function GoalsPage() {
     </div>
   );
 }
-
-    
