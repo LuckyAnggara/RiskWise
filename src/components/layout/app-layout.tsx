@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from 'next/link'; 
-import { usePathname, useRouter } from 'next/navigation'; // Import useRouter
+import { usePathname, useRouter } from 'next/navigation';
 import {
   SidebarProvider,
   Sidebar,
@@ -22,15 +22,15 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { LogOut, User, Settings as SettingsIcon, Loader2 } from "lucide-react";
 import { Toaster } from "@/components/ui/toaster";
 import { getCurrentUprId, getCurrentPeriod, initializeAppContext } from '@/lib/upr-period-context';
-import { useAuth } from '@/contexts/auth-context'; // Import useAuth
-import { auth } from '@/lib/firebase/config'; // Import auth untuk signOut
+import { useAuth } from '@/contexts/auth-context';
+import { auth } from '@/lib/firebase/config';
 import { signOut } from 'firebase/auth';
 import { useToast } from "@/hooks/use-toast";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const [currentUpr, setCurrentUpr] = useState('');
   const [currentPeriodDisplay, setCurrentPeriodDisplay] = useState('');
-  const { currentUser, loading: authLoading } = useAuth(); // Gunakan useAuth
+  const { currentUser, loading: authLoading } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const { toast } = useToast();
@@ -42,23 +42,27 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (!authLoading && !currentUser && pathname !== '/login') {
-      router.push('/login');
+    const publicPaths = ['/login', '/register'];
+    if (!authLoading) {
+      if (!currentUser && !publicPaths.includes(pathname)) {
+        router.push('/login');
+      } else if (currentUser && publicPaths.includes(pathname)) {
+        router.push('/'); // Arahkan pengguna yang sudah login dari halaman login/register
+      }
     }
   }, [currentUser, authLoading, router, pathname]);
 
   const handleLogout = async () => {
     try {
       await signOut(auth);
-      toast({ title: 'Logout Berhasil', description: 'Anda telah berhasil keluar.' });
+      toast({ title: 'Keluar Berhasil', description: 'Anda telah berhasil keluar.' });
       router.push('/login');
     } catch (error) {
       console.error("Error logging out:", error);
-      toast({ title: 'Logout Gagal', description: 'Terjadi kesalahan saat keluar.', variant: 'destructive' });
+      toast({ title: 'Gagal Keluar', description: 'Terjadi kesalahan saat keluar.', variant: 'destructive' });
     }
   };
 
-  // Jangan render layout jika sedang loading auth atau jika belum login dan bukan di halaman login
   if (authLoading) {
      return (
       <div className="flex flex-col items-center justify-center h-screen">
@@ -68,20 +72,23 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!currentUser && pathname !== '/login') {
-    // Ini akan ditangani oleh useEffect di atas, tapi bisa juga return null atau loading state lain
+  // Jika tidak loading dan pengguna tidak ada, tetapi path adalah publik, izinkan children (login/register page)
+  if (!currentUser && (pathname === '/login' || pathname === '/register')) {
+    return <>{children}<Toaster /></>;
+  }
+
+  // Jika tidak loading dan pengguna tidak ada, dan bukan path publik (sudah ditangani redirect di useEffect)
+  // atau jika pengguna ada, tampilkan layout lengkap.
+  if (!currentUser && !['/login', '/register'].includes(pathname)) {
+    // Pengguna seharusnya sudah diarahkan, tapi ini sebagai fallback
     return (
-         <div className="flex flex-col items-center justify-center h-screen">
-            <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
-            <p className="text-xl text-muted-foreground">Mengarahkan ke halaman login...</p>
-        </div>
+      <div className="flex flex-col items-center justify-center h-screen">
+        <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
+        <p className="text-xl text-muted-foreground">Mengarahkan...</p>
+      </div>
     );
   }
-  
-  // Jika pengguna sudah login atau berada di halaman login, tampilkan layout atau halaman login
-  if (pathname === '/login') {
-    return <>{children}<Toaster /></>; // Hanya render children (halaman login) dan Toaster
-  }
+
 
   return (
     <SidebarProvider defaultOpen>
