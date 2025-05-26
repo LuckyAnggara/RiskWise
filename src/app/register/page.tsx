@@ -3,9 +3,9 @@
 "use client";
 
 import React, { useState } from 'react';
-import Link from 'next/link';
+import NextLink from 'next/link'; // Alias Link from next/link
 import { useRouter } from 'next/navigation';
-import { createUserWithEmailAndPassword, type User as FirebaseUser, updateProfile } from 'firebase/auth';
+import { createUserWithEmailAndPassword, type User as FirebaseUser } from 'firebase/auth';
 import { auth } from '@/lib/firebase/config';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -38,43 +38,38 @@ export default function RegisterPage() {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       firebaseUser = userCredential.user;
 
-      const initialDisplayName = email.split('@')[0] || `User_${firebaseUser.uid.substring(0,5)}`;
-
-      if (firebaseUser) {
-        try {
-            await updateProfile(firebaseUser, { displayName: initialDisplayName });
-        } catch (profileError: any) {
-            console.warn("Gagal memperbarui profil Firebase Auth (displayName). Pesan:", profileError instanceof Error ? profileError.message : String(profileError));
-        }
-      }
-      
+      // Membuat/memperbarui dokumen pengguna di Firestore
+      // Menggunakan email sebagai placeholder displayName awal jika tidak ada dari provider
+      const initialDisplayName = firebaseUser.displayName || firebaseUser.email?.split('@')[0] || `Pengguna_${firebaseUser.uid.substring(0,5)}`;
       await checkAndCreateUserDocument(firebaseUser); 
       
       toast({ title: 'Registrasi Berhasil', description: 'Akun Anda telah berhasil dibuat. Silakan masuk.' });
       router.push('/login'); 
     
     } catch (error: any) {
-      console.error("Kesalahan pada proses registrasi. Pesan:", error instanceof Error ? error.message : String(error));
+      console.error("Kesalahan pada proses registrasi. Detail Error:", String(error));
       let toastTitle = 'Registrasi Akun Gagal';
-      let toastDescription = "Terjadi kesalahan pada proses registrasi.";
+      let userMessage = "Terjadi kesalahan pada proses registrasi.";
       
-      if (firebaseUser) { 
+      if (firebaseUser && error) { 
         toastTitle = 'Registrasi Akun Berhasil, Profil/UPR Gagal Disimpan';
-        toastDescription = `Akun Anda dibuat, tetapi gagal menyimpan profil/UPR: ${error instanceof Error && error.message ? error.message : String(error)}. Silakan coba login atau hubungi administrator.`;
-      } else { 
+        userMessage = `Akun Anda dibuat, tetapi gagal menyimpan profil/UPR. Silakan coba login atau hubungi administrator. Detail: ${error instanceof Error ? error.message : String(error)}`;
+      } else if (error && error.code) { 
         if (error.code === 'auth/email-already-in-use') {
-          toastDescription = 'Alamat email ini sudah terdaftar.';
+          userMessage = 'Alamat email ini sudah terdaftar.';
         } else if (error.code === 'auth/weak-password') {
-          toastDescription = 'Password terlalu lemah. Minimal 6 karakter.';
+          userMessage = 'Password terlalu lemah. Minimal 6 karakter.';
         } else if (error.code === 'auth/invalid-email') {
-          toastDescription = 'Format email tidak valid.';
-        } else if (error instanceof Error && error.message) {
-            toastDescription = `Registrasi Akun Gagal. Pesan: ${error.message}`;
+          userMessage = 'Format email tidak valid.';
+        } else {
+            userMessage = `Registrasi Akun Gagal: ${error.message || 'Error tidak diketahui.'}`;
         }
+      } else if (error instanceof Error) {
+            userMessage = `Registrasi Akun Gagal. Pesan: ${error.message}`;
       }
       toast({ 
         title: toastTitle, 
-        description: toastDescription, 
+        description: userMessage, 
         variant: 'destructive',
         duration: 7000 
       });
@@ -140,9 +135,9 @@ export default function RegisterPage() {
           </form>
         </CardContent>
         <CardFooter className="flex flex-col items-center space-y-2 text-xs">
-          <Link href="/login" className="text-primary hover:underline">
+          <NextLink href="/login" className="text-primary hover:underline">
             Sudah punya akun? Masuk di sini
-          </Link>
+          </NextLink>
            <p className="text-muted-foreground">&copy; {new Date().getFullYear()} RiskWise. Aplikasi Manajemen Risiko.</p>
         </CardFooter>
       </Card>
@@ -150,3 +145,4 @@ export default function RegisterPage() {
   );
 }
 
+    

@@ -3,7 +3,7 @@
 "use client";
 
 import React, { useState } from 'react';
-import Link from 'next/link';
+import NextLink from 'next/link'; // Alias Link from next/link
 import { useRouter } from 'next/navigation';
 import { GoogleAuthProvider, signInWithEmailAndPassword, signInWithPopup } from 'firebase/auth';
 import { auth } from '@/lib/firebase/config';
@@ -16,7 +16,6 @@ import { Loader2, LogIn } from 'lucide-react';
 import { AppLogo } from '@/components/icons';
 import { checkAndCreateUserDocument } from '@/services/userService';
 
-// Google Icon SVG (simple version)
 const GoogleIcon = (props: React.SVGProps<SVGSVGElement>) => (
   <svg viewBox="0 0 48 48" {...props} className="mr-2 h-5 w-5">
     <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path>
@@ -44,39 +43,39 @@ export default function LoginPage() {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       firebaseUser = userCredential.user;
       
-      await checkAndCreateUserDocument(firebaseUser);
+      // Pastikan dokumen pengguna ada/dibuat di Firestore
+      await checkAndCreateUserDocument(firebaseUser); 
       
       toast({ title: 'Login Berhasil', description: 'Selamat datang kembali!' });
       router.push('/');
     } catch (error: any) {
-      console.error("Kesalahan pada proses login email/password:", error instanceof Error ? error.message : String(error));
+      console.error("Kesalahan pada proses login email/password. Detail Error:", String(error));
       let toastTitle = 'Login Gagal';
       let toastDescription = 'Terjadi kesalahan. Silakan coba lagi.';
 
-      if (firebaseUser) { // Autentikasi Firebase berhasil, tapi Firestore gagal
+      if (firebaseUser && error) { // Auth berhasil, tapi Firestore gagal
         toastTitle = 'Autentikasi Berhasil, Profil Gagal Disinkronkan';
-        toastDescription = `Gagal menyimpan/memperbarui profil Anda di database. Pesan: ${error instanceof Error && error.message ? error.message : String(error)}. Silakan coba lagi atau hubungi administrator.`;
-        router.push('/'); // Tetap arahkan karena Auth berhasil
-      } else { // Autentikasi Firebase itu sendiri yang gagal
-        if (error.code) {
-          switch (error.code) {
-            case 'auth/user-not-found':
-            case 'auth/wrong-password':
-            case 'auth/invalid-credential':
-              toastDescription = 'Email atau password salah.';
-              break;
-            case 'auth/invalid-email':
-              toastDescription = 'Format email tidak valid.';
-              break;
-            case 'auth/user-disabled':
-              toastDescription = 'Akun pengguna ini telah dinonaktifkan.';
-              break;
-            default:
-              toastDescription = `Login gagal: ${error.message || 'Error tidak diketahui.'}`;
-          }
-        } else if (error instanceof Error && error.message) {
-            toastDescription = error.message;
+        toastDescription = `Gagal menyimpan/memperbarui profil Anda di database. Silakan coba lagi atau hubungi administrator. Detail: ${error instanceof Error ? error.message : String(error)}`;
+        // Tetap arahkan ke dashboard karena Auth berhasil, user bisa coba update profil nanti.
+         router.push('/'); 
+      } else if (error && error.code) { // Error dari Firebase Auth
+        switch (error.code) {
+          case 'auth/user-not-found':
+          case 'auth/wrong-password':
+          case 'auth/invalid-credential':
+            toastDescription = 'Email atau password salah.';
+            break;
+          case 'auth/invalid-email':
+            toastDescription = 'Format email tidak valid.';
+            break;
+          case 'auth/user-disabled':
+            toastDescription = 'Akun pengguna ini telah dinonaktifkan.';
+            break;
+          default:
+            toastDescription = `Login gagal: ${error.message || 'Error tidak diketahui.'}`;
         }
+      } else if (error instanceof Error) {
+          toastDescription = error.message;
       }
       toast({ title: toastTitle, description: toastDescription, variant: 'destructive', duration: 7000 });
     } finally {
@@ -97,16 +96,15 @@ export default function LoginPage() {
       toast({ title: 'Login Google Berhasil', description: `Selamat datang, ${firebaseUser.displayName || firebaseUser.email}!` });
       router.push('/');
     } catch (error: any) {
-      console.error("Kesalahan pada proses login Google:", error instanceof Error ? error.message : String(error));
+      console.error("Kesalahan pada proses login Google. Detail Error:", String(error));
       let toastTitle = 'Login Google Gagal';
       let toastDescription = 'Terjadi kesalahan. Silakan coba lagi.';
 
-      if (firebaseUser) { // Autentikasi Google berhasil, tapi Firestore gagal
+      if (firebaseUser && error) { 
          toastTitle = 'Autentikasi Google Berhasil, Profil Gagal Disinkronkan';
-         toastDescription = `Gagal menyimpan/memperbarui profil Anda di database. Pesan: ${error instanceof Error && error.message ? error.message : String(error)}. Silakan coba lagi atau hubungi administrator.`;
-         router.push('/'); // Tetap arahkan karena Auth berhasil
-      } else { // Autentikasi Google itu sendiri yang gagal
-        if (error.code) {
+         toastDescription = `Gagal menyimpan/memperbarui profil Anda di database. Silakan coba lagi atau hubungi administrator. Detail: ${error instanceof Error ? error.message : String(error)}`;
+         router.push('/');
+      } else if (error && error.code) {
             switch (error.code) {
                 case 'auth/popup-closed-by-user':
                 toastDescription = 'Proses login Google dibatalkan oleh pengguna.';
@@ -117,10 +115,9 @@ export default function LoginPage() {
                 default:
                 toastDescription = `Login Google gagal: ${error.message || 'Error tidak diketahui.'}`;
             }
-        } else if (error instanceof Error && error.message) {
+        } else if (error instanceof Error) {
             toastDescription = error.message;
         }
-      }
       toast({ title: toastTitle, description: toastDescription, variant: 'destructive', duration: 7000 });
     } finally {
       setIsGoogleLoading(false);
@@ -197,13 +194,14 @@ export default function LoginPage() {
           </Button>
         </CardContent>
         <CardFooter className="flex flex-col items-center space-y-2 text-xs">
-          <Link href="/register" className="text-primary hover:underline">
+          <NextLink href="/register" className="text-primary hover:underline">
             Belum punya akun? Daftar di sini
-          </Link>
+          </NextLink>
            <p className="text-muted-foreground">&copy; {new Date().getFullYear()} RiskWise. Aplikasi Manajemen Risiko.</p>
         </CardFooter>
       </Card>
     </div>
   );
 }
+
     
