@@ -5,21 +5,20 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { GoogleAuthProvider, signInWithEmailAndPassword, signInWithPopup, type User as FirebaseUser } from 'firebase/auth';
+import { GoogleAuthProvider, signInWithEmailAndPassword, signInWithPopup } from 'firebase/auth';
 import { auth } from '@/lib/firebase/config';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, LogIn } from 'lucide-react'; 
+import { Loader2, LogIn } from 'lucide-react';
 import { AppLogo } from '@/components/icons';
-import { checkAndCreateUserDocument } from '@/services/userService'; 
-import { Separator } from '@/components/ui/separator';
+import { checkAndCreateUserDocument } from '@/services/userService';
 
 // Google Icon SVG (simple version)
 const GoogleIcon = (props: React.SVGProps<SVGSVGElement>) => (
-  <svg viewBox="0 0 48 48" {...props}>
+  <svg viewBox="0 0 48 48" {...props} className="mr-2 h-5 w-5">
     <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path>
     <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path>
     <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path>
@@ -43,11 +42,11 @@ export default function LoginPage() {
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
-      await checkAndCreateUserDocument(user, 'userSatker');
+      await checkAndCreateUserDocument(user); // Peran default akan 'userSatker'
       toast({ title: 'Login Berhasil', description: 'Selamat datang kembali!' });
-      router.push('/'); // Arahkan ke dashboard atau halaman utama setelah login
+      router.push('/');
     } catch (error: any) {
-      console.error("Error with email/password sign-in:", error);
+      console.error("Error dengan login email/password:", error);
       let errorMessage = 'Gagal masuk. Periksa email dan password Anda.';
       if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
         errorMessage = 'Email atau password salah.';
@@ -66,11 +65,11 @@ export default function LoginPage() {
     try {
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
-      await checkAndCreateUserDocument(user, 'userSatker'); 
+      await checkAndCreateUserDocument(user); // Peran default akan 'userSatker'
       toast({ title: 'Login Google Berhasil', description: `Selamat datang, ${user.displayName || user.email}!` });
       router.push('/');
     } catch (error: any) {
-      console.error("Error with Google sign-in:", error);
+      console.error("Error dengan login Google:", error);
       let errorMessage = 'Gagal masuk dengan Google. Silakan coba lagi.';
       if (error.code === 'auth/popup-closed-by-user') {
         errorMessage = 'Proses login Google dibatalkan oleh pengguna.';
@@ -147,7 +146,7 @@ export default function LoginPage() {
             {isGoogleLoading ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             ) : (
-              <GoogleIcon className="mr-2 h-5 w-5" />
+              <GoogleIcon />
             )}
             Masuk dengan Google
           </Button>
