@@ -30,6 +30,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch (error) {
         console.error("Failed to fetch AppUser from Firestore:", error);
         setAppUser(null); // Reset appUser on error
+        // Potentially show a toast to the user here if fetching appUser fails critically
       }
     } else {
       setAppUser(null);
@@ -39,8 +40,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setCurrentUser(user);
-      await fetchAppUser(user);
-      setLoading(false);
+      try {
+        await fetchAppUser(user);
+      } catch (error) {
+        // Error during fetchAppUser is already logged within fetchAppUser
+        // We ensure loading is set to false in the finally block
+      } finally {
+        setLoading(false);
+      }
     });
 
     return () => unsubscribe();
@@ -49,25 +56,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refreshAppUser = useCallback(async () => {
     if (currentUser) {
       setLoading(true); // Indicate loading while refreshing
-      await fetchAppUser(currentUser);
-      setLoading(false);
+      try {
+        await fetchAppUser(currentUser);
+      } catch (error) {
+        // Error during fetchAppUser is already logged within fetchAppUser
+      } finally {
+        setLoading(false);
+      }
     }
   }, [currentUser, fetchAppUser]);
 
-  if (loading && !appUser && currentUser) { // More specific loading state
+  // Initial loading state for the entire app until auth state is resolved AND appUser is fetched
+  if (loading) { 
     return (
       <div className="flex flex-col items-center justify-center h-screen">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
-        <p className="text-xl text-muted-foreground">Memuat data pengguna...</p>
-      </div>
-    );
-  }
-  
-  if (loading && !currentUser) {
-     return (
-      <div className="flex flex-col items-center justify-center h-screen">
-        <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
-        <p className="text-xl text-muted-foreground">Memverifikasi sesi...</p>
+        <p className="text-xl text-muted-foreground">Memuat data sesi dan profil pengguna...</p>
       </div>
     );
   }
