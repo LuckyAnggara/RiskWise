@@ -1,7 +1,8 @@
+
 export const LIKELIHOOD_LEVELS_DESC_MAP = {
   "Hampir tidak terjadi (1)": 1,
   "Jarang terjadi (2)": 2,
-  "Kadang terjadi (3)": 3,
+  "Kadang Terjadi (3)": 3, // Adjusted "Kadang terjadi (3)" to "Kadang Terjadi (3)" for consistency
   "Sering terjadi (4)": 4,
   "Hampir pasti terjadi (5)": 5,
 } as const;
@@ -48,7 +49,7 @@ export const CONTROL_MEASURE_TYPE_KEYS = Object.keys(CONTROL_MEASURE_TYPES) as C
 
 
 export interface Goal {
-  id: string; // Firestore document ID
+  id: string;
   name: string;
   description: string;
   code: string; 
@@ -74,7 +75,7 @@ export interface PotentialRisk {
 export interface RiskCause {
   id: string; 
   potentialRiskId: string; 
-  goalId: string; // Added for easier querying/context if needed, denormalized
+  goalId: string; 
   uprId: string;
   period: string;
   userId?: string;
@@ -108,6 +109,19 @@ export interface ControlMeasure {
   createdAt: string;
   updatedAt?: string;
 }
+
+export type UserRole = 'admin' | 'userSatker';
+
+export interface AppUser {
+  uid: string;
+  email: string | null;
+  displayName: string | null;
+  photoURL: string | null;
+  role: UserRole;
+  uprId?: string | null; // ID Unit Pemilik Risiko pengguna
+  createdAt: string; // ISO string or Firebase Timestamp
+}
+
 
 // Helper to get display name for control type
 export const getControlTypeName = (typeKey: ControlMeasureTypeKey): string => {
