@@ -7,8 +7,6 @@ import { useRouter } from 'next/navigation';
 import { PageHeader } from '@/components/ui/page-header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-// RiskControlModal is likely not used here anymore, or needs context adjustment
-// import { RiskControlModal } from '@/components/risks/risk-control-modal'; 
 import type { Goal, PotentialRisk, RiskCause, RiskCategory } from '@/lib/types';
 import { RISK_CATEGORIES } from '@/lib/types';
 import { PlusCircle, Loader2, Settings2, Trash2, Edit, ListChecks, ChevronDown, ChevronUp, Search, Filter, BarChart3 } from 'lucide-react';
@@ -24,7 +22,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { useAuth } from '@/contexts/auth-context';
 import { getGoals } from '@/services/goalService';
 import { getPotentialRisksByGoalId, deletePotentialRiskAndSubCollections } from '@/services/potentialRiskService';
-import { getRiskCausesByPotentialRiskId } from '@/services/riskCauseService'; // For counting
+import { getRiskCausesByPotentialRiskId } from '@/services/riskCauseService';
 
 export default function AllRisksPage() {
   const router = useRouter();
@@ -34,8 +32,6 @@ export default function AllRisksPage() {
   
   const [goals, setGoals] = useState<Goal[]>([]);
   const [allPotentialRisks, setAllPotentialRisks] = useState<PotentialRisk[]>([]);
-  // allControls and allRiskCauses are likely not needed directly at this page level anymore for Firestore
-  // unless used for counts, which should be fetched efficiently.
   const [riskCauseCounts, setRiskCauseCounts] = useState<Record<string, number>>({});
   
   const [isLoading, setIsLoading] = useState(true);
@@ -52,7 +48,6 @@ export default function AllRisksPage() {
   const [riskToDelete, setRiskToDelete] = useState<PotentialRisk | null>(null); 
   const [isBulkDeleteDialogOpen, setIsBulkDeleteDialogOpen] = useState(false);
 
-
   const { toast } = useToast();
 
   const loadData = useCallback(async () => {
@@ -66,19 +61,24 @@ export default function AllRisksPage() {
     }
     setIsLoading(true);
     try {
-      const loadedGoals = await getGoals(currentUprId, currentPeriod);
+      const goalsResult = await getGoals(currentUprId, currentPeriod);
+      let loadedGoals: Goal[] = [];
+      if (goalsResult.success && goalsResult.goals) {
+        loadedGoals = goalsResult.goals;
+      } else {
+        toast({title: "Kesalahan Memuat Sasaran", description: goalsResult.message || "Tidak dapat memuat daftar sasaran.", variant: "destructive"});
+      }
       setGoals(loadedGoals);
 
       let collectedPotentialRisks: PotentialRisk[] = [];
       const uniqueOwners = new Set<string>();
       const causeCounts: Record<string, number> = {};
 
-      for (const goal of loadedGoals) {
+      for (const goal of loadedGoals) { // Iterate over loadedGoals which is guaranteed to be an array
         const goalPotentialRisks = await getPotentialRisksByGoalId(goal.id, currentUprId, currentPeriod);
         for (const pRisk of goalPotentialRisks) {
           collectedPotentialRisks.push(pRisk);
           if (pRisk.owner) uniqueOwners.add(pRisk.owner);
-          // Fetch cause count for this pRisk
           const causes = await getRiskCausesByPotentialRiskId(pRisk.id, currentUprId, currentPeriod);
           causeCounts[pRisk.id] = causes.length;
         }
@@ -86,10 +86,10 @@ export default function AllRisksPage() {
       setAllPotentialRisks(collectedPotentialRisks);
       setAllOwners(Array.from(uniqueOwners).sort());
       setRiskCauseCounts(causeCounts);
-      setSelectedRiskIds([]); // Reset selection on data load
-    } catch (error) {
+      setSelectedRiskIds([]);
+    } catch (error: any) {
         console.error("Error loading data for AllRisksPage:", error);
-        toast({title: "Gagal Memuat Data", description: "Tidak dapat mengambil daftar risiko.", variant: "destructive"});
+        toast({title: "Gagal Memuat Data", description: error.message || "Tidak dapat mengambil daftar risiko.", variant: "destructive"});
     } finally {
         setIsLoading(false);
     }
@@ -107,12 +107,12 @@ export default function AllRisksPage() {
     if (currentUprId && currentPeriod && currentUser) {
       loadData();
     } else if (!currentUser) {
-      setIsLoading(false); // Stop loading if no user
+      setIsLoading(false);
     }
   }, [loadData, currentUprId, currentPeriod, currentUser]);
   
   const handleOpenAddPotentialRiskPage = () => {
-    if (goals.length === 0) {
+    if (!Array.isArray(goals) || goals.length === 0) {
         toast({ title: "Tidak Dapat Menambah Potensi Risiko", description: "Harap buat setidaknya satu sasaran untuk UPR/Periode saat ini sebelum menambahkan potensi risiko.", variant: "destructive"});
         return;
     }
@@ -134,10 +134,10 @@ export default function AllRisksPage() {
     try {
       await deletePotentialRiskAndSubCollections(riskToDelete.id, currentUprId, currentPeriod);
       toast({ title: "Potensi Risiko Dihapus", description: `Potensi risiko "${riskToDelete.description}" dan semua data terkait telah dihapus.`, variant: "destructive" });
-      loadData(); // Refresh data
-    } catch (error) {
+      loadData(); 
+    } catch (error: any) {
         console.error("Error deleting potential risk:", error);
-        toast({ title: "Gagal Menghapus", description: "Terjadi kesalahan saat menghapus potensi risiko.", variant: "destructive" });
+        toast({ title: "Gagal Menghapus", description: error.message || "Terjadi kesalahan saat menghapus potensi risiko.", variant: "destructive" });
     } finally {
         setIsDeleteDialogOpen(false);
         setRiskToDelete(null);
@@ -175,10 +175,12 @@ export default function AllRisksPage() {
   const filteredAndSortedRisks = useMemo(() => {
     let tempRisks = [...allPotentialRisks];
     const lowerSearchTerm = searchTerm.toLowerCase();
+    const currentGoals = Array.isArray(goals) ? goals : [];
+
 
     if (searchTerm) {
       tempRisks = tempRisks.filter(pRisk => {
-        const goal = goals.find(g => g.id === pRisk.goalId);
+        const goal = currentGoals.find(g => g.id === pRisk.goalId);
         const goalName = goal?.name.toLowerCase() || '';
         const goalCode = goal?.code?.toLowerCase() || '';
         return (
@@ -209,8 +211,8 @@ export default function AllRisksPage() {
     }
 
     return tempRisks.sort((a, b) => {
-        const goalA = goals.find(g => g.id === a.goalId);
-        const goalB = goals.find(g => g.id === b.goalId);
+        const goalA = currentGoals.find(g => g.id === a.goalId);
+        const goalB = currentGoals.find(g => g.id === b.goalId);
         
         const codeA = goalA?.code || '';
         const codeB = goalB?.code || '';
@@ -252,7 +254,6 @@ export default function AllRisksPage() {
     if (!currentUser || !currentUprId || !currentPeriod) return;
     let deletedCount = 0;
     
-    // Create a list of promises for deletion
     const deletionPromises = selectedRiskIds.map(riskId => {
         return deletePotentialRiskAndSubCollections(riskId, currentUprId, currentPeriod)
             .then(() => {
@@ -270,9 +271,8 @@ export default function AllRisksPage() {
         if (deletedCount > 0) {
              toast({ title: "Hapus Massal Berhasil", description: `${deletedCount} potensi risiko dan semua data terkait telah dihapus.`, variant: "destructive" });
         }
-        loadData(); // Refresh data from Firestore
-    } catch (error) {
-        // This catch might not be strictly necessary if individual errors are caught above
+        loadData(); 
+    } catch (error: any) {
         console.error("Error during bulk delete process:", error);
     } finally {
         setIsBulkDeleteDialogOpen(false);
@@ -280,7 +280,7 @@ export default function AllRisksPage() {
     }
   };
 
-  if (isLoading || (!currentUser && currentUprId && currentPeriod)) { // Show loading if user is null but context is set
+  if (isLoading || (!currentUser && currentUprId && currentPeriod)) { 
     return (
       <div className="flex flex-col items-center justify-center h-screen">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
@@ -304,7 +304,7 @@ export default function AllRisksPage() {
     );
   }
 
-  const relevantGoals = goals.filter(g => g.uprId === currentUprId && g.period === currentPeriod);
+  const relevantGoals = Array.isArray(goals) ? goals.filter(g => g.uprId === currentUprId && g.period === currentPeriod) : [];
   const totalTableColumns = 7; 
 
   return (
@@ -458,12 +458,14 @@ export default function AllRisksPage() {
                     <TableHead className="min-w-[150px]">Pemilik</TableHead>
                     <TableHead className="min-w-[200px]">Sasaran Terkait</TableHead>
                     <TableHead className="min-w-[100px] text-center">Penyebab</TableHead>
-                    <TableHead className="text-right min-w-[100px] sticky right-0 bg-background z-10">Aksi</TableHead>
+                    {/* <TableHead className="text-right min-w-[100px] sticky right-0 bg-background z-10">Aksi</TableHead> */}
+                    <TableHead className="text-right min-w-[100px] sticky right-0 bg-background z-10 pr-4">Aksi</TableHead>
                     </TableRow>
                 </TableHeader>
                 <TableBody>
                     {filteredAndSortedRisks.map((pRisk) => {
-                    const associatedGoal = goals.find(g => g.id === pRisk.goalId);
+                    const currentGoals = Array.isArray(goals) ? goals : [];
+                    const associatedGoal = currentGoals.find(g => g.id === pRisk.goalId);
                     const isExpanded = expandedRiskId === pRisk.id;
                     
                     const goalCodeDisplay = associatedGoal?.code && associatedGoal.code.trim() !== '' ? associatedGoal.code : '[Tanpa Kode]';
@@ -506,7 +508,7 @@ export default function AllRisksPage() {
                             {associatedGoalText}
                             </TableCell>
                             <TableCell className="text-center text-xs">{riskCauseCounts[pRisk.id] || 0}</TableCell>
-                            <TableCell className="text-right sticky right-0 bg-background z-10">
+                            <TableCell className="text-right sticky right-0 bg-background z-10 pr-4">
                             <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
                                 <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -571,7 +573,7 @@ export default function AllRisksPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Konfirmasi Hapus Massal</AlertDialogTitle>
             <AlertDialogDescription>
-              Apakah Anda yakin ingin menghapus {selectedRiskIds.length} potensi risiko yang dipilih? Semua penyebab dan tindakan pengendalian terkait juga akan dihapus. Tindakan ini tidak dapat dibatalkan.
+              Apakah Anda yakin ingin menghapus {selectedRiskIds.length} potensi risiko yang dipilih? Semua penyebab dan kontrol terkait juga akan dihapus. Tindakan ini tidak dapat dibatalkan.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -584,3 +586,6 @@ export default function AllRisksPage() {
     </div>
   );
 }
+
+
+    
