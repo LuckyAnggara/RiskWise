@@ -3,16 +3,15 @@
 
 import React, { useState, useEffect, useCallback, useMemo, Fragment } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import NextLink from 'next/link'; // Using NextLink alias for clarity
+import NextLink from 'next/link'; 
 import { PageHeader } from '@/components/ui/page-header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { RiskIdentificationCard } from '@/components/risks/risk-identification-card';
 import { RiskListItem } from '@/components/risks/risk-list-item';
-import { RiskControlModal } from '@/components/risks/risk-control-modal';
-import type { Goal, PotentialRisk, Control, RiskCause, RiskCategory } from '@/lib/types';
+import type { Goal, PotentialRisk, RiskCause, RiskCategory } from '@/lib/types';
 import { RISK_CATEGORIES } from '@/lib/types';
-import { ArrowLeft, ShieldAlert, Loader2, Edit, Trash2, Settings2, PlusCircle, Copy, Search, Filter, LayoutGrid, List, ChevronDown, ChevronUp } from 'lucide-react';
+import { ArrowLeft, ShieldAlert, Loader2, Edit, Trash2, Settings2, PlusCircle, Copy, Search, Filter, LayoutGrid, List, ChevronDown, ChevronUp, BarChart3 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
@@ -23,23 +22,26 @@ import { getCurrentUprId, getCurrentPeriod, initializeAppContext } from '@/lib/u
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Checkbox } from "@/components/ui/checkbox";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-
-const getGoalsStorageKey = (uprId: string, period: string) => `riskwise-upr${uprId}-period${period}-goals`;
-const getPotentialRisksStorageKey = (uprId: string, period: string, goalId: string) => `riskwise-upr${uprId}-period${period}-goal${goalId}-potentialRisks`;
-const getControlsStorageKey = (uprId: string, period: string, potentialRiskId: string) => `riskwise-upr${uprId}-period${period}-potentialRisk${potentialRiskId}-controls`;
-const getRiskCausesStorageKey = (uprId: string, period: string, potentialRiskId: string) => `riskwise-upr${uprId}-period${period}-potentialRisk${potentialRiskId}-causes`;
+import { useAuth } from '@/contexts/auth-context';
+import { getGoals } from '@/services/goalService';
+import { getPotentialRisksByGoalId, addPotentialRisk, deletePotentialRiskAndSubCollections } from '@/services/potentialRiskService';
+import { getRiskCausesByPotentialRiskId, addRiskCause, deleteRiskCauseAndSubCollections as deleteRiskCausesForPR } from '@/services/riskCauseService';
+// ControlMeasureService is not directly used for control creation from this page anymore.
 
 export default function GoalRisksPage() {
   const router = useRouter();
   const params = useParams();
   const goalId = params.goalId as string;
+  const { currentUser } = useAuth();
 
   const [currentUprId, setCurrentUprId] = useState('');
   const [currentPeriod, setCurrentPeriod] = useState('');
   const [goal, setGoal] = useState<Goal | null>(null);
   const [potentialRisks, setPotentialRisks] = useState<PotentialRisk[]>([]);
-  const [controls, setControls] = useState<Control[]>([]);
-  const [riskCauses, setRiskCauses] = useState<RiskCause[]>([]);
+  // Controls are now managed at riskCause level, so no top-level controls state here.
+  // const [controls, setControls] = useState<Control[]>([]);
+  const [riskCauseCounts, setRiskCauseCounts] = useState<Record<string, number>>({});
+  
   const [isLoading, setIsLoading] = useState(true);
   const [viewMode, setViewMode] = useState<'card' | 'table'>('card');
   const [expandedRiskId, setExpandedRiskId] = useState<string | null>(null);
@@ -54,62 +56,47 @@ export default function GoalRisksPage() {
   const [riskToDelete, setRiskToDelete] = useState<PotentialRisk | null>(null);
   const [isSingleDeleteDialogOpen, setIsSingleDeleteDialogOpen] = useState(false);
 
-  const [selectedPotentialRiskForControl, setSelectedPotentialRiskForControl] = useState<PotentialRisk | null>(null);
-  const [selectedControlForEdit, setSelectedControlForEdit] = useState<Control | null>(null);
-  const [isControlModalOpen, setIsControlModalOpen] = useState(false);
-
   const { toast } = useToast();
 
-  const loadData = useCallback(() => {
-    if (typeof window !== 'undefined' && goalId && currentUprId && currentPeriod) {
-      setIsLoading(true);
-      const goalsStorageKey = getGoalsStorageKey(currentUprId, currentPeriod);
-      const storedGoalsData = localStorage.getItem(goalsStorageKey);
-      const allGoals: Goal[] = storedGoalsData ? JSON.parse(storedGoalsData) : [];
-      const currentGoal = allGoals.find(g => g.id === goalId && g.uprId === currentUprId && g.period === currentPeriod);
-      
+  const loadData = useCallback(async () => {
+    if (!currentUser || !goalId || !currentUprId || !currentPeriod) {
+        setIsLoading(false);
+        setGoal(null);
+        setPotentialRisks([]);
+        setAllRiskOwnersForGoal([]);
+        setRiskCauseCounts({});
+        return;
+    }
+    setIsLoading(true);
+    try {
+      const allGoals = await getGoals(currentUprId, currentPeriod);
+      const currentGoal = allGoals.find(g => g.id === goalId);
       setGoal(currentGoal || null);
 
       const uniqueOwners = new Set<string>();
+      const causeCounts: Record<string,number> = {};
       if (currentGoal) {
-        const potentialRisksStorageKey = getPotentialRisksStorageKey(currentGoal.uprId, currentGoal.period, goalId);
-        const storedPotentialRisksData = localStorage.getItem(potentialRisksStorageKey);
-        const currentPotentialRisks: PotentialRisk[] = storedPotentialRisksData ? JSON.parse(storedPotentialRisksData) : [];
-        setPotentialRisks(currentPotentialRisks.sort((a,b)=>(a.sequenceNumber || 0) - (b.sequenceNumber || 0) || a.description.localeCompare(b.description)));
-
-        currentPotentialRisks.forEach(pr => { if (pr.owner) uniqueOwners.add(pr.owner); });
-
-        let allRiskControls: Control[] = [];
-        let allRiskCausesForGoal: RiskCause[] = [];
-        currentPotentialRisks.forEach(pRisk => {
-          const controlsStorageKey = getControlsStorageKey(currentGoal.uprId, currentGoal.period, pRisk.id);
-          const storedControlsData = localStorage.getItem(controlsStorageKey);
-          if (storedControlsData) {
-            allRiskControls = [...allRiskControls, ...JSON.parse(storedControlsData)];
-          }
-          const causesStorageKey = getRiskCausesStorageKey(currentGoal.uprId, currentGoal.period, pRisk.id);
-          const storedCausesData = localStorage.getItem(causesStorageKey);
-          if (storedCausesData) {
-            allRiskCausesForGoal = [...allRiskCausesForGoal, ...JSON.parse(storedCausesData)];
-          }
-        });
-        setControls(allRiskControls);
-        setRiskCauses(allRiskCausesForGoal.sort((a,b) => (a.sequenceNumber || 0) - (b.sequenceNumber || 0)));
+        const currentPotentialRisks = await getPotentialRisksByGoalId(goalId, currentUprId, currentPeriod);
+        setPotentialRisks(currentPotentialRisks);
+        for (const pRisk of currentPotentialRisks) {
+          if (pRisk.owner) uniqueOwners.add(pRisk.owner);
+          const causes = await getRiskCausesByPotentialRiskId(pRisk.id, currentUprId, currentPeriod);
+          causeCounts[pRisk.id] = causes.length;
+        }
       } else {
         setPotentialRisks([]);
-        setControls([]);
-        setRiskCauses([]);
       }
       setAllRiskOwnersForGoal(Array.from(uniqueOwners).sort());
-      setIsLoading(false);
-    } else if (typeof window !== 'undefined' && (!goalId || !currentUprId || !currentPeriod)) {
-        setGoal(null);
-        setPotentialRisks([]);
-        setControls([]);
-        setRiskCauses([]);
+      setRiskCauseCounts(causeCounts);
+      setSelectedRiskIds([]); // Reset selection
+    } catch (error) {
+        console.error("Error loading data for GoalRisksPage:", error);
+        toast({title: "Gagal Memuat Data", description: "Tidak dapat mengambil data sasaran dan risiko.", variant: "destructive"});
+        setGoal(null); // Ensure goal is null on error
+    } finally {
         setIsLoading(false);
     }
-  }, [goalId, currentUprId, currentPeriod]);
+  }, [goalId, currentUprId, currentPeriod, currentUser, toast]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -120,125 +107,41 @@ export default function GoalRisksPage() {
   }, []);
   
   useEffect(() => {
-    if (currentUprId && currentPeriod && goalId) {
+    if (currentUprId && currentPeriod && goalId && currentUser) {
       loadData();
-    } else if (currentUprId && currentPeriod && !goalId){
-        setIsLoading(false);
-        setGoal(null);
+    } else if (!currentUser && goalId && currentUprId && currentPeriod) {
+      setIsLoading(false); // Stop loading if no user but context is set
     }
-  }, [loadData, currentUprId, currentPeriod, goalId]);
+  }, [loadData, currentUprId, currentPeriod, goalId, currentUser]);
 
-  const updatePotentialRisksInStorage = (goalForPotentialRisks: Goal, updatedPRisks: PotentialRisk[]) => {
-    if (typeof window !== 'undefined' && goalForPotentialRisks) {
-      const key = getPotentialRisksStorageKey(goalForPotentialRisks.uprId, goalForPotentialRisks.period, goalForPotentialRisks.id);
-      localStorage.setItem(key, JSON.stringify(updatedPRisks.sort((a,b)=>(a.sequenceNumber || 0) - (b.sequenceNumber || 0) || a.description.localeCompare(b.description))));
-    }
-  };
-
-  const updateControlsInStorage = (goalForControls: Goal, potentialRiskId: string, updatedControlsForPRisk: Control[]) => {
-     if (typeof window !== 'undefined' && goalForControls) {
-        const key = getControlsStorageKey(goalForControls.uprId, goalForControls.period, potentialRiskId);
-        localStorage.setItem(key, JSON.stringify(updatedControlsForPRisk));
-     }
-  };
-  
-  const updateRiskCausesInStorage = (goalForCauses: Goal, potentialRiskId: string, updatedCausesForPRisk: RiskCause[]) => {
-    if (typeof window !== 'undefined' && goalForCauses) {
-      const key = getRiskCausesStorageKey(goalForCauses.uprId, goalForCauses.period, potentialRiskId);
-      localStorage.setItem(key, JSON.stringify(updatedCausesForPRisk.sort((a,b) => (a.sequenceNumber || 0) - (b.sequenceNumber || 0))));
-    }
-  };
-
-  const handlePotentialRisksIdentified = (newPotentialRisks: PotentialRisk[]) => {
-    if (!goal) return;
-    const updatedPotentialRisksState = [...potentialRisks, ...newPotentialRisks].sort((a,b)=>(a.sequenceNumber || 0) - (b.sequenceNumber || 0) || a.description.localeCompare(b.description));
-    setPotentialRisks(updatedPotentialRisksState);
-    updatePotentialRisksInStorage(goal, updatedPotentialRisksState);
-    loadData(); // Refresh owners list
+  const handlePotentialRisksIdentified = (newPRs: PotentialRisk[]) => {
+    // No need to manually add to state if addPotentialRisk in service works and we reload
     toast({
         title: "Potensi Risiko Teridentifikasi!",
-        description: `${newPotentialRisks.length} potensi risiko telah di-brainstorm untuk "${goal.name}". Anda sekarang dapat mengedit detailnya dan menambahkan penyebab.`
+        description: `${newPRs.length} potensi risiko telah disimpan ke Firestore.`,
     });
+    loadData(); // Reload data to reflect new additions
   };
   
-  const handleOpenControlModal = (pRiskForControl: PotentialRisk, controlToEdit?: Control) => {
-    setSelectedPotentialRiskForControl(pRiskForControl);
-    setSelectedControlForEdit(controlToEdit || null);
-    setIsControlModalOpen(true);
-  };
-
-  const handleSaveControl = (control: Control) => {
-    if (!goal) return;
-    let updatedOverallControls;
-    let actionText = "";
-
-    setControls(prevControls => {
-        const pRiskSpecificControls = prevControls.filter(c => c.potentialRiskId === control.potentialRiskId);
-        const existingIndex = pRiskSpecificControls.findIndex(c => c.id === control.id);
-        let updatedPRiskControlsList: Control[];
-
-        if (existingIndex > -1) {
-          updatedPRiskControlsList = pRiskSpecificControls.map(c => c.id === control.id ? control : c);
-          actionText = "diperbarui";
-        } else {
-          updatedPRiskControlsList = [...pRiskSpecificControls, control];
-          actionText = "ditambahkan";
-        }
-        
-        updateControlsInStorage(goal, control.potentialRiskId, updatedPRiskControlsList);
-        updatedOverallControls = prevControls.filter(c => c.potentialRiskId !== control.potentialRiskId).concat(updatedPRiskControlsList);
-        return updatedOverallControls;
-    });
-        
-    toast({ 
-        title: actionText === "diperbarui" ? "Kontrol Diperbarui" : "Kontrol Ditambahkan", 
-        description: `Kontrol "${control.description}" ${actionText}.` 
-    });
-    
-    setIsControlModalOpen(false);
-    setSelectedPotentialRiskForControl(null);
-    setSelectedControlForEdit(null);
-  };
-
   const handleDeleteSingleRisk = (pRisk: PotentialRisk) => {
     setRiskToDelete(pRisk);
     setIsSingleDeleteDialogOpen(true);
   };
   
-  const confirmDeleteSingleRisk = () => {
-    if (!goal || !riskToDelete) return;
+  const confirmDeleteSingleRisk = async () => {
+    if (!goal || !riskToDelete || !currentUser || !currentUprId || !currentPeriod) return;
     
-    const pRiskIdToDelete = riskToDelete.id;
-    const updatedPotentialRisksState = potentialRisks.filter(pr => pr.id !== pRiskIdToDelete).sort((a,b)=>(a.sequenceNumber || 0) - (b.sequenceNumber || 0) || a.description.localeCompare(b.description));
-    setPotentialRisks(updatedPotentialRisksState);
-    updatePotentialRisksInStorage(goal, updatedPotentialRisksState);
-      
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem(getControlsStorageKey(goal.uprId, goal.period, pRiskIdToDelete));
-      localStorage.removeItem(getRiskCausesStorageKey(goal.uprId, goal.period, pRiskIdToDelete));
+    try {
+      await deletePotentialRiskAndSubCollections(riskToDelete.id, currentUprId, currentPeriod);
+      toast({ title: "Potensi Risiko Dihapus", description: `Potensi risiko "${riskToDelete.description}" dan semua data terkait telah dihapus.`, variant: "destructive" });
+      loadData(); // Refresh data
+    } catch (error) {
+        console.error("Error deleting single potential risk:", error);
+        toast({ title: "Gagal Menghapus", description: "Terjadi kesalahan saat menghapus potensi risiko.", variant: "destructive" });
+    } finally {
+        setIsSingleDeleteDialogOpen(false);
+        setRiskToDelete(null);
     }
-    setControls(currentControls => currentControls.filter(c => c.potentialRiskId !== pRiskIdToDelete));
-    setRiskCauses(currentCauses => currentCauses.filter(rc => rc.potentialRiskId !== pRiskIdToDelete));
-    toast({ title: "Potensi Risiko Dihapus", description: `Potensi risiko "${riskToDelete.description}" dihapus.`, variant: "destructive" });
-    setIsSingleDeleteDialogOpen(false);
-    setRiskToDelete(null);
-    loadData(); 
-  };
-
-  const handleDeleteControl = (controlIdToDelete: string) => {
-    if (!goal) return;
-    const controlToDelete = controls.find(c => c.id === controlIdToDelete);
-    if (!controlToDelete) return;
-
-    const pRiskIdOfControl = controlToDelete.potentialRiskId;
-    const updatedPRiskControlsList = controls
-        .filter(c => c.potentialRiskId === pRiskIdOfControl && c.id !== controlIdToDelete);
-    
-    updateControlsInStorage(goal, pRiskIdOfControl, updatedPRiskControlsList); 
-    const updatedOverallControls = controls.filter(c => c.id !== controlIdToDelete);
-    setControls(updatedOverallControls);
-
-    toast({ title: "Kontrol Dihapus", description: `Kontrol "${controlToDelete.description}" dihapus.`, variant: "destructive" });
   };
 
   const filteredPotentialRisks = useMemo(() => {
@@ -247,7 +150,7 @@ export default function GoalRisksPage() {
 
     if (searchTerm) {
       tempRisks = tempRisks.filter(pr =>
-        (pr.code && `${goal?.code || ''}.PR${pr.sequenceNumber || ''}`.toLowerCase().includes(lowerSearchTerm)) ||
+        (pr.sequenceNumber && `${goal?.code || ''}.PR${pr.sequenceNumber || ''}`.toLowerCase().includes(lowerSearchTerm)) ||
         pr.description.toLowerCase().includes(lowerSearchTerm) ||
         (pr.category && pr.category.toLowerCase().includes(lowerSearchTerm)) ||
         (pr.owner && pr.owner.toLowerCase().includes(lowerSearchTerm))
@@ -284,91 +187,82 @@ export default function GoalRisksPage() {
     setIsBulkDeleteDialogOpen(true);
   };
 
-  const confirmDeleteSelectedRisks = () => {
-    if (!goal) return;
-    let count = 0;
-    let updatedPRs = [...potentialRisks];
-    selectedRiskIds.forEach(riskId => {
-        const risk = updatedPRs.find(r => r.id === riskId);
-        if (risk) {
-            count++;
-            if (typeof window !== 'undefined') {
-                localStorage.removeItem(getControlsStorageKey(goal.uprId, goal.period, riskId));
-                localStorage.removeItem(getRiskCausesStorageKey(goal.uprId, goal.period, riskId));
-            }
-            setControls(prev => prev.filter(c => c.potentialRiskId !== riskId));
-            setRiskCauses(prev => prev.filter(rc => rc.potentialRiskId !== riskId));
-        }
-        updatedPRs = updatedPRs.filter(pr => pr.id !== riskId);
-    });
+  const confirmDeleteSelectedRisks = async () => {
+    if (!goal || !currentUser || !currentUprId || !currentPeriod ) return;
+    let deletedCount = 0;
     
-    const resequencedPRs = updatedPRs.sort((a,b) => (a.sequenceNumber || 0) - (b.sequenceNumber || 0)).map((pr, index) => ({...pr, sequenceNumber: index + 1}));
-    setPotentialRisks(resequencedPRs);
-    updatePotentialRisksInStorage(goal, resequencedPRs);
-    toast({ title: "Hapus Massal Berhasil", description: `${count} potensi risiko telah dihapus.`, variant: "destructive" });
-    setSelectedRiskIds([]);
-    setIsBulkDeleteDialogOpen(false);
-    loadData(); 
+    const deletionPromises = selectedRiskIds.map(riskId => {
+        return deletePotentialRiskAndSubCollections(riskId, currentUprId, currentPeriod)
+            .then(() => {
+                deletedCount++;
+            })
+            .catch(err => {
+                console.error(`Gagal menghapus risiko ${riskId}:`, err);
+                 const risk = potentialRisks.find(r => r.id === riskId);
+                toast({ title: "Gagal Sebagian", description: `Gagal menghapus potensi risiko "${risk?.description || riskId}".`, variant: "destructive" });
+            });
+    });
+
+    try {
+        await Promise.all(deletionPromises);
+        if (deletedCount > 0) {
+           toast({ title: "Hapus Massal Berhasil", description: `${deletedCount} potensi risiko dan data terkait telah dihapus.`, variant: "destructive" });
+        }
+        loadData(); 
+    } catch (error) {
+        console.error("Error during bulk delete selected risks:", error);
+    } finally {
+        setIsBulkDeleteDialogOpen(false);
+        setSelectedRiskIds([]);
+    }
   };
 
-  const handleDuplicateRisk = (riskToDuplicate: PotentialRisk) => {
-    if (!goal) return;
+  const handleDuplicateRisk = async (riskToDuplicate: PotentialRisk) => {
+    if (!goal || !currentUser || !currentUprId || !currentPeriod) return;
 
-    const originalCauses = riskCauses.filter(rc => rc.potentialRiskId === riskToDuplicate.id);
-    const originalControls = controls.filter(c => c.potentialRiskId === riskToDuplicate.id);
+    setIsLoading(true); // Indicate loading
+    try {
+        const existingPRsForGoal = await getPotentialRisksByGoalId(goal.id, currentUprId, currentPeriod);
+        const newSequenceNumber = existingPRsForGoal.length + 1;
 
-    let maxSeq = 0;
-    potentialRisks.forEach(pr => {
-        if (pr.sequenceNumber && pr.sequenceNumber > maxSeq) {
-            maxSeq = pr.sequenceNumber;
+        const newPRData: Omit<PotentialRisk, 'id' | 'identifiedAt' | 'uprId' | 'period' | 'userId' | 'sequenceNumber'> = {
+            goalId: riskToDuplicate.goalId,
+            description: `${riskToDuplicate.description} (Salinan)`,
+            category: riskToDuplicate.category,
+            owner: riskToDuplicate.owner,
+        };
+        const newPotentialRisk = await addPotentialRisk(newPRData, goal.id, currentUprId, currentPeriod, currentUser.uid, newSequenceNumber);
+
+        const originalCauses = await getRiskCausesByPotentialRiskId(riskToDuplicate.id, currentUprId, currentPeriod);
+        let causeSeq = 0;
+        for (const cause of originalCauses) {
+            causeSeq++;
+            const newCauseData: Omit<RiskCause, 'id' | 'createdAt' | 'uprId' | 'period' | 'userId' | 'potentialRiskId' | 'goalId' | 'sequenceNumber'> = {
+                description: cause.description,
+                source: cause.source,
+                keyRiskIndicator: cause.keyRiskIndicator,
+                riskTolerance: cause.riskTolerance,
+                likelihood: cause.likelihood,
+                impact: cause.impact,
+            };
+            // Controls for this cause would need to be duplicated too if we go deeper.
+            // For now, just duplicating cause.
+            await addRiskCause(newCauseData, newPotentialRisk.id, newPotentialRisk.goalId, currentUprId, currentPeriod, currentUser.uid, causeSeq);
         }
-    });
-    const newSequenceNumber = maxSeq + 1;
 
-    const newPotentialRisk: PotentialRisk = {
-        ...riskToDuplicate,
-        id: `prisk_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
-        description: `${riskToDuplicate.description} (Salinan)`,
-        identifiedAt: new Date().toISOString(),
-        sequenceNumber: newSequenceNumber,
-    };
-
-    const newCauses: RiskCause[] = originalCauses.map((cause, index) => ({
-        ...cause,
-        id: `rcause_${newPotentialRisk.id}_${index}_${Date.now()}`,
-        potentialRiskId: newPotentialRisk.id,
-        createdAt: new Date().toISOString(),
-    }));
-
-    const newControls: Control[] = originalControls.map((control, index) => ({
-        ...control,
-        id: `ctrl_${newPotentialRisk.id}_${index}_${Date.now()}`,
-        potentialRiskId: newPotentialRisk.id,
-        createdAt: new Date().toISOString(),
-    }));
-
-    const updatedPotentialRisks = [...potentialRisks, newPotentialRisk].sort((a,b)=>(a.sequenceNumber || 0) - (b.sequenceNumber || 0) || a.description.localeCompare(b.description));
-    setPotentialRisks(updatedPotentialRisks);
-    updatePotentialRisksInStorage(goal, updatedPotentialRisks);
-
-    setRiskCauses(prev => [...prev, ...newCauses]);
-    if (newCauses.length > 0) {
-        updateRiskCausesInStorage(goal, newPotentialRisk.id, newCauses);
+        toast({ title: "Risiko Diduplikasi", description: `Potensi risiko "${newPotentialRisk.description}" telah berhasil diduplikasi.`});
+        loadData(); 
+    } catch (error) {
+        console.error("Error duplicating risk:", error);
+        toast({ title: "Gagal Menduplikasi", description: "Terjadi kesalahan saat menduplikasi potensi risiko.", variant: "destructive" });
+    } finally {
+        setIsLoading(false);
     }
-    
-    setControls(prev => [...prev, ...newControls]);
-    if (newControls.length > 0) {
-        updateControlsInStorage(goal, newPotentialRisk.id, newControls);
-    }
-
-    toast({ title: "Risiko Diduplikasi", description: `Potensi risiko "${newPotentialRisk.description}" telah berhasil diduplikasi.`});
-    loadData(); 
   };
 
   const toggleExpandRisk = (riskId: string) => {
     setExpandedRiskId(currentId => (currentId === riskId ? null : riskId));
   };
-
 
   if (isLoading) { 
     return (
@@ -379,6 +273,18 @@ export default function GoalRisksPage() {
     );
   }
   
+  if (!currentUser && !isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen">
+        <ShieldAlert className="w-16 h-16 text-muted-foreground mb-4" />
+        <p className="text-xl text-muted-foreground">Anda harus login untuk melihat halaman ini.</p>
+        <Button onClick={() => router.push('/login')} className="mt-4">
+          Ke Halaman Login
+        </Button>
+      </div>
+    );
+  }
+
   if (!goal && !isLoading) { 
     return (
       <div className="flex flex-col items-center justify-center h-screen">
@@ -393,7 +299,7 @@ export default function GoalRisksPage() {
   
   if (!goal) return null; 
 
-  const totalTableColumns = 8; // Checkbox, Expand, Kode, Deskripsi, Kategori, Pemilik, Penyebab, Kontrol, Aksi
+  const totalTableColumns = 8;
 
   return (
     <div className="space-y-8">
@@ -502,7 +408,7 @@ export default function GoalRisksPage() {
                         id="selectAllVisibleRisksGoalPage"
                         checked={selectedRiskIds.length === filteredPotentialRisks.length && filteredPotentialRisks.length > 0}
                         onCheckedChange={(checked) => handleSelectAllVisibleRisks(Boolean(checked))}
-                        disabled={filteredPotentialRisks.length === 0}
+                        disabled={filteredPotentialRisks.length === 0 || !currentUser}
                         aria-label="Pilih Semua Risiko yang Terlihat"
                     />
                     <label htmlFor="selectAllVisibleRisksGoalPage" className="text-sm font-medium text-muted-foreground cursor-pointer">
@@ -510,7 +416,7 @@ export default function GoalRisksPage() {
                     </label>
                 </div>
                 {selectedRiskIds.length > 0 && (
-                    <Button variant="destructive" size="sm" onClick={handleDeleteSelectedRisks}>
+                    <Button variant="destructive" size="sm" onClick={handleDeleteSelectedRisks} disabled={!currentUser}>
                         <Trash2 className="mr-2 h-4 w-4" />
                         Hapus ({selectedRiskIds.length}) yang Dipilih
                     </Button>
@@ -536,142 +442,125 @@ export default function GoalRisksPage() {
                 key={pRisk.id}
                 potentialRisk={pRisk}
                 goalCode={goal.code}
-                controls={controls.filter(c => c.potentialRiskId === pRisk.id)}
-                riskCauses={riskCauses.filter(rc => rc.potentialRiskId === pRisk.id)}
-                onAddControl={() => handleOpenControlModal(pRisk)}
-                onEditControl={(controlToEdit) => {
-                    const parentPRisk = potentialRisks.find(pr => pr.id === controlToEdit.potentialRiskId);
-                    if (parentPRisk) handleOpenControlModal(parentPRisk, controlToEdit);
-                }}
+                riskCausesCount={riskCauseCounts[pRisk.id] || 0} // Pass cause count
+                // Controls are now managed at cause level, so not passed here
+                onEditDetails={() => router.push(`/all-risks/manage/${pRisk.id}?from=${encodeURIComponent(`/risks/${goal.id}`)}`)} 
                 onDeletePotentialRisk={() => handleDeleteSingleRisk(pRisk)}
-                onDeleteControl={(controlId) => handleDeleteControl(controlId)}
-                onEditDetails={() => router.push(`/all-risks/manage/${pRisk.id}`)} 
                 isSelected={selectedRiskIds.includes(pRisk.id)}
                 onSelectRisk={(checked) => handleSelectRisk(pRisk.id, checked)}
                 onDuplicateRisk={() => handleDuplicateRisk(pRisk)}
+                canDelete={!!currentUser} // Pass canDelete based on user login
               />
             ))}
           </div>
         ) : (
-           <Card>
+           <Card className="w-full">
             <CardContent className="p-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[40px]">
-                      <Checkbox
-                          checked={selectedRiskIds.length === filteredPotentialRisks.length && filteredPotentialRisks.length > 0}
-                          onCheckedChange={(checked) => handleSelectAllVisibleRisks(Boolean(checked))}
-                          aria-label="Pilih semua risiko yang terlihat"
-                          disabled={filteredPotentialRisks.length === 0}
-                      />
-                    </TableHead>
-                    <TableHead className="w-[40px]"></TableHead> {/* For expand button */}
-                    <TableHead className="w-[100px]">Kode</TableHead>
-                    <TableHead className="min-w-[250px]">Deskripsi</TableHead>
-                    <TableHead>Kategori</TableHead>
-                    <TableHead>Pemilik</TableHead>
-                    <TableHead className="text-center">Penyebab</TableHead>
-                    <TableHead className="text-center">Kontrol</TableHead>
-                    <TableHead className="text-right w-[100px]">Aksi</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredPotentialRisks.map((pRisk) => {
-                    const riskControlsList = controls.filter(c => c.potentialRiskId === pRisk.id);
-                    const riskCausesList = riskCauses.filter(rc => rc.potentialRiskId === pRisk.id);
-                    const isExpanded = expandedRiskId === pRisk.id;
-                    const potentialRiskCodeDisplay = `${goal?.code || 'S?'}.PR${pRisk.sequenceNumber || 'N/A'}`;
-                    return (
-                      <Fragment key={pRisk.id}>
-                        <TableRow>
-                          <TableCell>
-                            <Checkbox
-                                checked={selectedRiskIds.includes(pRisk.id)}
-                                onCheckedChange={(checked) => handleSelectRisk(pRisk.id, Boolean(checked))}
-                                aria-label={`Pilih risiko ${pRisk.description}`}
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Button variant="ghost" size="icon" onClick={() => toggleExpandRisk(pRisk.id)} aria-label={isExpanded ? "Sembunyikan deskripsi" : "Tampilkan deskripsi"}>
-                              {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                            </Button>
-                          </TableCell>
-                          <TableCell className="font-mono text-xs">{potentialRiskCodeDisplay}</TableCell>
-                          <TableCell className="font-medium text-xs max-w-xs truncate" title={pRisk.description}>
-                              {pRisk.description}
-                          </TableCell>
-                          <TableCell><Badge variant={pRisk.category ? "secondary" : "outline"} className="text-xs">{pRisk.category || 'N/A'}</Badge></TableCell>
-                          <TableCell className="text-xs truncate max-w-[100px]" title={pRisk.owner || ''}>{pRisk.owner || 'N/A'}</TableCell>
-                          <TableCell className="text-center text-xs">{riskCausesList.length}</TableCell>
-                          <TableCell className="text-center text-xs">{riskControlsList.length}</TableCell>
-                          <TableCell className="text-right">
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon">
-                                  <Settings2 className="h-4 w-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => router.push(`/all-risks/manage/${pRisk.id}`)}>
-                                  <Edit className="mr-2 h-4 w-4" /> Edit Detail & Penyebab
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleOpenControlModal(pRisk)}>
-                                  <PlusCircle className="mr-2 h-4 w-4" /> Tambah/Kelola Kontrol
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleDuplicateRisk(pRisk)}>
-                                  <Copy className="mr-2 h-4 w-4" /> Duplikat Risiko
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem onClick={() => handleDeleteSingleRisk(pRisk)} className="text-destructive focus:text-destructive focus:bg-destructive/10">
-                                  <Trash2 className="mr-2 h-4 w-4" /> Hapus Potensi Risiko
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </TableCell>
-                        </TableRow>
-                        {isExpanded && (
-                          <TableRow className="bg-muted/30 hover:bg-muted/40">
-                            <TableCell /> 
-                            <TableCell />
-                            <TableCell colSpan={totalTableColumns - 2} className="p-0">
-                              <div className="p-3 space-y-1 text-xs">
-                                <h4 className="font-semibold text-foreground">Deskripsi Lengkap:</h4>
-                                <p className="text-muted-foreground whitespace-pre-wrap">{pRisk.description}</p>
-                              </div>
+              <div className="relative w-full overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-[40px] sticky left-0 bg-background z-10">
+                        <Checkbox
+                            checked={selectedRiskIds.length === filteredPotentialRisks.length && filteredPotentialRisks.length > 0}
+                            onCheckedChange={(checked) => handleSelectAllVisibleRisks(Boolean(checked))}
+                            aria-label="Pilih semua risiko yang terlihat"
+                            disabled={filteredPotentialRisks.length === 0 || !currentUser}
+                        />
+                      </TableHead>
+                      <TableHead className="w-[40px] sticky left-10 bg-background z-10"></TableHead> {/* For expand button */}
+                      <TableHead className="min-w-[120px] sticky left-[72px] bg-background z-10">Kode</TableHead>
+                      <TableHead className="min-w-[300px]">Deskripsi</TableHead>
+                      <TableHead className="min-w-[120px]">Kategori</TableHead>
+                      <TableHead className="min-w-[150px]">Pemilik</TableHead>
+                      <TableHead className="min-w-[100px] text-center">Penyebab</TableHead>
+                      {/* Controls count column removed as controls are per cause now */}
+                      <TableHead className="text-right min-w-[100px] sticky right-0 bg-background z-10">Aksi</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredPotentialRisks.map((pRisk) => {
+                      const isExpanded = expandedRiskId === pRisk.id;
+                      const potentialRiskCodeDisplay = `${goal?.code || 'S?'}.PR${pRisk.sequenceNumber || 'N/A'}`;
+                      return (
+                        <Fragment key={pRisk.id}>
+                          <TableRow>
+                            <TableCell className="sticky left-0 bg-background z-10">
+                              <Checkbox
+                                  checked={selectedRiskIds.includes(pRisk.id)}
+                                  onCheckedChange={(checked) => handleSelectRisk(pRisk.id, Boolean(checked))}
+                                  aria-label={`Pilih risiko ${pRisk.description}`}
+                                  disabled={!currentUser}
+                              />
+                            </TableCell>
+                            <TableCell className="sticky left-10 bg-background z-10">
+                              <Button variant="ghost" size="icon" onClick={() => toggleExpandRisk(pRisk.id)} aria-label={isExpanded ? "Sembunyikan deskripsi" : "Tampilkan deskripsi"} className="h-8 w-8">
+                                {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                              </Button>
+                            </TableCell>
+                            <TableCell className="font-mono text-xs sticky left-[72px] bg-background z-10">{potentialRiskCodeDisplay}</TableCell>
+                            <TableCell className="font-medium text-xs max-w-xs truncate" title={pRisk.description}>
+                                {pRisk.description}
+                            </TableCell>
+                            <TableCell><Badge variant={pRisk.category ? "secondary" : "outline"} className="text-xs">{pRisk.category || 'N/A'}</Badge></TableCell>
+                            <TableCell className="text-xs truncate max-w-[150px]" title={pRisk.owner || ''}>{pRisk.owner || 'N/A'}</TableCell>
+                            <TableCell className="text-center text-xs">{riskCauseCounts[pRisk.id] || 0}</TableCell>
+                            {/* Controls count cell removed */}
+                            <TableCell className="text-right sticky right-0 bg-background z-10">
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="icon" className="h-8 w-8">
+                                    <Settings2 className="h-4 w-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem onClick={() => router.push(`/all-risks/manage/${pRisk.id}?from=${encodeURIComponent(`/risks/${goal.id}`)}`)}>
+                                    <Edit className="mr-2 h-4 w-4" /> Edit Detail & Penyebab
+                                  </DropdownMenuItem>
+                                   <DropdownMenuItem onClick={() => router.push(`/risk-analysis?potentialRiskId=${pRisk.id}`)}>
+                                      <BarChart3 className="mr-2 h-4 w-4" /> Analisis Semua Penyebab
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => handleDuplicateRisk(pRisk)} disabled={!currentUser}>
+                                    <Copy className="mr-2 h-4 w-4" /> Duplikat Risiko
+                                  </DropdownMenuItem>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem onClick={() => handleDeleteSingleRisk(pRisk)} className="text-destructive focus:text-destructive focus:bg-destructive/10" disabled={!currentUser}>
+                                    <Trash2 className="mr-2 h-4 w-4" /> Hapus Potensi Risiko
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
                             </TableCell>
                           </TableRow>
-                        )}
-                      </Fragment>
-                    );
-                  })}
-                </TableBody>
-              </Table>
+                          {isExpanded && (
+                            <TableRow className="bg-muted/30 hover:bg-muted/40">
+                              <TableCell className="sticky left-0 bg-muted/30 z-10" /> 
+                              <TableCell className="sticky left-10 bg-muted/30 z-10" />
+                              <TableCell className="sticky left-[72px] bg-muted/30 z-10" />
+                              <TableCell colSpan={totalTableColumns - 3} className="p-0"> {/* Adjusted colSpan */}
+                                <div className="p-3 space-y-1 text-xs">
+                                  <h4 className="font-semibold text-foreground">Deskripsi Lengkap:</h4>
+                                  <p className="text-muted-foreground whitespace-pre-wrap">{pRisk.description}</p>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </Fragment>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
             </CardContent>
           </Card>
         )}
       </div>
-
-      {selectedPotentialRiskForControl && <RiskControlModal
-        potentialRisk={selectedPotentialRiskForControl}
-        existingControl={selectedControlForEdit}
-        isOpen={isControlModalOpen}
-        onOpenChange={(isOpen) => {
-            setIsControlModalOpen(isOpen);
-            if (!isOpen) {
-                setSelectedPotentialRiskForControl(null);
-                setSelectedControlForEdit(null);
-            }
-        }}
-        onSave={handleSaveControl}
-      />}
 
       <AlertDialog open={isSingleDeleteDialogOpen} onOpenChange={setIsSingleDeleteDialogOpen}>
         <AlertDialogContent>
             <AlertDialogHeader>
             <AlertDialogTitle>Konfirmasi Hapus</AlertDialogTitle>
             <AlertDialogDescription>
-                Apakah Anda yakin ingin menghapus potensi risiko "{riskToDelete?.description}" ({riskToDelete?.code ? `${goal?.code || 'S?'}.PR${riskToDelete.sequenceNumber}` : 'Tanpa Kode'})? Semua penyebab dan kontrol terkait juga akan dihapus. Tindakan ini tidak dapat dibatalkan.
+                Apakah Anda yakin ingin menghapus potensi risiko "{riskToDelete?.description}" ({goal?.code || 'S?'}.PR{riskToDelete?.sequenceNumber || 'N/A'})? Semua penyebab dan kontrol terkait juga akan dihapus. Tindakan ini tidak dapat dibatalkan.
             </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>

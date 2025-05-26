@@ -4,9 +4,9 @@
 import type { RiskCause, LikelihoodLevelDesc, ImpactLevelDesc } from '@/lib/types';
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"; // Added CardFooter
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"; 
 import { Settings2, BarChart3, Trash2 } from 'lucide-react';
-import { LIKELIHOOD_LEVELS_MAP, IMPACT_LEVELS_MAP, type CalculatedRiskLevelCategory } from '@/lib/types';
+import { LIKELIHOOD_LEVELS_DESC_MAP, IMPACT_LEVELS_DESC_MAP, type CalculatedRiskLevelCategory } from '@/lib/types';
 import Link from 'next/link';
 import {
   DropdownMenu,
@@ -21,13 +21,14 @@ interface RiskCauseCardItemProps {
   onAnalyze: (causeId: string) => void;
   onDelete: (causeId: string) => void;
   returnPath: string;
+  canDelete: boolean; // Added to control delete button state
 }
 
 const getCalculatedRiskLevel = (likelihood: LikelihoodLevelDesc | null, impact: ImpactLevelDesc | null): { level: CalculatedRiskLevelCategory | 'N/A'; score: number | null } => {
   if (!likelihood || !impact) return { level: 'N/A', score: null };
   
-  const likelihoodValue = LIKELIHOOD_LEVELS_MAP[likelihood];
-  const impactValue = IMPACT_LEVELS_MAP[impact];
+  const likelihoodValue = LIKELIHOOD_LEVELS_DESC_MAP[likelihood];
+  const impactValue = IMPACT_LEVELS_DESC_MAP[impact];
 
   if (likelihoodValue === undefined || impactValue === undefined) return { level: 'N/A', score: null };
 
@@ -55,7 +56,7 @@ const getRiskLevelColor = (level: CalculatedRiskLevelCategory | 'N/A') => {
   }
 };
 
-export function RiskCauseCardItem({ riskCause, potentialRiskFullCode, onAnalyze, onDelete, returnPath }: RiskCauseCardItemProps) {
+export function RiskCauseCardItem({ riskCause, potentialRiskFullCode, onAnalyze, onDelete, returnPath, canDelete }: RiskCauseCardItemProps) {
   const causeCode = `${potentialRiskFullCode}.PC${riskCause.sequenceNumber || '?'}`;
   const { level: causeRiskLevelText, score: causeRiskScore } = getCalculatedRiskLevel(riskCause.likelihood, riskCause.impact);
 
@@ -77,7 +78,7 @@ export function RiskCauseCardItem({ riskCause, potentialRiskFullCode, onAnalyze,
                 <DropdownMenuItem onClick={() => onAnalyze(riskCause.id)}>
                   <BarChart3 className="mr-2 h-4 w-4" /> Analisis Detail
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onDelete(riskCause.id)} className="text-destructive focus:text-destructive focus:bg-destructive/10">
+                <DropdownMenuItem onClick={() => onDelete(riskCause.id)} className="text-destructive focus:text-destructive focus:bg-destructive/10" disabled={!canDelete}>
                   <Trash2 className="mr-2 h-4 w-4" /> Hapus
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -101,19 +102,19 @@ export function RiskCauseCardItem({ riskCause, potentialRiskFullCode, onAnalyze,
           <div>
             <p className="font-medium text-foreground">Kemungkinan:</p>
             <Badge variant={riskCause.likelihood ? "outline" : "ghost"} className={`text-[10px] ${!riskCause.likelihood ? "text-muted-foreground" : ""}`}>
-              {riskCause.likelihood ? `${riskCause.likelihood} (${LIKELIHOOD_LEVELS_MAP[riskCause.likelihood]})` : 'N/A'}
+              {riskCause.likelihood ? `${riskCause.likelihood}` : 'N/A'}
             </Badge>
           </div>
           <div>
             <p className="font-medium text-foreground">Dampak:</p>
             <Badge variant={riskCause.impact ? "outline" : "ghost"} className={`text-[10px] ${!riskCause.impact ? "text-muted-foreground" : ""}`}>
-              {riskCause.impact ? `${riskCause.impact} (${IMPACT_LEVELS_MAP[riskCause.impact]})` : 'N/A'}
+              {riskCause.impact ? `${riskCause.impact}` : 'N/A'}
             </Badge>
           </div>
           <div>
             <p className="font-medium text-foreground">Tingkat Risiko:</p>
             <Badge className={`${getRiskLevelColor(causeRiskLevelText)} text-[10px]`}>
-              {causeRiskLevelText === 'N/A' ? 'N/A' : `${causeRiskLevelText} (${causeRiskScore})`}
+              {causeRiskLevelText === 'N/A' ? 'N/A' : `${causeRiskLevelText} (${causeRiskScore || 'N/A'})`}
             </Badge>
           </div>
         </div>

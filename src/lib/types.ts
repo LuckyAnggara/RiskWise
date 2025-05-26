@@ -1,4 +1,3 @@
-
 export const LIKELIHOOD_LEVELS_DESC_MAP = {
   "Hampir tidak terjadi (1)": 1,
   "Jarang terjadi (2)": 2,
@@ -56,7 +55,7 @@ export interface Goal {
   createdAt: string; 
   uprId: string; 
   period: string; 
-  userId?: string; // UID pengguna Firebase yang membuat/memiliki sasaran
+  userId?: string; 
 }
 
 export interface PotentialRisk {
@@ -75,6 +74,7 @@ export interface PotentialRisk {
 export interface RiskCause {
   id: string; 
   potentialRiskId: string; 
+  goalId: string; // Added for easier querying/context if needed, denormalized
   uprId: string;
   period: string;
   userId?: string;

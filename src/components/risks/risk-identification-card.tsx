@@ -9,10 +9,12 @@ import type { Goal, PotentialRisk, RiskCategory } from '@/lib/types';
 import { useToast } from "@/hooks/use-toast";
 import { BrainstormContextModal } from './brainstorm-context-modal';
 import { BrainstormSuggestionsModal } from './brainstorm-suggestions-modal';
+import { addPotentialRisk } from '@/services/potentialRiskService'; // Import Firestore service
+import { useAuth } from '@/contexts/auth-context';
 
 interface RiskIdentificationCardProps {
   goal: Goal;
-  onPotentialRisksIdentified: (newPotentialRisks: PotentialRisk[]) => void;
+  onPotentialRisksIdentified: (newPotentialRisks: PotentialRisk[]) => void; // This prop might change to just trigger a reload
   existingPotentialRisksCount: number;
 }
 
@@ -23,9 +25,11 @@ interface AISuggestion {
 
 export function RiskIdentificationCard({ goal, onPotentialRisksIdentified, existingPotentialRisksCount }: RiskIdentificationCardProps) {
   const { toast } = useToast();
+  const { currentUser } = useAuth();
   const [isContextModalOpen, setIsContextModalOpen] = useState(false);
   const [isSuggestionsModalOpen, setIsSuggestionsModalOpen] = useState(false);
   const [aiSuggestions, setAiSuggestions] = useState<AISuggestion[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
 
   const initialAIContext = `Nama Sasaran: ${goal.name}\nDeskripsi Sasaran: ${goal.description}`;
 
@@ -44,13 +48,40 @@ export function RiskIdentificationCard({ goal, onPotentialRisksIdentified, exist
     setIsSuggestionsModalOpen(true); 
   };
 
-  const handleSaveSelectedRisks = (newRisks: PotentialRisk[]) => {
-    onPotentialRisksIdentified(newRisks); 
-    setIsSuggestionsModalOpen(false); 
-    toast({
-      title: "Potensi Risiko Disimpan",
-      description: `${newRisks.length} potensi risiko baru telah ditambahkan dari saran AI.`,
+  const handleSaveSelectedRisks = async (selectedSuggestions: AISuggestion[]) => {
+    if (!currentUser) {
+      toast({ title: "Otentikasi Diperlukan", description: "Anda harus login untuk menyimpan potensi risiko.", variant: "destructive" });
+      return;
+    }
+    if (selectedSuggestions.length === 0) return;
+
+    setIsLoading(true);
+    let currentSequence = existingPotentialRisksCount;
+    const newPotentialRisksPromises = selectedSuggestions.map(suggestion => {
+      currentSequence++;
+      const newRiskData: Omit<PotentialRisk, 'id' | 'identifiedAt' | 'uprId' | 'period' | 'userId' | 'sequenceNumber'> = {
+        goalId: goal.id,
+        description: suggestion.description,
+        category: suggestion.category,
+        owner: null, // Default owner, can be edited later
+      };
+      return addPotentialRisk(newRiskData, goal.id, goal.uprId, goal.period, currentUser.uid, currentSequence);
     });
+
+    try {
+      const createdRisks = await Promise.all(newPotentialRisksPromises);
+      onPotentialRisksIdentified(createdRisks); 
+      toast({
+        title: "Potensi Risiko Disimpan",
+        description: `${createdRisks.length} potensi risiko baru telah ditambahkan dari saran AI ke Firestore.`,
+      });
+    } catch (error) {
+      console.error("Error saving AI suggested risks:", error);
+      toast({ title: "Gagal Menyimpan Risiko", description: "Terjadi kesalahan saat menyimpan saran risiko dari AI.", variant: "destructive" });
+    } finally {
+      setIsLoading(false);
+      setIsSuggestionsModalOpen(false); 
+    }
   };
 
   return (
@@ -68,7 +99,7 @@ export function RiskIdentificationCard({ goal, onPotentialRisksIdentified, exist
           </p>
         </CardContent>
         <CardFooter>
-          <Button onClick={() => setIsContextModalOpen(true)}>
+          <Button onClick={() => setIsContextModalOpen(true)} disabled={isLoading || !currentUser}>
             <Wand2 className="mr-2 h-4 w-4" />
             Brainstorm Potensi Risiko dengan AI
           </Button>
@@ -91,9 +122,7 @@ export function RiskIdentificationCard({ goal, onPotentialRisksIdentified, exist
           isOpen={isSuggestionsModalOpen}
           onOpenChange={setIsSuggestionsModalOpen}
           suggestions={aiSuggestions}
-          goalId={goal.id}
-          existingPotentialRisksCount={existingPotentialRisksCount}
-          onSaveSelectedRisks={handleSaveSelectedRisks}
+          onSaveSelectedCauses={handleSaveSelectedRisks} // Renamed prop in modal to be generic
         />
       )}
     </>

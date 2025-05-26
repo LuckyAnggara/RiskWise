@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import type { PotentialRisk, Goal, RiskCategory, RiskCause, RiskSource, ControlMeasure } from '@/lib/types';
+import type { PotentialRisk, Goal, RiskCategory, RiskCause, RiskSource, LikelihoodLevelDesc, ImpactLevelDesc } from '@/lib/types';
 import { RISK_CATEGORIES, RISK_SOURCES, LIKELIHOOD_LEVELS_MAP, IMPACT_LEVELS_MAP, CalculatedRiskLevelCategory } from '@/lib/types';
 import { useForm, type SubmitHandler, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -23,7 +23,7 @@ import { useToast } from '@/hooks/use-toast';
 import { getCurrentUprId, getCurrentPeriod, initializeAppContext } from '@/lib/upr-period-context';
 import { Separator } from '@/components/ui/separator';
 import { BrainstormCausesContextModal } from '@/components/risks/brainstorm-causes-context-modal';
-import { BrainstormCausesSuggestionsModal } from '@/components/risks/brainstorm-causes-suggestions-modal';
+import { BrainstormSuggestionsModal } from '@/components/risks/brainstorm-suggestions-modal';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,6 +33,10 @@ import {
 import { RiskCauseCardItem } from '@/components/risks/risk-cause-card-item'; 
 import { getCalculatedRiskLevel, getRiskLevelColor } from '@/app/risk-cause-analysis/[riskCauseId]/page';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { useAuth } from '@/contexts/auth-context';
+import { getGoals } from '@/services/goalService';
+import { addPotentialRisk, getPotentialRiskById, updatePotentialRisk } from '@/services/potentialRiskService';
+import { addRiskCause, getRiskCausesByPotentialRiskId, deleteRiskCauseAndSubCollections } from '@/services/riskCauseService';
 
 
 const potentialRiskFormSchema = z.object({
@@ -56,18 +60,11 @@ type RiskCauseFormData = z.infer<typeof riskCauseFormSchema>;
 
 const NO_CATEGORY_SENTINEL = "__NONE__";
 
-const getGoalsStorageKey = (uprId: string, period: string) => `riskwise-upr${uprId}-period${period}-goals`;
-const getPotentialRisksStorageKeyForGoal = (uprId: string, period: string, goalId: string) => `riskwise-upr${uprId}-period${period}-goal${goalId}-potentialRisks`;
-const getRiskCausesStorageKey = (uprId: string, period: string, potentialRiskId: string) => `riskwise-upr${uprId}-period${period}-potentialRisk${potentialRiskId}-causes`;
-const getControlsForCauseStorageKey = (uprId: string, period: string, riskCauseId: string) => `riskwise-upr${uprId}-period${period}-riskCause${riskCauseId}-controls`;
-
-
-type AISuggestedCause = {
+interface AISuggestedCauseItem {
   description: string;
   source: RiskSource | null;
-  category: RiskCategory | null; // Added category for potential future use with cause AI
-};
-
+  category?: RiskCategory | null; // Not used for cause but make type consistent
+}
 
 export default function ManagePotentialRiskPage() {
   const router = useRouter();
@@ -75,6 +72,7 @@ export default function ManagePotentialRiskPage() {
   const searchParams = useSearchParams();
   const potentialRiskIdParam = params.potentialRiskId as string;
   const isCreatingNew = potentialRiskIdParam === 'new';
+  const { currentUser } = useAuth();
 
   const [currentUprId, setCurrentUprId] = useState('');
   const [currentPeriod, setCurrentPeriod] = useState('');
@@ -88,10 +86,9 @@ export default function ManagePotentialRiskPage() {
   const [causeToDelete, setCauseToDelete] = useState<RiskCause | null>(null);
   const [isDeleteCauseAlertOpen, setIsDeleteCauseAlertOpen] = useState(false);
 
-
   const [isBrainstormCausesContextModalOpen, setIsBrainstormCausesContextModalOpen] = useState(false);
   const [isBrainstormCausesSuggestionsModalOpen, setIsBrainstormCausesSuggestionsModalOpen] = useState(false);
-  const [aiSuggestedCauses, setAISuggestedCauses] = useState<AISuggestedCause[]>([]);
+  const [aiSuggestedCauses, setAISuggestedCauses] = useState<AISuggestedCauseItem[]>([]);
 
   const { toast } = useToast();
 
@@ -118,18 +115,22 @@ export default function ManagePotentialRiskPage() {
     defaultValues: { causeDescription: "", causeSource: "Internal" },
   });
 
-  const loadAllGoals = useCallback((uprId: string, period: string) => {
-    const goalsStorageKey = getGoalsStorageKey(uprId, period);
-    const storedGoalsData = localStorage.getItem(goalsStorageKey);
-    const loadedGoals: Goal[] = storedGoalsData ? JSON.parse(storedGoalsData).sort((a:Goal, b:Goal) => (a.code || '').localeCompare(b.code || '', undefined, {numeric: true, sensitivity: 'base'})) : [];
-    setGoals(loadedGoals);
-    if (loadedGoals.length > 0 && isCreatingNew) {
+  const fetchGoals = useCallback(async (uprId: string, period: string) => {
+    if (!currentUser) return [];
+    try {
+      const loadedGoals = await getGoals(uprId, period);
+      setGoals(loadedGoals);
+      if (loadedGoals.length > 0 && isCreatingNew) {
         setPotentialRiskValue("goalId", loadedGoals[0].id);
+      }
+      return loadedGoals;
+    } catch (error) {
+      toast({ title: "Kesalahan", description: "Gagal memuat daftar sasaran.", variant: "destructive" });
+      return [];
     }
-    return loadedGoals;
-  }, [isCreatingNew, setPotentialRiskValue]);
+  }, [currentUser, isCreatingNew, setPotentialRiskValue, toast]);
 
-  const loadPotentialRiskAndCauses = useCallback(async (uprId: string, period: string, allGoals: Goal[]) => {
+  const fetchPotentialRiskAndCauses = useCallback(async (uprId: string, period: string, allGoals: Goal[]) => {
     if (isCreatingNew) {
       setCurrentPotentialRisk(null);
       setRiskCauses([]);
@@ -138,55 +139,54 @@ export default function ManagePotentialRiskPage() {
       return;
     }
 
-    let foundPotentialRisk: PotentialRisk | null = null;
-    let parentGoalForRisk: Goal | null = null;
-
-    for (const goal of allGoals) {
-        const potentialRisksStorageKey = getPotentialRisksStorageKeyForGoal(goal.uprId, goal.period, goal.id);
-        const storedPotentialRisksData = localStorage.getItem(potentialRisksStorageKey);
-        if (storedPotentialRisksData) {
-            const goalPotentialRisks: PotentialRisk[] = JSON.parse(storedPotentialRisksData);
-            const risk = goalPotentialRisks.find(pr => pr.id === potentialRiskIdParam);
-            if (risk) {
-                foundPotentialRisk = risk;
-                parentGoalForRisk = goal;
-                break;
-            }
-        }
-    }
-    
-    setCurrentPotentialRisk(foundPotentialRisk);
-
-    if (foundPotentialRisk && parentGoalForRisk) {
-      resetPotentialRiskForm({
-        description: foundPotentialRisk.description,
-        goalId: foundPotentialRisk.goalId,
-        category: foundPotentialRisk.category,
-        owner: foundPotentialRisk.owner || "",
-      });
-      const causesStorageKey = getRiskCausesStorageKey(parentGoalForRisk.uprId, parentGoalForRisk.period, foundPotentialRisk.id);
-      const storedCausesData = localStorage.getItem(causesStorageKey);
-      setRiskCauses(storedCausesData ? JSON.parse(storedCausesData).sort((a: RiskCause, b: RiskCause) => (a.sequenceNumber || 0) - (b.sequenceNumber || 0)) : []);
-    } else if (!isCreatingNew) {
-      toast({ title: "Kesalahan", description: "Potensi Risiko tidak ditemukan.", variant: "destructive" });
+    try {
+      const risk = await getPotentialRiskById(potentialRiskIdParam);
+      if (risk && risk.uprId === uprId && risk.period === period) {
+        setCurrentPotentialRisk(risk);
+        resetPotentialRiskForm({
+          description: risk.description,
+          goalId: risk.goalId,
+          category: risk.category,
+          owner: risk.owner || "",
+        });
+        const causes = await getRiskCausesByPotentialRiskId(risk.id, uprId, period);
+        setRiskCauses(causes);
+      } else {
+        toast({ title: "Kesalahan", description: "Potensi Risiko tidak ditemukan atau tidak cocok dengan UPR/Periode.", variant: "destructive" });
+        router.push('/all-risks');
+      }
+    } catch (error) {
+      console.error("Error fetching potential risk/causes:", error);
+      toast({ title: "Kesalahan", description: "Gagal memuat data potensi risiko.", variant: "destructive" });
       router.push('/all-risks');
+    } finally {
+      setPageIsLoading(false);
     }
-    setPageIsLoading(false);
   }, [isCreatingNew, potentialRiskIdParam, resetPotentialRiskForm, router, toast]);
+
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const context = initializeAppContext();
       setCurrentUprId(context.uprId);
       setCurrentPeriod(context.period);
-      setPageIsLoading(true);
-      const loadedGoals = loadAllGoals(context.uprId, context.period);
-      loadPotentialRiskAndCauses(context.uprId, context.period, loadedGoals);
+      setPageIsLoading(true); // Ensure loading is true before async operations
+      if (currentUser && context.uprId && context.period) {
+        fetchGoals(context.uprId, context.period).then(loadedGoals => {
+          fetchPotentialRiskAndCauses(context.uprId, context.period, loadedGoals);
+        });
+      } else if (!currentUser) {
+        setPageIsLoading(false); // If no user, stop loading
+      }
     }
-  }, [loadAllGoals, loadPotentialRiskAndCauses]); 
+  }, [fetchGoals, fetchPotentialRiskAndCauses, currentUser]); 
 
 
   const onPotentialRiskSubmit: SubmitHandler<PotentialRiskFormData> = async (data) => {
+    if (!currentUser) {
+      toast({ title: "Otentikasi Diperlukan", description: "Anda harus login.", variant: "destructive" });
+      return;
+    }
     setIsSaving(true);
     const parentGoal = goals.find(g => g.id === data.goalId);
     if (!parentGoal || parentGoal.uprId !== currentUprId || parentGoal.period !== currentPeriod) {
@@ -198,116 +198,96 @@ export default function ManagePotentialRiskPage() {
     let pRiskToSave: PotentialRisk;
     let successMessage = "";
     
-    const goalPotentialRisksKey = getPotentialRisksStorageKeyForGoal(parentGoal.uprId, parentGoal.period, parentGoal.id);
-    const storedPotentialRisks = localStorage.getItem(goalPotentialRisksKey);
-    let currentGoalPotentialRisks: PotentialRisk[] = storedPotentialRisks ? JSON.parse(storedPotentialRisks) : [];
-
-    if (isCreatingNew) {
-      pRiskToSave = {
-        id: `prisk_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-        goalId: data.goalId,
-        description: data.description,
-        category: data.category === NO_CATEGORY_SENTINEL ? null : data.category,
-        owner: data.owner || null,
-        identifiedAt: new Date().toISOString(),
-        sequenceNumber: currentGoalPotentialRisks.length + 1,
-      };
-      successMessage = `Potensi Risiko "${pRiskToSave.description}" (PR${pRiskToSave.sequenceNumber}) dibuat. Anda sekarang dapat menambahkan penyebabnya.`;
-      currentGoalPotentialRisks.push(pRiskToSave);
-      localStorage.setItem(goalPotentialRisksKey, JSON.stringify(currentGoalPotentialRisks.sort((a,b)=>(a.sequenceNumber || 0) - (b.sequenceNumber || 0) || a.description.localeCompare(b.description))));
-      
-      setCurrentPotentialRisk(pRiskToSave); 
-      router.replace(`/all-risks/manage/${pRiskToSave.id}`);
-
-    } else if (currentPotentialRisk) {
-      pRiskToSave = {
-        ...currentPotentialRisk,
-        description: data.description,
-        category: data.category === NO_CATEGORY_SENTINEL ? null : data.category,
-        owner: data.owner || null,
-      };
-
-      if (currentPotentialRisk.goalId !== data.goalId) {
-        const oldParentGoal = goals.find(g => g.id === currentPotentialRisk.goalId);
-        if (oldParentGoal) {
-            const oldGoalPRKey = getPotentialRisksStorageKeyForGoal(oldParentGoal.uprId, oldParentGoal.period, oldParentGoal.id);
-            let oldGoalPRs: PotentialRisk[] = JSON.parse(localStorage.getItem(oldGoalPRKey) || '[]');
-            oldGoalPRs = oldGoalPRs.filter(pr => pr.id !== currentPotentialRisk.id);
-            oldGoalPRs.forEach((pr, index) => pr.sequenceNumber = index + 1); // Resequence
-            localStorage.setItem(oldGoalPRKey, JSON.stringify(oldGoalPRs.sort((a,b)=>(a.sequenceNumber || 0) - (b.sequenceNumber || 0) || a.description.localeCompare(b.description))));
+    try {
+      if (isCreatingNew) {
+        const existingPRsForGoal = await getPotentialRisksByGoalId(parentGoal.id, currentUprId, currentPeriod);
+        const newSequenceNumber = existingPRsForGoal.length + 1;
+        const newPRData: Omit<PotentialRisk, 'id' | 'identifiedAt' | 'uprId' | 'period' | 'userId' | 'sequenceNumber'> = {
+          goalId: data.goalId,
+          description: data.description,
+          category: data.category === NO_CATEGORY_SENTINEL ? null : data.category,
+          owner: data.owner || null,
+        };
+        pRiskToSave = await addPotentialRisk(newPRData, parentGoal.id, currentUprId, currentPeriod, currentUser.uid, newSequenceNumber);
+        successMessage = `Potensi Risiko "${pRiskToSave.description}" (PR${pRiskToSave.sequenceNumber}) dibuat. Anda sekarang dapat menambahkan penyebabnya.`;
+        setCurrentPotentialRisk(pRiskToSave); 
+        router.replace(`/all-risks/manage/${pRiskToSave.id}`);
+      } else if (currentPotentialRisk) {
+        const updateData: Partial<Omit<PotentialRisk, 'id' | 'uprId' | 'period' | 'userId'>> = {
+          description: data.description,
+          category: data.category === NO_CATEGORY_SENTINEL ? null : data.category,
+          owner: data.owner || null,
+          goalId: data.goalId, // Allow goalId change
+        };
+        await updatePotentialRisk(currentPotentialRisk.id, updateData);
+        pRiskToSave = { ...currentPotentialRisk, ...updateData }; // Update local state
+        setCurrentPotentialRisk(pRiskToSave); 
+        successMessage = `Potensi Risiko "${pRiskToSave.description}" (PR${pRiskToSave.sequenceNumber}) diperbarui.`;
+        if(currentPotentialRisk.goalId !== data.goalId){ // if goal changed, reload related data
+             fetchPotentialRiskAndCauses(currentUprId, currentPeriod, goals);
         }
-        const newGoalPRKey = getPotentialRisksStorageKeyForGoal(parentGoal.uprId, parentGoal.period, data.goalId);
-        let newGoalPRs: PotentialRisk[] = JSON.parse(localStorage.getItem(newGoalPRKey) || '[]');
-        pRiskToSave.goalId = data.goalId; 
-        pRiskToSave.sequenceNumber = newGoalPRs.length + 1; 
-        newGoalPRs.push(pRiskToSave);
-        localStorage.setItem(newGoalPRKey, JSON.stringify(newGoalPRs.sort((a,b)=>(a.sequenceNumber || 0) - (b.sequenceNumber || 0) || a.description.localeCompare(b.description))));
       } else {
-        currentGoalPotentialRisks = currentGoalPotentialRisks.map(pr => pr.id === pRiskToSave.id ? pRiskToSave : pr);
-        localStorage.setItem(goalPotentialRisksKey, JSON.stringify(currentGoalPotentialRisks.sort((a,b)=>(a.sequenceNumber || 0) - (b.sequenceNumber || 0) || a.description.localeCompare(b.description))));
+        toast({ title: "Kesalahan", description: "Tidak dapat menyimpan. Data potensi risiko tidak lengkap.", variant: "destructive" });
+        setIsSaving(false);
+        return;
       }
-      setCurrentPotentialRisk(pRiskToSave); 
-      successMessage = `Potensi Risiko "${pRiskToSave.description}" (PR${pRiskToSave.sequenceNumber}) diperbarui.`;
-    } else {
-      toast({ title: "Kesalahan", description: "Tidak dapat menyimpan. Data potensi risiko tidak lengkap.", variant: "destructive" });
-      setIsSaving(false);
-      return;
+      toast({ title: "Sukses", description: successMessage });
+    } catch (error) {
+        console.error("Error saving potential risk:", error);
+        toast({ title: "Gagal Menyimpan", description: "Terjadi kesalahan saat menyimpan potensi risiko.", variant: "destructive" });
+    } finally {
+        setIsSaving(false);
     }
-    
-    toast({ title: "Sukses", description: successMessage });
-    setIsSaving(false);
   };
 
-  const onRiskCauseSubmit: SubmitHandler<RiskCauseFormData> = (data) => {
-    if (!currentPotentialRisk || !currentUprId || !currentPeriod) {
-        toast({ title: "Kesalahan", description: "Tidak dapat menambah penyebab. Konteks potensi risiko induk tidak ditemukan.", variant: "destructive" });
+  const onRiskCauseSubmit: SubmitHandler<RiskCauseFormData> = async (data) => {
+    if (!currentPotentialRisk || !currentUser || !currentUprId || !currentPeriod) {
+        toast({ title: "Kesalahan", description: "Konteks tidak lengkap untuk menambah penyebab.", variant: "destructive" });
         return;
     }
-    const parentPotentialRiskGoal = goals.find(g => g.id === currentPotentialRisk.goalId);
-     if (!parentPotentialRiskGoal) {
-        toast({ title: "Kesalahan", description: "Tidak dapat menambah penyebab. Sasaran induk untuk potensi risiko tidak ditemukan.", variant: "destructive" });
-        return;
+    
+    setIsAddingCause(true);
+    try {
+      const newSequenceNumber = riskCauses.length + 1;
+      const newCauseData: Omit<RiskCause, 'id' | 'createdAt' | 'uprId' | 'period' | 'userId' | 'potentialRiskId' | 'goalId' | 'sequenceNumber'> = {
+          description: data.causeDescription,
+          source: data.causeSource,
+          keyRiskIndicator: null,
+          riskTolerance: null,
+          likelihood: null,
+          impact: null,
+      };
+      const newCause = await addRiskCause(newCauseData, currentPotentialRisk.id, currentPotentialRisk.goalId, currentUprId, currentPeriod, currentUser.uid, newSequenceNumber);
+      const updatedCauses = [...riskCauses, newCause].sort((a,b) => (a.sequenceNumber || 0) - (b.sequenceNumber || 0));
+      setRiskCauses(updatedCauses);
+      toast({ title: "Penyebab Risiko Ditambahkan", description: `Penyebab "${newCause.description}" (PC${newCause.sequenceNumber}) ditambahkan.` });
+      resetRiskCauseForm();
+    } catch (error) {
+        console.error("Error adding risk cause:", error);
+        toast({ title: "Gagal Menambah Penyebab", description: "Terjadi kesalahan saat menambah penyebab risiko.", variant: "destructive" });
+    } finally {
+        setIsAddingCause(false);
     }
-
-    const newCause: RiskCause = {
-      id: `rcause_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-      potentialRiskId: currentPotentialRisk.id,
-      description: data.causeDescription,
-      source: data.causeSource,
-      keyRiskIndicator: null,
-      riskTolerance: null,
-      likelihood: null,
-      impact: null,
-      createdAt: new Date().toISOString(),
-      sequenceNumber: riskCauses.length + 1,
-    };
-    const updatedCauses = [...riskCauses, newCause].sort((a,b) => (a.sequenceNumber || 0) - (b.sequenceNumber || 0));
-    setRiskCauses(updatedCauses);
-    localStorage.setItem(getRiskCausesStorageKey(parentPotentialRiskGoal.uprId, parentPotentialRiskGoal.period, currentPotentialRisk.id), JSON.stringify(updatedCauses));
-    toast({ title: "Penyebab Risiko Ditambahkan", description: `Penyebab "${newCause.description}" (PC${newCause.sequenceNumber}) ditambahkan.` });
-    resetRiskCauseForm();
   };
   
-  const handleDeleteRiskCauseSubmit = () => {
-    if (!currentPotentialRisk || !currentUprId || !currentPeriod || !causeToDelete) return;
-    const parentPotentialRiskGoal = goals.find(g => g.id === currentPotentialRisk.goalId);
-    if (!parentPotentialRiskGoal) return;
+  const handleDeleteRiskCauseSubmit = async () => {
+    if (!currentPotentialRisk || !causeToDelete || !currentUprId || !currentPeriod) return;
 
-    let updatedCauses = riskCauses.filter(c => c.id !== causeToDelete.id);
-    // Resequence after deletion
-    updatedCauses = updatedCauses
-      .sort((a,b) => (a.sequenceNumber || 0) - (b.sequenceNumber || 0))
-      .map((cause, index) => ({ ...cause, sequenceNumber: index + 1 }));
-      
-    setRiskCauses(updatedCauses); 
-    localStorage.setItem(getRiskCausesStorageKey(parentPotentialRiskGoal.uprId, parentPotentialRiskGoal.period, currentPotentialRisk.id), JSON.stringify(updatedCauses));
-    
-    // Also delete associated controls for this cause
-    localStorage.removeItem(getControlsForCauseStorageKey(parentPotentialRiskGoal.uprId, parentPotentialRiskGoal.period, causeToDelete.id));
-
-    toast({ title: "Penyebab Risiko Dihapus", description: `Penyebab "${causeToDelete.description}" (PC${causeToDelete.sequenceNumber}) dan semua kontrol terkait telah dihapus.`, variant: "destructive" });
-    setIsDeleteCauseAlertOpen(false);
-    setCauseToDelete(null);
+    try {
+      await deleteRiskCauseAndSubCollections(causeToDelete.id, currentUprId, currentPeriod);
+      let updatedCauses = riskCauses.filter(c => c.id !== causeToDelete.id);
+      updatedCauses = updatedCauses
+        .sort((a,b) => (a.sequenceNumber || 0) - (b.sequenceNumber || 0))
+        .map((cause, index) => ({ ...cause, sequenceNumber: index + 1 }));
+      setRiskCauses(updatedCauses); 
+      toast({ title: "Penyebab Risiko Dihapus", description: `Penyebab "${causeToDelete.description}" (PC${causeToDelete.sequenceNumber}) dan semua kontrol terkait telah dihapus.`, variant: "destructive" });
+    } catch (error) {
+        console.error("Error deleting risk cause:", error);
+        toast({ title: "Gagal Menghapus", description: "Terjadi kesalahan saat menghapus penyebab risiko.", variant: "destructive" });
+    } finally {
+        setIsDeleteCauseAlertOpen(false);
+        setCauseToDelete(null);
+    }
   };
 
   const handleOpenDeleteCauseAlert = (cause: RiskCause) => {
@@ -315,8 +295,7 @@ export default function ManagePotentialRiskPage() {
     setIsDeleteCauseAlertOpen(true);
   };
 
-
-  const handleAISuggestionsReady = (suggestions: AISuggestedCause[]) => {
+  const handleAISuggestionsReady = (suggestions: AISuggestedCauseItem[]) => {
     if (suggestions.length === 0) {
       toast({ title: "Tidak Ada Saran Penyebab", description: "AI tidak menghasilkan saran penyebab risiko untuk konteks ini.", variant: "default" });
       setIsBrainstormCausesContextModalOpen(false);
@@ -327,22 +306,38 @@ export default function ManagePotentialRiskPage() {
     setIsBrainstormCausesSuggestionsModalOpen(true);
   };
 
-  const handleSaveAISelectedCauses = (newCauses: RiskCause[]) => {
-    if (!currentPotentialRisk || !currentUprId || !currentPeriod) return;
-    const parentPotentialRiskGoal = goals.find(g => g.id === currentPotentialRisk.goalId);
-    if (!parentPotentialRiskGoal) return;
-
-    const updatedCauses = [...riskCauses, ...newCauses].sort((a,b) => (a.sequenceNumber || 0) - (b.sequenceNumber || 0));
-    const resequencedCauses = updatedCauses.map((cause, index) => ({ ...cause, sequenceNumber: index + 1 }));
+  const handleSaveAISelectedCauses = async (selectedItems: AISuggestedCauseItem[]) => {
+    if (!currentPotentialRisk || !currentUser || !currentUprId || !currentPeriod) return;
     
-    setRiskCauses(resequencedCauses);
-    localStorage.setItem(getRiskCausesStorageKey(parentPotentialRiskGoal.uprId, parentPotentialRiskGoal.period, currentPotentialRisk.id), JSON.stringify(resequencedCauses));
-    toast({ title: "Saran Penyebab Disimpan", description: `${newCauses.length} penyebab risiko baru dari AI telah ditambahkan.` });
-    setIsBrainstormCausesSuggestionsModalOpen(false);
+    setIsAddingCause(true); // Reuse loading state for adding causes
+    try {
+      let currentSequence = riskCauses.length;
+      const newRiskCausesPromises = selectedItems.map(item => {
+        currentSequence++;
+         const newCauseData: Omit<RiskCause, 'id' | 'createdAt' | 'uprId' | 'period' | 'userId' | 'potentialRiskId' | 'goalId' | 'sequenceNumber' > = {
+            description: item.description,
+            source: item.source || "Internal",
+            keyRiskIndicator: null,
+            riskTolerance: null,
+            likelihood: null,
+            impact: null,
+        };
+        return addRiskCause(newCauseData, currentPotentialRisk.id, currentPotentialRisk.goalId, currentUprId, currentPeriod, currentUser.uid, currentSequence);
+      });
+      const createdCauses = await Promise.all(newRiskCausesPromises);
+      const updatedCauses = [...riskCauses, ...createdCauses].sort((a,b) => (a.sequenceNumber || 0) - (b.sequenceNumber || 0));
+      setRiskCauses(updatedCauses);
+      toast({ title: "Saran Penyebab Disimpan", description: `${createdCauses.length} penyebab risiko baru dari AI telah ditambahkan.` });
+    } catch (error) {
+        console.error("Error saving AI suggested causes:", error);
+        toast({ title: "Gagal Menyimpan", description: "Terjadi kesalahan saat menyimpan saran penyebab dari AI.", variant: "destructive" });
+    } finally {
+      setIsAddingCause(false);
+      setIsBrainstormCausesSuggestionsModalOpen(false);
+    }
   };
 
-  const defaultBackPath = searchParams.get('from') || `/all-risks`;
-
+  const defaultBackPath = useMemo(() => searchParams.get('from') || `/all-risks`, [searchParams]);
 
   if (pageIsLoading || !currentUprId || !currentPeriod) {
     return (
@@ -483,7 +478,7 @@ export default function ManagePotentialRiskPage() {
                         variant="outline" 
                         size="sm" 
                         onClick={() => setIsBrainstormCausesContextModalOpen(true)}
-                        disabled={!currentPotentialRisk || !parentGoalForDisplay}
+                        disabled={!currentPotentialRisk || !parentGoalForDisplay || !currentUser}
                         className="text-xs"
                     >
                         <Wand2 className="mr-2 h-3 w-3" /> Brainstorm Penyebab (AI)
@@ -551,7 +546,7 @@ export default function ManagePotentialRiskPage() {
                   />
                   {riskCauseErrors.causeSource && <p className="text-xs text-destructive mt-1">{riskCauseErrors.causeSource.message}</p>}
                 </div>
-                <Button type="submit" disabled={isAddingCause} size="sm">
+                <Button type="submit" disabled={isAddingCause || !currentUser} size="sm">
                   {isAddingCause ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PlusCircle className="mr-2 h-4 w-4" />} 
                   Tambah Penyebab (Manual)
                 </Button>
@@ -608,6 +603,7 @@ export default function ManagePotentialRiskPage() {
                                       <DropdownMenuItem
                                         onClick={() => handleOpenDeleteCauseAlert(cause)}
                                         className="text-destructive focus:text-destructive focus:bg-destructive/10"
+                                        disabled={!currentUser}
                                       >
                                         <Trash2 className="mr-2 h-4 w-4" />
                                         Hapus
@@ -631,6 +627,7 @@ export default function ManagePotentialRiskPage() {
                         onAnalyze={(causeId) => router.push(`/risk-cause-analysis/${causeId}?from=${encodeURIComponent(`/all-risks/manage/${currentPotentialRisk.id}`)}`)}
                         onDelete={() => handleOpenDeleteCauseAlert(cause)}
                         returnPath={`/all-risks/manage/${currentPotentialRisk.id}`}
+                        canDelete={!!currentUser}
                       />
                     ))}
                   </div>
@@ -650,12 +647,10 @@ export default function ManagePotentialRiskPage() {
         />
       )}
       {isBrainstormCausesSuggestionsModalOpen && currentPotentialRisk && (
-        <BrainstormCausesSuggestionsModal
+        <BrainstormSuggestionsModal
             isOpen={isBrainstormCausesSuggestionsModalOpen}
             onOpenChange={setIsBrainstormCausesSuggestionsModalOpen}
             suggestions={aiSuggestedCauses}
-            potentialRiskId={currentPotentialRisk.id}
-            existingCausesCount={riskCauses.length}
             onSaveSelectedCauses={handleSaveAISelectedCauses}
         />
       )}
