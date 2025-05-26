@@ -2,14 +2,14 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo, Fragment } from 'react';
-import NextLink from 'next/link'; // Renamed to avoid conflict
+import NextLink from 'next/link';
 import { useRouter } from 'next/navigation';
 import { PageHeader } from '@/components/ui/page-header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import type { Goal, PotentialRisk, RiskCause, RiskCategory } from '@/lib/types';
 import { RISK_CATEGORIES } from '@/lib/types';
-import { PlusCircle, Loader2, Settings2, Trash2, Edit, ListChecks, ChevronDown, ChevronUp, Search, Filter, BarChart3 } from 'lucide-react';
+import { PlusCircle, Loader2, Settings2, Trash2, Edit, ListChecks, ChevronDown, ChevronUp, Search, Filter, BarChart3, Copy } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -20,9 +20,11 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Checkbox } from '@/components/ui/checkbox';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useAuth } from '@/contexts/auth-context';
-import { getGoals } from '@/services/goalService';
-import { getPotentialRisksByGoalId, deletePotentialRiskAndSubCollections } from '@/services/potentialRiskService';
-import { getRiskCausesByPotentialRiskId } from '@/services/riskCauseService';
+import { getGoals, type GoalsResult } from '@/services/goalService';
+import { getPotentialRisksByGoalId, deletePotentialRiskAndSubCollections, addPotentialRisk } from '@/services/potentialRiskService';
+import { getRiskCausesByPotentialRiskId, addRiskCause as addRiskCauseService } from '@/services/riskCauseService';
+import { getControlMeasuresByRiskCauseId, addControlMeasure as addControlMeasureService } from '@/services/controlMeasureService';
+
 
 export default function AllRisksPage() {
   const router = useRouter();
@@ -84,7 +86,7 @@ export default function AllRisksPage() {
         }
       }
       setAllPotentialRisks(collectedPotentialRisks);
-      setAllOwners(Array.from(uniqueOwners).sort());
+      setAllOwners(Array.from(uniqueOwners).sort((a,b) => a.localeCompare(b)));
       setRiskCauseCounts(causeCounts);
       setSelectedRiskIds([]);
     } catch (error: any) {
@@ -111,14 +113,6 @@ export default function AllRisksPage() {
     }
   }, [loadData, currentUprId, currentPeriod, currentUser]);
   
-  const handleOpenAddPotentialRiskPage = () => {
-    if (!Array.isArray(goals) || goals.length === 0) { // Check if goals is an array and has items
-        toast({ title: "Tidak Dapat Menambah Potensi Risiko", description: "Harap buat setidaknya satu sasaran untuk UPR/Periode saat ini sebelum menambahkan potensi risiko.", variant: "destructive"});
-        return;
-    }
-    router.push('/all-risks/manage/new');
-  };
-
   const handleOpenEditPotentialRiskPage = (pRiskId: string) => {
     router.push(`/all-risks/manage/${pRiskId}?from=/all-risks`);
   };
@@ -173,23 +167,23 @@ export default function AllRisksPage() {
   };
 
   const filteredAndSortedRisks = useMemo(() => {
-    let tempRisks = [...allPotentialRisks];
+    let tempRisks = Array.isArray(allPotentialRisks) ? [...allPotentialRisks] : [];
     const lowerSearchTerm = searchTerm.toLowerCase();
     const currentGoals = Array.isArray(goals) ? goals : [];
-
 
     if (searchTerm) {
       tempRisks = tempRisks.filter(pRisk => {
         const goal = currentGoals.find(g => g.id === pRisk.goalId);
         const goalName = goal?.name.toLowerCase() || '';
         const goalCode = goal?.code?.toLowerCase() || '';
+        const pRiskCode = `${goalCode}.PR${pRisk.sequenceNumber}`.toLowerCase();
+
         return (
           pRisk.description.toLowerCase().includes(lowerSearchTerm) ||
+          pRiskCode.includes(lowerSearchTerm) ||
           (pRisk.category && pRisk.category.toLowerCase().includes(lowerSearchTerm)) ||
           (pRisk.owner && pRisk.owner.toLowerCase().includes(lowerSearchTerm)) ||
-          goalName.includes(lowerSearchTerm) ||
-          goalCode.includes(lowerSearchTerm) ||
-          `${goalCode}.PR${pRisk.sequenceNumber}`.toLowerCase().includes(lowerSearchTerm)
+          goalName.includes(lowerSearchTerm)
         );
       });
     }
@@ -280,6 +274,72 @@ export default function AllRisksPage() {
     }
   };
 
+  const handleDuplicateRisk = async (riskToDuplicateId: string) => {
+    if (!currentUser || !currentUprId || !currentPeriod) return;
+    const riskToDuplicate = allPotentialRisks.find(pr => pr.id === riskToDuplicateId);
+    if (!riskToDuplicate) {
+        toast({ title: "Gagal Menduplikasi", description: "Potensi risiko asli tidak ditemukan.", variant: "destructive" });
+        return;
+    }
+    
+    const parentGoal = goals.find(g => g.id === riskToDuplicate.goalId);
+    if (!parentGoal) {
+        toast({ title: "Gagal Menduplikasi", description: "Sasaran induk untuk risiko tidak ditemukan.", variant: "destructive" });
+        return;
+    }
+
+    try {
+        const existingPRsForGoal = await getPotentialRisksByGoalId(parentGoal.id, currentUprId, currentPeriod);
+        const newSequenceNumber = existingPRsForGoal.length + 1;
+
+        const newPRData: Omit<PotentialRisk, 'id' | 'identifiedAt' | 'uprId' | 'period' | 'userId' | 'sequenceNumber'> = {
+            goalId: riskToDuplicate.goalId,
+            description: `${riskToDuplicate.description} (Salinan)`,
+            category: riskToDuplicate.category,
+            owner: riskToDuplicate.owner,
+        };
+        const newPotentialRisk = await addPotentialRisk(newPRData, parentGoal.id, currentUprId, currentPeriod, currentUser.uid, newSequenceNumber);
+
+        const originalCauses = await getRiskCausesByPotentialRiskId(riskToDuplicate.id, currentUprId, currentPeriod);
+        let causeSeq = 0;
+        for (const cause of originalCauses) {
+            causeSeq++;
+            const newCauseData: Omit<RiskCause, 'id' | 'createdAt' | 'uprId' | 'period' | 'userId' | 'potentialRiskId' | 'goalId' | 'sequenceNumber' > = {
+                description: cause.description,
+                source: cause.source,
+                keyRiskIndicator: cause.keyRiskIndicator,
+                riskTolerance: cause.riskTolerance,
+                likelihood: cause.likelihood,
+                impact: cause.impact,
+            };
+            
+            const newDuplicatedCause = await addRiskCauseService(newCauseData, newPotentialRisk.id, newPotentialRisk.goalId, currentUprId, currentPeriod, currentUser.uid, causeSeq);
+
+            const originalControls = await getControlMeasuresByRiskCauseId(cause.id, currentUprId, currentPeriod);
+            let controlSeq = 0;
+            for (const control of originalControls) {
+              controlSeq++;
+              const newControlData: Omit<any, 'id'|'createdAt'|'uprId'|'period'|'userId'|'riskCauseId'|'potentialRiskId'|'goalId'|'sequenceNumber'> = { // any needs to be ControlMeasure type
+                controlType: control.controlType,
+                description: control.description,
+                keyControlIndicator: control.keyControlIndicator,
+                target: control.target,
+                responsiblePerson: control.responsiblePerson,
+                deadline: control.deadline,
+                budget: control.budget,
+              };
+              await addControlMeasureService(newControlData, newDuplicatedCause.id, newPotentialRisk.id, newPotentialRisk.goalId, currentUprId, currentPeriod, currentUser.uid, controlSeq);
+            }
+        }
+
+        toast({ title: "Risiko Diduplikasi", description: `Potensi risiko "${newPotentialRisk.description}" dan semua data terkait telah berhasil diduplikasi.`});
+        loadData(); 
+    } catch (error: any) {
+        console.error("Error duplicating risk:", error.message);
+        toast({ title: "Gagal Menduplikasi", description: `Terjadi kesalahan saat menduplikasi: ${error.message}`, variant: "destructive" });
+    }
+  };
+
   if (isLoading || (!currentUser && currentUprId && currentPeriod)) { 
     return (
       <div className="flex flex-col items-center justify-center h-screen">
@@ -305,38 +365,30 @@ export default function AllRisksPage() {
   }
 
   const relevantGoals = Array.isArray(goals) ? goals.filter(g => g.uprId === currentUprId && g.period === currentPeriod) : [];
-  const totalTableColumns = 8; // Adjusted for new expand icon and checkbox columns
+  const totalTableColumns = 8; 
 
   return (
     <div className="space-y-6">
       <PageHeader
         title={`Identifikasi Risiko`}
         description={`Kelola semua potensi risiko yang teridentifikasi di semua sasaran untuk UPR: ${currentUprId}, Periode: ${currentPeriod}.`}
-        actions={
-          <NextLink href="/all-risks/manage/new" passHref>
-            <Button disabled={relevantGoals.length === 0 || !currentUser}>
-              <PlusCircle className="mr-2 h-4 w-4" /> Tambah Potensi Risiko Baru
-              {relevantGoals.length === 0 && <span className="ml-2 text-xs">(Buat sasaran terlebih dahulu)</span>}
-            </Button>
-          </NextLink>
-        }
       />
 
-      <div className="flex flex-col md:flex-row gap-2 mb-4 justify-between items-center">
-        <div className="flex flex-col md:flex-row gap-2 w-full md:w-auto">
-            <div className="relative flex-grow md:flex-grow-0 md:max-w-xs">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-                placeholder="Cari kode, deskripsi, kategori, pemilik..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 w-full"
-            />
+      <div className="flex flex-col md:flex-row gap-4 mb-4 justify-between items-center">
+        {/* Filter and Search Section */}
+        <div className="flex flex-col md:flex-row gap-2 w-full md:w-auto flex-wrap items-center">
+            <div className="relative flex-grow md:flex-grow-0 md:max-w-xs w-full md:w-auto">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                  placeholder="Cari kode, deskripsi, kategori, pemilik..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10 w-full"
+              />
             </div>
-            <div className="flex gap-2 flex-wrap">
             <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                <Button variant="outline">
+                <Button variant="outline" className="w-full md:w-auto">
                     <Filter className="mr-2 h-4 w-4" />
                     Filter Kategori {selectedCategories.length > 0 ? `(${selectedCategories.length})` : ''}
                 </Button>
@@ -360,7 +412,7 @@ export default function AllRisksPage() {
 
             <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                <Button variant="outline">
+                <Button variant="outline" className="w-full md:w-auto">
                     <Filter className="mr-2 h-4 w-4" />
                     Filter Pemilik {selectedOwners.length > 0 ? `(${selectedOwners.length})` : ''}
                 </Button>
@@ -388,7 +440,7 @@ export default function AllRisksPage() {
 
             <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                <Button variant="outline">
+                <Button variant="outline" className="w-full md:w-auto">
                     <Filter className="mr-2 h-4 w-4" />
                     Filter Sasaran {selectedGoalIds.length > 0 ? `(${selectedGoalIds.length})` : ''}
                 </Button>
@@ -413,14 +465,22 @@ export default function AllRisksPage() {
                 )}
                 </DropdownMenuContent>
             </DropdownMenu>
-            </div>
         </div>
-        {selectedRiskIds.length > 0 && (
-            <Button variant="destructive" onClick={handleDeleteSelectedRisks} className="mt-2 md:mt-0" disabled={!currentUser}>
-            <Trash2 className="mr-2 h-4 w-4" />
-            Hapus ({selectedRiskIds.length}) yang Dipilih
-            </Button>
-        )}
+        {/* Action Buttons Section */}
+        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto mt-2 md:mt-0">
+             <NextLink href="/all-risks/manage/new" passHref>
+                <Button disabled={relevantGoals.length === 0 || !currentUser} className="w-full sm:w-auto">
+                  <PlusCircle className="mr-2 h-4 w-4" /> Tambah Potensi Risiko Baru
+                  {relevantGoals.length === 0 && <span className="ml-2 text-xs">(Buat sasaran terlebih dahulu)</span>}
+                </Button>
+              </NextLink>
+            {selectedRiskIds.length > 0 && (
+                <Button variant="destructive" onClick={handleDeleteSelectedRisks} className="w-full sm:w-auto" disabled={!currentUser}>
+                <Trash2 className="mr-2 h-4 w-4" />
+                Hapus ({selectedRiskIds.length}) yang Dipilih
+                </Button>
+            )}
+        </div>
       </div>
 
 
@@ -450,7 +510,7 @@ export default function AllRisksPage() {
                             checked={selectedRiskIds.length === filteredAndSortedRisks.length && filteredAndSortedRisks.length > 0}
                             onCheckedChange={(checked) => handleSelectAllRisks(Boolean(checked))}
                             aria-label="Pilih semua risiko yang terlihat"
-                            disabled={filteredAndSortedRisks.length === 0}
+                            disabled={filteredAndSortedRisks.length === 0 || !currentUser}
                         />
                     </TableHead>
                     <TableHead className="w-[40px] sticky left-10 bg-background z-10"></TableHead> 
@@ -490,6 +550,7 @@ export default function AllRisksPage() {
                                     checked={selectedRiskIds.includes(pRisk.id)}
                                     onCheckedChange={(checked) => handleSelectRisk(pRisk.id, Boolean(checked))}
                                     aria-label={`Pilih risiko ${pRisk.description}`}
+                                    disabled={!currentUser}
                                 />
                             </TableCell>
                             <TableCell className="sticky left-10 bg-background z-10">
@@ -526,6 +587,9 @@ export default function AllRisksPage() {
                                 </DropdownMenuItem>
                                  <DropdownMenuItem onClick={() => router.push(`/risk-analysis?potentialRiskId=${pRisk.id}&from=${encodeURIComponent(returnPath)}`)}>
                                     <BarChart3 className="mr-2 h-4 w-4" /> Analisis Semua Penyebab
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleDuplicateRisk(pRisk.id)} disabled={!currentUser}>
+                                    <Copy className="mr-2 h-4 w-4" /> Duplikat Risiko
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem onClick={() => handleDeleteSingleRisk(pRisk)} className="text-destructive focus:text-destructive focus:bg-destructive/10" disabled={!currentUser}>
@@ -591,3 +655,5 @@ export default function AllRisksPage() {
     </div>
   );
 }
+
+    
