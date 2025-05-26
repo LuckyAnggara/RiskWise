@@ -1,7 +1,8 @@
+
 "use client";
 
 import React, { useState, useEffect } from "react";
-import NextLink from 'next/link'; 
+import Link from 'next/link'; 
 import { usePathname, useRouter } from 'next/navigation';
 import { useTheme } from "next-themes";
 import {
@@ -21,44 +22,24 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { LogOut, User, Settings as SettingsIcon, Loader2, Sun, Moon } from "lucide-react";
 import { Toaster } from "@/components/ui/toaster";
-import { initializeAppContext, setCurrentUprId as updateUprIdInContext } from '@/lib/upr-period-context';
 import { useAuth } from '@/contexts/auth-context';
 import { auth } from '@/lib/firebase/config';
 import { signOut } from 'firebase/auth';
 import { useToast } from "@/hooks/use-toast";
-import { getUserDocument } from "@/services/userService";
 
+const DEFAULT_FALLBACK_UPR_ID = 'UPR Pengguna';
+const DEFAULT_PERIOD = new Date().getFullYear().toString();
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
-  const [currentUprContext, setCurrentUprContext] = useState('');
-  const [currentPeriodContext, setCurrentPeriodContext] = useState('');
-  const { currentUser, loading: authLoading } = useAuth();
+  const { currentUser, appUser, loading: authLoading } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const { toast } = useToast();
   const { setTheme, theme } = useTheme();
 
-  useEffect(() => {
-    const context = initializeAppContext(currentUser); // Pass currentUser to initialize
-    setCurrentUprContext(context.uprId);
-    setCurrentPeriodContext(context.period);
+  const currentUprDisplay = appUser?.displayName || appUser?.uprId || DEFAULT_FALLBACK_UPR_ID;
+  const currentPeriodDisplay = appUser?.activePeriod || DEFAULT_PERIOD;
 
-    // If user is authenticated, ensure localStorage UPR ID matches user's UPR ID
-    if (currentUser && currentUser.uid) {
-      getUserDocument(currentUser.uid).then(appUser => {
-        if (appUser && appUser.uprId && appUser.uprId !== context.uprId) {
-          updateUprIdInContext(appUser.uprId); // Update localStorage
-          setCurrentUprContext(appUser.uprId); // Update local state
-          // Optionally, reload if UPR ID change requires a full data refresh
-          // window.location.reload(); 
-        } else if (appUser && !appUser.uprId && currentUser.displayName && currentUser.displayName !== context.uprId) {
-          // Case where uprId in DB is null, but displayName exists and is different from context
-          updateUprIdInContext(currentUser.displayName);
-          setCurrentUprContext(currentUser.displayName);
-        }
-      });
-    }
-  }, [currentUser]); // Re-run when currentUser changes
 
   useEffect(() => {
     const publicPaths = ['/login', '/register'];
@@ -91,29 +72,43 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     );
   }
 
+  // If not logged in AND on a public page, render only children and toaster
   if (!currentUser && (pathname === '/login' || pathname === '/register')) {
     return <>{children}<Toaster /></>;
   }
 
+  // If not logged in and NOT on a public page, show loading/redirecting state
+  // This case should ideally be caught by the useEffect redirect, but as a fallback:
   if (!currentUser && !['/login', '/register'].includes(pathname)) {
     return (
       <div className="flex flex-col items-center justify-center h-screen">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
-        <p className="text-xl text-muted-foreground">Mengarahkan...</p>
+        <p className="text-xl text-muted-foreground">Mengarahkan ke halaman login...</p>
       </div>
     );
   }
+  
+  // If logged in, but appUser data (from Firestore) is not yet available
+  if (currentUser && !appUser && !authLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen">
+        <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
+        <p className="text-xl text-muted-foreground">Memuat data profil pengguna...</p>
+      </div>
+    );
+  }
+
 
   return (
     <SidebarProvider defaultOpen>
       <Sidebar variant="sidebar" collapsible="icon" side="left">
         <SidebarHeader className="p-4">
-          <NextLink href="/" className="flex items-center gap-2 group-data-[collapsible=icon]:justify-center">
+          <Link href="/" className="flex items-center gap-2 group-data-[collapsible=icon]:justify-center">
             <AppLogo className="h-8 w-8 text-primary" />
             <span className="font-semibold text-lg text-primary group-data-[collapsible=icon]:hidden">
               RiskWise
             </span>
-          </NextLink>
+          </Link>
         </SidebarHeader>
         <Separator className="group-data-[collapsible=icon]:hidden" />
         <SidebarContent>
@@ -130,9 +125,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b bg-background/80 px-4 backdrop-blur md:px-6">
           <div className="flex items-center gap-2">
             <SidebarTrigger className="md:hidden" />
-            {currentUprContext && currentPeriodContext && (
+            {currentUser && appUser && (
               <div className="text-sm text-muted-foreground">
-                <span className="font-semibold">UPR:</span> {currentUprContext} | <span className="font-semibold">Periode:</span> {currentPeriodContext}
+                <span className="font-semibold">UPR:</span> {currentUprDisplay} | <span className="font-semibold">Periode:</span> {currentPeriodDisplay}
               </div>
             )}
           </div>
@@ -162,23 +157,19 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="icon" className="rounded-full">
                     <Avatar className="h-8 w-8">
-                      <AvatarImage src={currentUser.photoURL || "https://placehold.co/100x100.png"} alt={currentUser.displayName || currentUser.email || "User"} data-ai-hint="profile person" />
-                      <AvatarFallback>{currentUser.displayName ? currentUser.displayName.substring(0, 2).toUpperCase() : (currentUser.email ? currentUser.email.substring(0,2).toUpperCase() : 'RW')}</AvatarFallback>
+                      <AvatarImage src={currentUser.photoURL || appUser?.photoURL || "https://placehold.co/100x100.png"} alt={appUser?.displayName || currentUser.displayName || currentUser.email || "User"} data-ai-hint="profile person" />
+                      <AvatarFallback>{appUser?.displayName ? appUser.displayName.substring(0, 2).toUpperCase() : (currentUser.displayName ? currentUser.displayName.substring(0,2).toUpperCase() : (currentUser.email ? currentUser.email.substring(0,2).toUpperCase() : 'RW'))}</AvatarFallback>
                     </Avatar>
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuLabel>{currentUser.displayName || currentUser.email}</DropdownMenuLabel>
+                  <DropdownMenuLabel>{appUser?.displayName || currentUser.displayName || currentUser.email}</DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  {/* <DropdownMenuItem>
-                    <User className="mr-2 h-4 w-4" />
-                    <span>Profil</span>
-                  </DropdownMenuItem> */}
                   <DropdownMenuItem asChild>
-                    <NextLink href="/settings">
+                    <Link href="/settings">
                       <SettingsIcon className="mr-2 h-4 w-4" />
                       <span>Pengaturan</span>
-                    </NextLink>
+                    </Link>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={handleLogout}>

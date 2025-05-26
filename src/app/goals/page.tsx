@@ -11,23 +11,26 @@ import { PlusCircle, Target, Loader2, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
-import { getCurrentUprId, getCurrentPeriod, initializeAppContext } from '@/lib/upr-period-context';
 import { useAuth } from '@/contexts/auth-context';
 import { addGoal, getGoals, updateGoal, deleteGoal, type GoalsResult } from '@/services/goalService';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
+const DEFAULT_PERIOD = new Date().getFullYear().toString();
+
 export default function GoalsPage() {
   const [goals, setGoals] = useState<Goal[]>([]);
-  const [currentUprId, setCurrentUprId] = useState('');
-  const [currentPeriod, setCurrentPeriod] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const { toast } = useToast();
-  const { currentUser } = useAuth();
+  const { currentUser, appUser, loading: authLoading } = useAuth();
   const router = useRouter();
 
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [goalToDelete, setGoalToDelete] = useState<Goal | null>(null);
+
+  const currentUprId = useMemo(() => appUser?.uprId || appUser?.displayName || null, [appUser]);
+  const currentPeriod = useMemo(() => appUser?.activePeriod || DEFAULT_PERIOD, [appUser]);
+
 
   const loadGoals = useCallback(async () => {
     if (!currentUser || !currentUprId || !currentPeriod) {
@@ -41,6 +44,7 @@ export default function GoalsPage() {
       if (result.success && result.goals) {
         setGoals(result.goals);
       } else if (!result.success && result.code === 'NO_UPRID' && result.message) {
+        // This case might be less relevant now as uprId comes from appUser
         toast({ title: "Informasi", description: result.message, variant: "default", duration: 7000 });
         setGoals([]);
       } else {
@@ -57,25 +61,23 @@ export default function GoalsPage() {
   }, [currentUprId, currentPeriod, currentUser, toast]);
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const context = initializeAppContext();
-      setCurrentUprId(context.uprId);
-      setCurrentPeriod(context.period);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (currentUprId && currentPeriod && currentUser) {
+    if (currentUser && currentUprId && currentPeriod) {
       loadGoals();
-    } else if (!currentUser) {
-      setIsLoading(false); 
+    } else if (!authLoading && !currentUser) {
+      // User not logged in, AppLayout should redirect
+      setIsLoading(false);
       setGoals([]);
+    } else if (currentUser && (!currentUprId || !currentPeriod) && !authLoading && appUser !== undefined) {
+      // User logged in, appUser might still be loading or has no period/uprId
+      // Show loading until appUser is definitely loaded or determined to be incomplete
+      setIsLoading(true); 
     }
-  }, [currentUprId, currentPeriod, currentUser, loadGoals]);
+  }, [currentUprId, currentPeriod, currentUser, authLoading, appUser, loadGoals]);
+
 
   const handleGoalSave = async (goalData: Omit<Goal, 'id' | 'code' | 'createdAt' | 'uprId' | 'period' | 'userId'>, existingGoalId?: string) => {
     if (!currentUser || !currentUprId || !currentPeriod) {
-      toast({ title: "Autentikasi Diperlukan", description: "Anda harus login untuk menyimpan sasaran.", variant: "destructive" });
+      toast({ title: "Konteks Tidak Lengkap", description: "UPR, Periode, atau Pengguna tidak ditemukan untuk menyimpan sasaran.", variant: "destructive" });
       return;
     }
 
@@ -129,31 +131,7 @@ export default function GoalsPage() {
     );
   }, [goals, searchTerm]);
   
-  if (isLoading && !currentUser) { 
-     return (
-      <div className="flex flex-col items-center justify-center h-screen">
-        <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
-        <p className="text-xl text-muted-foreground">Memverifikasi sesi...</p>
-      </div>
-    );
-  }
-
-  if (!currentUser && !isLoading) {
-    return (
-      <div className="flex flex-col items-center justify-center h-screen">
-        <Target className="mx-auto h-12 w-12 text-muted-foreground" />
-        <h3 className="mt-4 text-xl font-medium">Akses Dibatasi</h3>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Silakan login untuk mengakses halaman Sasaran.
-        </p>
-        <Button onClick={() => router.push('/login')} className="mt-6">
-            Ke Halaman Login
-        </Button>
-      </div>
-    );
-  }
-  
-  if (isLoading) {
+  if (authLoading || (currentUser && !appUser)) { 
      return (
       <div className="flex flex-col items-center justify-center h-screen">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
@@ -162,18 +140,24 @@ export default function GoalsPage() {
     );
   }
 
-
+  if (!currentUser && !authLoading) {
+    // This case should be handled by AppLayout redirecting to /login
+    return null; 
+  }
+  
   return (
     <div className="space-y-6">
       <PageHeader
         title="Sasaran"
-        description={`Definisikan dan kelola tujuan strategis Anda untuk UPR: ${currentUprId}, Periode: ${currentPeriod}.`}
+        description={`Definisikan dan kelola tujuan strategis Anda untuk UPR: ${currentUprId || '...'}, Periode: ${currentPeriod || '...'}.`}
         actions={
           <AddGoalDialog 
             onGoalSave={handleGoalSave}
             existingGoals={goals} 
+            currentUprId={currentUprId || ''}
+            currentPeriod={currentPeriod || ''}
             triggerButton={
-              <Button disabled={!currentUser}>
+              <Button disabled={!currentUser || !currentUprId || !currentPeriod}>
                 <PlusCircle className="mr-2 h-4 w-4" /> Tambah Sasaran Baru
               </Button>
             }
@@ -190,11 +174,19 @@ export default function GoalsPage() {
             className="pl-10 w-full md:w-1/2 lg:w-1/3"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
+            disabled={isLoading}
           />
         </div>
       </div>
 
-      {filteredGoals.length === 0 && goals.length > 0 && searchTerm && (
+      {isLoading && (
+        <div className="flex flex-col items-center justify-center py-10">
+          <Loader2 className="h-10 w-10 animate-spin text-primary mb-3" />
+          <p className="text-muted-foreground">Memuat daftar sasaran...</p>
+        </div>
+      )}
+
+      {!isLoading && filteredGoals.length === 0 && goals.length > 0 && searchTerm && (
         <div className="text-center py-10 border-2 border-dashed border-muted-foreground/30 rounded-lg">
           <Search className="mx-auto h-12 w-12 text-muted-foreground" />
           <h3 className="mt-2 text-lg font-medium">Tidak ada sasaran ditemukan</h3>
@@ -204,7 +196,7 @@ export default function GoalsPage() {
         </div>
       )}
 
-      {filteredGoals.length === 0 && (goals.length === 0 || !searchTerm) && (
+      {!isLoading && goals.length === 0 && !searchTerm && (
         <div className="text-center py-10 border-2 border-dashed border-muted-foreground/30 rounded-lg">
           <Target className="mx-auto h-12 w-12 text-muted-foreground" />
           <h3 className="mt-2 text-lg font-medium">Belum ada sasaran untuk UPR/Periode ini</h3>
@@ -215,8 +207,10 @@ export default function GoalsPage() {
             <AddGoalDialog 
               onGoalSave={handleGoalSave} 
               existingGoals={goals}
+              currentUprId={currentUprId || ''}
+              currentPeriod={currentPeriod || ''}
               triggerButton={
-                <Button disabled={!currentUser}>
+                <Button disabled={!currentUser || !currentUprId || !currentPeriod}>
                   <PlusCircle className="mr-2 h-4 w-4" /> Tambah Sasaran Baru
                 </Button>
               }
@@ -225,7 +219,7 @@ export default function GoalsPage() {
         </div>
       )}
 
-      {filteredGoals.length > 0 && (
+      {!isLoading && filteredGoals.length > 0 && (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {filteredGoals.map((goal) => (
             <GoalCard 
@@ -233,6 +227,8 @@ export default function GoalsPage() {
               goal={goal} 
               onEditGoal={(editedGoalData) => handleGoalSave(editedGoalData, goal.id)} 
               onDeleteGoal={() => handleDeleteGoal(goal)}
+              currentUprId={currentUprId || ''}
+              currentPeriod={currentPeriod || ''}
             />
           ))}
         </div>

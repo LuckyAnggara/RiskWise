@@ -10,12 +10,16 @@ import { AddGoalDialog } from './add-goal-dialog';
 
 interface GoalCardProps {
   goal: Goal;
-  riskCount?: number; 
-  onEditGoal: (goalData: Omit<Goal, 'id' | 'code' | 'createdAt' | 'uprId' | 'period'>, existingGoalId: string) => void;
+  onEditGoal: (goalData: Omit<Goal, 'id' | 'code' | 'createdAt' | 'uprId' | 'period' | 'userId'>, existingGoalId: string) => void;
   onDeleteGoal: (goalId: string) => void;
+  currentUprId: string; // Added
+  currentPeriod: string; // Added
 }
 
-export function GoalCard({ goal, riskCount = 0, onEditGoal, onDeleteGoal }: GoalCardProps) {
+export function GoalCard({ goal, onEditGoal, onDeleteGoal, currentUprId, currentPeriod }: GoalCardProps) {
+  // Risk count will now need to be fetched or managed separately if displayed here
+  // For now, we remove the direct riskCount prop display.
+
   return (
     <Card className="flex flex-col">
       <CardHeader>
@@ -25,6 +29,9 @@ export function GoalCard({ goal, riskCount = 0, onEditGoal, onDeleteGoal }: Goal
              <AddGoalDialog 
                 existingGoal={goal} 
                 onGoalSave={(data) => onEditGoal(data, goal.id)}
+                currentUprId={currentUprId} // Pass down
+                currentPeriod={currentPeriod} // Pass down
+                existingGoals={[]} // existingGoals is only for code generation, not strictly needed for edit
                 triggerButton={
                   <Button variant="ghost" size="icon" aria-label={`Edit sasaran ${goal.name} (${goal.code})`}>
                     <Edit className="h-4 w-4" />
@@ -43,19 +50,17 @@ export function GoalCard({ goal, riskCount = 0, onEditGoal, onDeleteGoal }: Goal
         <p className="text-xs text-muted-foreground">
           Dibuat: {new Date(goal.createdAt).toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' })}
         </p>
+        {/* Placeholder for risk count if you re-implement fetching it */}
+        {/* <p className="text-xs text-muted-foreground mt-1">X Potensi Risiko</p> */}
       </CardContent>
-      <CardFooter className="flex justify-between items-center">
-        <div className="text-xs text-muted-foreground">
-          {riskCount} {riskCount === 1 ? 'Risiko' : 'Risiko'}
-        </div>
+      <CardFooter className="flex justify-end items-center">
         <Link href={`/risks/${goal.id}`} passHref>
           <Button variant="outline" size="sm">
             <ShieldAlert className="mr-2 h-4 w-4" />
-            Lihat Risiko
+            Lihat Potensi Risiko
           </Button>
         </Link>
       </CardFooter>
     </Card>
   );
 }
-

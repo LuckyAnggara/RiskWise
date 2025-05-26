@@ -15,22 +15,20 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, DropdownMenuCheckboxItem, DropdownMenuLabel } from "@/components/ui/dropdown-menu";
-import { getCurrentUprId, getCurrentPeriod, initializeAppContext } from '@/lib/upr-period-context';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Checkbox } from '@/components/ui/checkbox';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useAuth } from '@/contexts/auth-context';
 import { getGoals, type GoalsResult } from '@/services/goalService';
 import { getPotentialRisksByGoalId, deletePotentialRiskAndSubCollections, addPotentialRisk } from '@/services/potentialRiskService';
-import { getRiskCausesByPotentialRiskId, addRiskCause as addRiskCauseService } from '@/services/riskCauseService';
-import { getControlMeasuresByRiskCauseId, addControlMeasure as addControlMeasureService } from '@/services/controlMeasureService';
+import { getRiskCausesByPotentialRiskId } from '@/services/riskCauseService';
+// import { getControlMeasuresByRiskCauseId, addControlMeasure as addControlMeasureService } from '@/services/controlMeasureService'; // Not used directly here for now
 
+const DEFAULT_PERIOD = new Date().getFullYear().toString();
 
 export default function AllRisksPage() {
   const router = useRouter();
-  const { currentUser } = useAuth();
-  const [currentUprId, setCurrentUprId] = useState('');
-  const [currentPeriod, setCurrentPeriod] = useState('');
+  const { currentUser, appUser, loading: authLoading } = useAuth();
   
   const [goals, setGoals] = useState<Goal[]>([]);
   const [allPotentialRisks, setAllPotentialRisks] = useState<PotentialRisk[]>([]);
@@ -51,6 +49,9 @@ export default function AllRisksPage() {
   const [isBulkDeleteDialogOpen, setIsBulkDeleteDialogOpen] = useState(false);
 
   const { toast } = useToast();
+  
+  const currentUprId = useMemo(() => appUser?.uprId || appUser?.displayName || null, [appUser]);
+  const currentPeriod = useMemo(() => appUser?.activePeriod || DEFAULT_PERIOD, [appUser]);
 
   const loadData = useCallback(async () => {
     if (!currentUser || !currentUprId || !currentPeriod) {
@@ -81,6 +82,7 @@ export default function AllRisksPage() {
         for (const pRisk of goalPotentialRisks) {
           collectedPotentialRisks.push(pRisk);
           if (pRisk.owner) uniqueOwners.add(pRisk.owner);
+          // Fetch cause counts for each potential risk
           const causes = await getRiskCausesByPotentialRiskId(pRisk.id, currentUprId, currentPeriod);
           causeCounts[pRisk.id] = causes.length;
         }
@@ -98,20 +100,15 @@ export default function AllRisksPage() {
   }, [currentUser, currentUprId, currentPeriod, toast]);
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const context = initializeAppContext();
-      setCurrentUprId(context.uprId);
-      setCurrentPeriod(context.period);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (currentUprId && currentPeriod && currentUser) {
+    if (currentUser && currentUprId && currentPeriod) {
       loadData();
-    } else if (!currentUser) {
-      setIsLoading(false);
+    } else if (!authLoading && !currentUser) {
+        setIsLoading(false); // User not logged in, no data to load. AppLayout should redirect.
+    } else if (currentUser && (!currentUprId || !currentPeriod) && !authLoading && appUser !== undefined) {
+        // User logged in, appUser might still be loading or has no period/uprId
+        setIsLoading(true);
     }
-  }, [loadData, currentUprId, currentPeriod, currentUser]);
+  }, [loadData, currentUprId, currentPeriod, currentUser, authLoading, appUser]);
   
   const handleOpenEditPotentialRiskPage = (pRiskId: string) => {
     router.push(`/all-risks/manage/${pRiskId}?from=/all-risks`);
@@ -246,6 +243,7 @@ export default function AllRisksPage() {
 
   const confirmDeleteSelectedRisks = async () => {
     if (!currentUser || !currentUprId || !currentPeriod) return;
+    setIsLoading(true);
     let deletedCount = 0;
     
     const deletionPromises = selectedRiskIds.map(riskId => {
@@ -256,7 +254,7 @@ export default function AllRisksPage() {
             .catch(err => {
                 console.error(`Gagal menghapus risiko ${riskId}:`, err);
                 const risk = allPotentialRisks.find(r => r.id === riskId);
-                toast({ title: "Gagal Sebagian", description: `Gagal menghapus potensi risiko "${risk?.description || riskId}".`, variant: "destructive" });
+                toast({ title: "Gagal Sebagian", description: `Gagal menghapus potensi risiko "${risk?.description || riskId}". Pesan: ${err.message}`, variant: "destructive" });
             });
     });
 
@@ -268,9 +266,11 @@ export default function AllRisksPage() {
         loadData(); 
     } catch (error: any) {
         console.error("Error during bulk delete process:", error.message);
+        toast({title: "Gagal Proses Hapus Massal", description: error.message, variant: "destructive"});
     } finally {
         setIsBulkDeleteDialogOpen(false);
         setSelectedRiskIds([]);
+        setIsLoading(false);
     }
   };
 
@@ -287,7 +287,7 @@ export default function AllRisksPage() {
         toast({ title: "Gagal Menduplikasi", description: "Sasaran induk untuk risiko tidak ditemukan.", variant: "destructive" });
         return;
     }
-
+    setIsLoading(true);
     try {
         const existingPRsForGoal = await getPotentialRisksByGoalId(parentGoal.id, currentUprId, currentPeriod);
         const newSequenceNumber = existingPRsForGoal.length + 1;
@@ -299,48 +299,21 @@ export default function AllRisksPage() {
             owner: riskToDuplicate.owner,
         };
         const newPotentialRisk = await addPotentialRisk(newPRData, parentGoal.id, currentUprId, currentPeriod, currentUser.uid, newSequenceNumber);
+        
+        // TODO: Implement duplication for RiskCauses and ControlMeasures associated with original risk
+        // This would involve fetching them and re-creating them for the newPotentialRisk.id
 
-        const originalCauses = await getRiskCausesByPotentialRiskId(riskToDuplicate.id, currentUprId, currentPeriod);
-        let causeSeq = 0;
-        for (const cause of originalCauses) {
-            causeSeq++;
-            const newCauseData: Omit<RiskCause, 'id' | 'createdAt' | 'uprId' | 'period' | 'userId' | 'potentialRiskId' | 'goalId' | 'sequenceNumber' > = {
-                description: cause.description,
-                source: cause.source,
-                keyRiskIndicator: cause.keyRiskIndicator,
-                riskTolerance: cause.riskTolerance,
-                likelihood: cause.likelihood,
-                impact: cause.impact,
-            };
-            
-            const newDuplicatedCause = await addRiskCauseService(newCauseData, newPotentialRisk.id, newPotentialRisk.goalId, currentUprId, currentPeriod, currentUser.uid, causeSeq);
-
-            const originalControls = await getControlMeasuresByRiskCauseId(cause.id, currentUprId, currentPeriod);
-            let controlSeq = 0;
-            for (const control of originalControls) {
-              controlSeq++;
-              const newControlData: Omit<any, 'id'|'createdAt'|'uprId'|'period'|'userId'|'riskCauseId'|'potentialRiskId'|'goalId'|'sequenceNumber'> = { // any needs to be ControlMeasure type
-                controlType: control.controlType,
-                description: control.description,
-                keyControlIndicator: control.keyControlIndicator,
-                target: control.target,
-                responsiblePerson: control.responsiblePerson,
-                deadline: control.deadline,
-                budget: control.budget,
-              };
-              await addControlMeasureService(newControlData, newDuplicatedCause.id, newPotentialRisk.id, newPotentialRisk.goalId, currentUprId, currentPeriod, currentUser.uid, controlSeq);
-            }
-        }
-
-        toast({ title: "Risiko Diduplikasi", description: `Potensi risiko "${newPotentialRisk.description}" dan semua data terkait telah berhasil diduplikasi.`});
+        toast({ title: "Risiko Diduplikasi", description: `Potensi risiko "${newPotentialRisk.description}" telah berhasil diduplikasi. Penyebab dan kontrol belum disalin.`});
         loadData(); 
     } catch (error: any) {
         console.error("Error duplicating risk:", error.message);
         toast({ title: "Gagal Menduplikasi", description: `Terjadi kesalahan saat menduplikasi: ${error.message}`, variant: "destructive" });
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  if (isLoading || (!currentUser && currentUprId && currentPeriod)) { 
+  if (authLoading || (currentUser && !appUser)) { 
     return (
       <div className="flex flex-col items-center justify-center h-screen">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
@@ -349,41 +322,30 @@ export default function AllRisksPage() {
     );
   }
   
-  if (!currentUser && !isLoading) {
-    return (
-      <div className="flex flex-col items-center justify-center h-screen">
-        <ListChecks className="mx-auto h-12 w-12 text-muted-foreground" />
-        <h3 className="mt-4 text-xl font-medium">Akses Dibatasi</h3>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Silakan login untuk mengakses halaman Identifikasi Risiko.
-        </p>
-        <Button onClick={() => router.push('/login')} className="mt-6">
-            Ke Halaman Login
-        </Button>
-      </div>
-    );
+  if (!currentUser && !authLoading) {
+    // AppLayout should handle redirect
+    return null;
   }
 
-  const relevantGoals = Array.isArray(goals) ? goals.filter(g => g.uprId === currentUprId && g.period === currentPeriod) : [];
+  const relevantGoalsForFilter = Array.isArray(goals) ? goals.filter(g => g.uprId === currentUprId && g.period === currentPeriod) : [];
   const totalTableColumns = 8; 
 
   return (
     <div className="space-y-6">
       <PageHeader
         title={`Identifikasi Risiko`}
-        description={`Kelola semua potensi risiko yang teridentifikasi di semua sasaran untuk UPR: ${currentUprId}, Periode: ${currentPeriod}.`}
+        description={`Kelola semua potensi risiko yang teridentifikasi di semua sasaran untuk UPR: ${currentUprId || '...'}, Periode: ${currentPeriod || '...'}.`}
         actions={
-            <NextLink href="/all-risks/manage/new" passHref>
-              <Button disabled={relevantGoals.length === 0 || !currentUser}>
+            <NextLink href={`/all-risks/manage/new?from=${encodeURIComponent("/all-risks")}`} passHref>
+              <Button disabled={relevantGoalsForFilter.length === 0 || !currentUser}>
                 <PlusCircle className="mr-2 h-4 w-4" /> Tambah Potensi Risiko Baru
-                {relevantGoals.length === 0 && <span className="ml-2 text-xs">(Buat sasaran terlebih dahulu)</span>}
+                {relevantGoalsForFilter.length === 0 && <span className="ml-2 text-xs">(Buat sasaran terlebih dahulu)</span>}
               </Button>
             </NextLink>
         }
       />
 
       <div className="flex flex-col md:flex-row gap-2 mb-4 items-center">
-        {/* Filter and Search Section */}
         <div className="relative flex-grow md:flex-grow-0 md:max-w-xs w-full md:w-auto">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -391,11 +353,12 @@ export default function AllRisksPage() {
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10 w-full"
+                disabled={isLoading}
             />
         </div>
         <DropdownMenu>
             <DropdownMenuTrigger asChild>
-            <Button variant="outline" className="w-full md:w-auto">
+            <Button variant="outline" className="w-full md:w-auto" disabled={isLoading}>
                 <Filter className="mr-2 h-4 w-4" />
                 Filter Kategori {selectedCategories.length > 0 ? `(${selectedCategories.length})` : ''}
             </Button>
@@ -419,7 +382,7 @@ export default function AllRisksPage() {
 
         <DropdownMenu>
             <DropdownMenuTrigger asChild>
-            <Button variant="outline" className="w-full md:w-auto">
+            <Button variant="outline" className="w-full md:w-auto" disabled={isLoading}>
                 <Filter className="mr-2 h-4 w-4" />
                 Filter Pemilik {selectedOwners.length > 0 ? `(${selectedOwners.length})` : ''}
             </Button>
@@ -447,7 +410,7 @@ export default function AllRisksPage() {
 
         <DropdownMenu>
             <DropdownMenuTrigger asChild>
-            <Button variant="outline" className="w-full md:w-auto">
+            <Button variant="outline" className="w-full md:w-auto" disabled={isLoading}>
                 <Filter className="mr-2 h-4 w-4" />
                 Filter Sasaran {selectedGoalIds.length > 0 ? `(${selectedGoalIds.length})` : ''}
             </Button>
@@ -455,9 +418,9 @@ export default function AllRisksPage() {
             <DropdownMenuContent align="end" className="w-[300px]">
             <DropdownMenuLabel>Pilih Sasaran Terkait</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            {relevantGoals.length > 0 ? (
+            {relevantGoalsForFilter.length > 0 ? (
                 <ScrollArea className="h-[200px]">
-                {relevantGoals.sort((a,b) => (a.code || '').localeCompare(b.code || '', undefined, {numeric: true, sensitivity: 'base'})).map((goal) => (
+                {relevantGoalsForFilter.sort((a,b) => (a.code || '').localeCompare(b.code || '', undefined, {numeric: true, sensitivity: 'base'})).map((goal) => (
                     <DropdownMenuCheckboxItem
                     key={goal.id}
                     checked={selectedGoalIds.includes(goal.id)}
@@ -476,15 +439,21 @@ export default function AllRisksPage() {
       
       {selectedRiskIds.length > 0 && (
           <div className="flex justify-end mb-4">
-            <Button variant="destructive" onClick={handleDeleteSelectedRisks} className="w-full sm:w-auto" disabled={!currentUser}>
+            <Button variant="destructive" onClick={handleDeleteSelectedRisks} className="w-full sm:w-auto" disabled={!currentUser || isLoading}>
                 <Trash2 className="mr-2 h-4 w-4" />
                 Hapus ({selectedRiskIds.length}) yang Dipilih
             </Button>
           </div>
       )}
 
+      {isLoading && (
+         <div className="flex flex-col items-center justify-center py-10">
+          <Loader2 className="h-10 w-10 animate-spin text-primary mb-3" />
+          <p className="text-muted-foreground">Memuat daftar potensi risiko...</p>
+        </div>
+      )}
 
-      {filteredAndSortedRisks.length === 0 ? (
+      {!isLoading && filteredAndSortedRisks.length === 0 && (
         <div className="text-center py-10 border-2 border-dashed border-muted-foreground/30 rounded-lg">
           <ListChecks className="mx-auto h-12 w-12 text-muted-foreground" />
           <h3 className="mt-2 text-lg font-medium">
@@ -498,7 +467,9 @@ export default function AllRisksPage() {
               : "Coba sesuaikan pencarian atau filter Anda."}
           </p>
         </div>
-      ) : (
+      )}
+
+      {!isLoading && filteredAndSortedRisks.length > 0 && (
         <Card className="w-full">
           <CardContent className="p-0">
             <div className="relative w-full overflow-x-auto">
@@ -526,8 +497,8 @@ export default function AllRisksPage() {
                 </TableHeader>
                 <TableBody>
                     {filteredAndSortedRisks.map((pRisk) => {
-                    const currentGoals = Array.isArray(goals) ? goals : [];
-                    const associatedGoal = currentGoals.find(g => g.id === pRisk.goalId);
+                    const currentActiveGoals = Array.isArray(goals) ? goals : [];
+                    const associatedGoal = currentActiveGoals.find(g => g.id === pRisk.goalId);
                     const isExpanded = expandedRiskId === pRisk.id;
                     
                     const goalCodeDisplay = associatedGoal?.code && associatedGoal.code.trim() !== '' ? associatedGoal.code : '[Tanpa Kode]';
@@ -655,6 +626,3 @@ export default function AllRisksPage() {
     </div>
   );
 }
-
-    
-

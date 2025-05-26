@@ -2,7 +2,7 @@
 export const LIKELIHOOD_LEVELS_DESC_MAP = {
   "Hampir tidak terjadi (1)": 1,
   "Jarang terjadi (2)": 2,
-  "Kadang Terjadi (3)": 3, // Tetap "Kadang Terjadi" agar konsisten dengan modal
+  "Kadang Terjadi (3)": 3,
   "Sering terjadi (4)": 4,
   "Hampir pasti terjadi (5)": 5,
 } as const;
@@ -54,7 +54,7 @@ export interface Goal {
   description: string;
   code: string; 
   createdAt: string; 
-  uprId: string; // Akan diisi dengan AppUser.uprId (yang merupakan displayName pengguna)
+  uprId: string; 
   period: string; 
   userId?: string; 
 }
@@ -62,7 +62,7 @@ export interface Goal {
 export interface PotentialRisk {
   id: string; 
   goalId: string;
-  uprId: string; // Akan diisi dengan AppUser.uprId
+  uprId: string; 
   period: string;
   userId?: string;
   description: string;
@@ -77,7 +77,7 @@ export interface RiskCause {
   id: string; 
   potentialRiskId: string; 
   goalId: string; 
-  uprId: string; // Akan diisi dengan AppUser.uprId
+  uprId: string; 
   period: string;
   userId?: string;
   description: string;
@@ -96,7 +96,7 @@ export interface ControlMeasure {
   riskCauseId: string;
   potentialRiskId: string; 
   goalId: string; 
-  uprId: string; // Akan diisi dengan AppUser.uprId
+  uprId: string; 
   period: string;
   userId?: string;
   controlType: ControlMeasureTypeKey;
@@ -111,21 +111,21 @@ export interface ControlMeasure {
   updatedAt?: string;
 }
 
-export type UserRole = 'admin' | 'userSatker'; // userSatker = Satuan Kerja
+export type UserRole = 'admin' | 'userSatker';
 
 export interface AppUser {
   uid: string;
   email: string | null;
-  displayName: string | null; // Ini akan digunakan sebagai nama UPR juga
+  displayName: string | null; 
   photoURL: string | null;
   role: UserRole;
   uprId: string | null; // Akan diisi dengan nilai dari displayName pengguna
-  createdAt: string; 
+  createdAt: string;
+  updatedAt?: string;
+  activePeriod?: string | null;
+  availablePeriods?: string[] | null;
 }
 
-// Interface UPR tidak lagi diperlukan karena 1 user = 1 UPR dengan nama UPR = nama user
-
-// Helper to get display name for control type
 export const getControlTypeName = (typeKey: ControlMeasureTypeKey): string => {
   return CONTROL_MEASURE_TYPES[typeKey];
 };
