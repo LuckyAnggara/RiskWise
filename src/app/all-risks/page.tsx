@@ -372,116 +372,116 @@ export default function AllRisksPage() {
       <PageHeader
         title={`Identifikasi Risiko`}
         description={`Kelola semua potensi risiko yang teridentifikasi di semua sasaran untuk UPR: ${currentUprId}, Periode: ${currentPeriod}.`}
+        actions={
+            <NextLink href="/all-risks/manage/new" passHref>
+              <Button disabled={relevantGoals.length === 0 || !currentUser}>
+                <PlusCircle className="mr-2 h-4 w-4" /> Tambah Potensi Risiko Baru
+                {relevantGoals.length === 0 && <span className="ml-2 text-xs">(Buat sasaran terlebih dahulu)</span>}
+              </Button>
+            </NextLink>
+        }
       />
 
-      <div className="flex flex-col md:flex-row gap-4 mb-4 justify-between items-center">
+      <div className="flex flex-col md:flex-row gap-2 mb-4 items-center">
         {/* Filter and Search Section */}
-        <div className="flex flex-col md:flex-row gap-2 w-full md:w-auto flex-wrap items-center">
-            <div className="relative flex-grow md:flex-grow-0 md:max-w-xs w-full md:w-auto">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                  placeholder="Cari kode, deskripsi, kategori, pemilik..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10 w-full"
-              />
-            </div>
-            <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="w-full md:w-auto">
-                    <Filter className="mr-2 h-4 w-4" />
-                    Filter Kategori {selectedCategories.length > 0 ? `(${selectedCategories.length})` : ''}
-                </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-[250px]">
-                <DropdownMenuLabel>Pilih Kategori</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <ScrollArea className="h-[200px]">
-                    {RISK_CATEGORIES.map((category) => (
-                    <DropdownMenuCheckboxItem
-                        key={category}
-                        checked={selectedCategories.includes(category)}
-                        onCheckedChange={() => toggleCategoryFilter(category)}
-                    >
-                        {category}
-                    </DropdownMenuCheckboxItem>
-                    ))}
-                </ScrollArea>
-                </DropdownMenuContent>
-            </DropdownMenu>
-
-            <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="w-full md:w-auto">
-                    <Filter className="mr-2 h-4 w-4" />
-                    Filter Pemilik {selectedOwners.length > 0 ? `(${selectedOwners.length})` : ''}
-                </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-[250px]">
-                <DropdownMenuLabel>Pilih Pemilik Risiko</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {allOwners.length > 0 ? (
-                    <ScrollArea className="h-[200px]">
-                    {allOwners.map((owner) => (
-                        <DropdownMenuCheckboxItem
-                        key={owner}
-                        checked={selectedOwners.includes(owner)}
-                        onCheckedChange={() => toggleOwnerFilter(owner)}
-                        >
-                        {owner}
-                        </DropdownMenuCheckboxItem>
-                    ))}
-                    </ScrollArea>
-                ) : (
-                    <DropdownMenuItem disabled>Tidak ada pemilik risiko.</DropdownMenuItem>
-                )}
-                </DropdownMenuContent>
-            </DropdownMenu>
-
-            <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="w-full md:w-auto">
-                    <Filter className="mr-2 h-4 w-4" />
-                    Filter Sasaran {selectedGoalIds.length > 0 ? `(${selectedGoalIds.length})` : ''}
-                </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-[300px]">
-                <DropdownMenuLabel>Pilih Sasaran Terkait</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {relevantGoals.length > 0 ? (
-                    <ScrollArea className="h-[200px]">
-                    {relevantGoals.sort((a,b) => (a.code || '').localeCompare(b.code || '', undefined, {numeric: true, sensitivity: 'base'})).map((goal) => (
-                        <DropdownMenuCheckboxItem
-                        key={goal.id}
-                        checked={selectedGoalIds.includes(goal.id)}
-                        onCheckedChange={() => toggleGoalFilter(goal.id)}
-                        >
-                        {goal.code || '[Tanpa Kode]'} - {goal.name}
-                        </DropdownMenuCheckboxItem>
-                    ))}
-                    </ScrollArea>
-                ) : (
-                    <DropdownMenuItem disabled>Tidak ada sasaran tersedia</DropdownMenuItem>
-                )}
-                </DropdownMenuContent>
-            </DropdownMenu>
+        <div className="relative flex-grow md:flex-grow-0 md:max-w-xs w-full md:w-auto">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+                placeholder="Cari kode, deskripsi, kategori, pemilik..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10 w-full"
+            />
         </div>
-        {/* Action Buttons Section */}
-        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto mt-2 md:mt-0">
-             <NextLink href="/all-risks/manage/new" passHref>
-                <Button disabled={relevantGoals.length === 0 || !currentUser} className="w-full sm:w-auto">
-                  <PlusCircle className="mr-2 h-4 w-4" /> Tambah Potensi Risiko Baru
-                  {relevantGoals.length === 0 && <span className="ml-2 text-xs">(Buat sasaran terlebih dahulu)</span>}
-                </Button>
-              </NextLink>
-            {selectedRiskIds.length > 0 && (
-                <Button variant="destructive" onClick={handleDeleteSelectedRisks} className="w-full sm:w-auto" disabled={!currentUser}>
+        <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+            <Button variant="outline" className="w-full md:w-auto">
+                <Filter className="mr-2 h-4 w-4" />
+                Filter Kategori {selectedCategories.length > 0 ? `(${selectedCategories.length})` : ''}
+            </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-[250px]">
+            <DropdownMenuLabel>Pilih Kategori</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <ScrollArea className="h-[200px]">
+                {RISK_CATEGORIES.map((category) => (
+                <DropdownMenuCheckboxItem
+                    key={category}
+                    checked={selectedCategories.includes(category)}
+                    onCheckedChange={() => toggleCategoryFilter(category)}
+                >
+                    {category}
+                </DropdownMenuCheckboxItem>
+                ))}
+            </ScrollArea>
+            </DropdownMenuContent>
+        </DropdownMenu>
+
+        <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+            <Button variant="outline" className="w-full md:w-auto">
+                <Filter className="mr-2 h-4 w-4" />
+                Filter Pemilik {selectedOwners.length > 0 ? `(${selectedOwners.length})` : ''}
+            </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-[250px]">
+            <DropdownMenuLabel>Pilih Pemilik Risiko</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {allOwners.length > 0 ? (
+                <ScrollArea className="h-[200px]">
+                {allOwners.map((owner) => (
+                    <DropdownMenuCheckboxItem
+                    key={owner}
+                    checked={selectedOwners.includes(owner)}
+                    onCheckedChange={() => toggleOwnerFilter(owner)}
+                    >
+                    {owner}
+                    </DropdownMenuCheckboxItem>
+                ))}
+                </ScrollArea>
+            ) : (
+                <DropdownMenuItem disabled>Tidak ada pemilik risiko.</DropdownMenuItem>
+            )}
+            </DropdownMenuContent>
+        </DropdownMenu>
+
+        <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+            <Button variant="outline" className="w-full md:w-auto">
+                <Filter className="mr-2 h-4 w-4" />
+                Filter Sasaran {selectedGoalIds.length > 0 ? `(${selectedGoalIds.length})` : ''}
+            </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-[300px]">
+            <DropdownMenuLabel>Pilih Sasaran Terkait</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {relevantGoals.length > 0 ? (
+                <ScrollArea className="h-[200px]">
+                {relevantGoals.sort((a,b) => (a.code || '').localeCompare(b.code || '', undefined, {numeric: true, sensitivity: 'base'})).map((goal) => (
+                    <DropdownMenuCheckboxItem
+                    key={goal.id}
+                    checked={selectedGoalIds.includes(goal.id)}
+                    onCheckedChange={() => toggleGoalFilter(goal.id)}
+                    >
+                    {goal.code || '[Tanpa Kode]'} - {goal.name}
+                    </DropdownMenuCheckboxItem>
+                ))}
+                </ScrollArea>
+            ) : (
+                <DropdownMenuItem disabled>Tidak ada sasaran tersedia</DropdownMenuItem>
+            )}
+            </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+      
+      {selectedRiskIds.length > 0 && (
+          <div className="flex justify-end mb-4">
+            <Button variant="destructive" onClick={handleDeleteSelectedRisks} className="w-full sm:w-auto" disabled={!currentUser}>
                 <Trash2 className="mr-2 h-4 w-4" />
                 Hapus ({selectedRiskIds.length}) yang Dipilih
-                </Button>
-            )}
-        </div>
-      </div>
+            </Button>
+          </div>
+      )}
 
 
       {filteredAndSortedRisks.length === 0 ? (
@@ -657,3 +657,4 @@ export default function AllRisksPage() {
 }
 
     
+
