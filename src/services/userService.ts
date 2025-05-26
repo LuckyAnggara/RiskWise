@@ -2,11 +2,11 @@
 "use server";
 
 import { db } from '@/lib/firebase/config';
-import type { AppUser, UserRole, UPR } from '@/lib/types';
+import type { AppUser, UserRole } from '@/lib/types';
 import { USERS_COLLECTION } from './collectionNames';
 import { doc, getDoc, setDoc, serverTimestamp, Timestamp, updateDoc } from 'firebase/firestore';
 import type { User as FirebaseUser } from 'firebase/auth';
-import { getUprByName, createUpr } from './uprService';
+// Tidak perlu lagi impor dari uprService
 
 /**
  * Retrieves a user document from Firestore.
@@ -29,7 +29,7 @@ export async function getUserDocument(uid: string): Promise<AppUser | null> {
         displayName: data.displayName || null,
         photoURL: data.photoURL || null,
         role: data.role,
-        uprId: data.uprId || null,
+        uprId: data.uprId || null, // uprId akan sama dengan displayName
         createdAt 
       } as AppUser;
     }
@@ -42,66 +42,45 @@ export async function getUserDocument(uid: string): Promise<AppUser | null> {
 
 /**
  * Creates or updates a user document in Firestore.
- * Handles UPR creation or linking.
+ * displayName pengguna akan digunakan sebagai uprId.
  * @param firebaseUser The User object from Firebase Authentication.
- * @param displayNameFromForm The full name from the registration form or Google profile.
- * @param uprNameInput Optional name of the UPR.
  * @param defaultRole The default role to assign to the new user.
  * @returns The AppUser object (either existing or newly created/updated).
  */
 export async function checkAndCreateUserDocument(
   firebaseUser: FirebaseUser,
-  displayNameFromForm: string,
-  uprNameInput?: string,
   defaultRole: UserRole = 'userSatker'
 ): Promise<AppUser> {
+  console.log("Entering checkAndCreateUserDocument for UID:", firebaseUser.uid);
   const userDocRef = doc(db, USERS_COLLECTION, firebaseUser.uid);
   
   try {
     const existingUserDocSnap = await getDoc(userDocRef);
-    let uprIdToStore: string | null = null;
 
-    if (uprNameInput && uprNameInput.trim() !== "") {
-      try {
-        let upr = await getUprByName(uprNameInput.trim());
-        if (!upr) {
-          console.log(`UPR "${uprNameInput.trim()}" not found, creating new one...`);
-          upr = await createUpr(uprNameInput.trim());
-          console.log(`New UPR created: ${upr.code} - ${upr.name}`);
-        } else {
-          console.log(`Existing UPR found: ${upr.code} - ${upr.name}`);
-        }
-        uprIdToStore = upr.code;
-      } catch (uprError: any) {
-        console.error("Error handling UPR during user creation. Message:", uprError.message);
-        // Re-throw with a more specific prefix if it's a known error from uprService
-        if (uprError.message && uprError.message.startsWith("Nama UPR")) {
-            throw uprError;
-        }
-        throw new Error(`Gagal memproses UPR: ${uprError.message || String(uprError)}`);
-      }
-    }
+    // Tentukan displayName dan uprId
+    // Untuk registrasi email/password, displayName mungkin null awalnya, jadi kita buat placeholder.
+    // Untuk Google Sign-In, displayName biasanya ada.
+    const userDisplayName = firebaseUser.displayName || firebaseUser.email?.split('@')[0] || `User_${firebaseUser.uid.substring(0,5)}`;
+    const uprIdForUser = userDisplayName; // Nama UPR = Nama Pengguna
 
     if (existingUserDocSnap.exists()) {
       const existingData = existingUserDocSnap.data() as AppUser;
       const updates: Partial<AppUser> = {};
       let needsUpdate = false;
 
-      if (displayNameFromForm && existingData.displayName !== displayNameFromForm) {
-        updates.displayName = displayNameFromForm;
+      // Update displayName jika berbeda atau jika sebelumnya null dan sekarang ada dari Google
+      if (userDisplayName && existingData.displayName !== userDisplayName) {
+        updates.displayName = userDisplayName;
+        updates.uprId = userDisplayName; // Jika displayName berubah, uprId juga
         needsUpdate = true;
       }
       if (firebaseUser.photoURL && existingData.photoURL !== firebaseUser.photoURL) {
         updates.photoURL = firebaseUser.photoURL;
         needsUpdate = true;
       }
-      // Only update uprId if it's currently null and a new one is provided,
-      // or if a uprNameInput was explicitly provided (implying an attempt to set/change it)
-      if (uprNameInput && uprIdToStore && existingData.uprId !== uprIdToStore) {
-        updates.uprId = uprIdToStore;
-        needsUpdate = true;
-      } else if (!uprNameInput && existingData.uprId === undefined) { // Handle case where uprId might be missing in old docs
-        updates.uprId = null; // Explicitly set to null if not provided and missing
+      // Jika UPR ID belum ada atau berbeda dari displayName baru
+      if (existingData.uprId !== uprIdForUser) {
+        updates.uprId = uprIdForUser;
         needsUpdate = true;
       }
       
@@ -118,20 +97,20 @@ export async function checkAndCreateUserDocument(
       return { uid: firebaseUser.uid, ...(finalData || existingData), createdAt } as AppUser;
 
     } else {
+      // Buat dokumen pengguna baru
       const newUserDocData = {
         uid: firebaseUser.uid,
         email: firebaseUser.email,
-        displayName: displayNameFromForm || null, 
+        displayName: userDisplayName || null, 
         photoURL: firebaseUser.photoURL || null,    
         role: defaultRole,
-        uprId: uprIdToStore, 
+        uprId: uprIdForUser, // Nama UPR = Nama Pengguna
         createdAt: serverTimestamp(),
       };
       
       console.log('Data to create user document:', JSON.stringify(newUserDocData)); 
       await setDoc(userDocRef, newUserDocData);
       
-      // Fetch the newly created doc to resolve serverTimestamp
       const createdDocSnap = await getDoc(userDocRef);
       if (createdDocSnap.exists()) {
           const data = createdDocSnap.data();
@@ -149,9 +128,6 @@ export async function checkAndCreateUserDocument(
     }
   } catch (error: any) {
     console.error("Error in checkAndCreateUserDocument. Message:", error.message);
-    if (error.message && (error.message.startsWith("Gagal memproses UPR") || error.message.startsWith("Nama UPR"))) {
-      throw error; // Re-throw UPR related errors to be caught by the registration page
-    }
     throw new Error(`Gagal menyimpan atau memperbarui profil pengguna di database: ${error.message || String(error)}`);
   }
 }

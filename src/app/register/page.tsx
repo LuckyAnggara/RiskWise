@@ -20,22 +20,14 @@ export default function RegisterPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [fullName, setFullName] = useState('');
-  const [uprName, setUprName] = useState('');
+  // Nama Lengkap dan Nama UPR dihilangkan dari form
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!fullName.trim()) {
-      toast({ title: 'Registrasi Gagal', description: 'Nama lengkap tidak boleh kosong.', variant: 'destructive' });
-      return;
-    }
-    if (!uprName.trim()) {
-      toast({ title: 'Registrasi Gagal', description: 'Nama Unit Pemilik Risiko (UPR) tidak boleh kosong.', variant: 'destructive' });
-      return;
-    }
+    
     if (password !== confirmPassword) {
       toast({ title: 'Registrasi Gagal', description: 'Password dan konfirmasi password tidak cocok.', variant: 'destructive' });
       return;
@@ -47,26 +39,36 @@ export default function RegisterPage() {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       firebaseUser = userCredential.user;
 
+      // Tentukan displayName awal untuk pengguna baru dari email
+      const initialDisplayName = email.split('@')[0] || `User_${firebaseUser.uid.substring(0,5)}`;
+
       if (firebaseUser) {
         try {
-            await updateProfile(firebaseUser, { displayName: fullName });
+            // Update profile Firebase Auth dengan displayName awal
+            await updateProfile(firebaseUser, { displayName: initialDisplayName });
         } catch (profileError: any) {
             console.warn("Gagal memperbarui profil Firebase Auth (displayName). Pesan:", (profileError instanceof Error ? profileError.message : String(profileError)));
+            // Lanjutkan meskipun gagal update profile Auth, karena profil Firestore lebih penting untuk aplikasi ini
         }
       }
       
-      await checkAndCreateUserDocument(firebaseUser, fullName, uprName, 'userSatker');
+      // Buat/update dokumen pengguna di Firestore.
+      // `checkAndCreateUserDocument` akan menggunakan `firebaseUser.displayName` (yang baru diupdate)
+      // atau fallback jika masih null, dan akan mengatur uprId berdasarkan displayName tersebut.
+      await checkAndCreateUserDocument(firebaseUser, 'userSatker'); 
+      
       toast({ title: 'Registrasi Berhasil', description: 'Akun Anda telah berhasil dibuat. Silakan masuk.' });
       router.push('/login'); 
     
     } catch (error: any) {
+      // Error ini bisa berasal dari createUserWithEmailAndPassword atau checkAndCreateUserDocument
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.error("Kesalahan pada proses registrasi. Pesan:", errorMessage);
       
       let userMessage = "Terjadi kesalahan pada proses registrasi.";
-      if (firebaseUser) { 
-        userMessage = `Registrasi Akun Berhasil, Profil/UPR Gagal Disimpan. Pesan: ${errorMessage}. Silakan coba login atau hubungi administrator.`;
-      } else { 
+      if (firebaseUser) { // Akun Auth berhasil dibuat, tapi Firestore/UPR gagal
+        userMessage = `Registrasi Akun Berhasil, Profil Gagal Disimpan. Pesan: ${errorMessage}. Silakan coba login atau hubungi administrator.`;
+      } else { // Pembuatan akun Auth itu sendiri yang gagal
         if (error.code === 'auth/email-already-in-use') {
           userMessage = 'Alamat email ini sudah terdaftar.';
         } else if (error.code === 'auth/weak-password') {
@@ -98,30 +100,7 @@ export default function RegisterPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <form onSubmit={handleRegister} className="space-y-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="fullName">Nama Lengkap</Label>
-              <Input
-                id="fullName"
-                type="text"
-                placeholder="Nama lengkap Anda"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                required
-                disabled={isLoading}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="uprName">Nama Unit Pemilik Risiko (UPR)</Label>
-              <Input
-                id="uprName"
-                type="text"
-                placeholder="Contoh: Biro Perencanaan Keuangan"
-                value={uprName}
-                onChange={(e) => setUprName(e.target.value)}
-                required
-                disabled={isLoading}
-              />
-            </div>
+            {/* Input Nama Lengkap dan Nama UPR dihilangkan */}
             <div className="space-y-1.5">
               <Label htmlFor="email">Email</Label>
               <Input
