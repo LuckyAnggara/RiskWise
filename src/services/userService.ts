@@ -22,7 +22,7 @@ export async function getUserDocument(uid: string): Promise<AppUser | null> {
       const data = userDocSnap.data();
       const createdAt = data.createdAt instanceof Timestamp 
                         ? data.createdAt.toDate().toISOString() 
-                        : (data.createdAt ? new Date(data.createdAt).toISOString() : new Date().toISOString());
+                        : (data.createdAt && typeof data.createdAt === 'string' ? new Date(data.createdAt).toISOString() : new Date().toISOString());
       return { 
         uid: userDocSnap.id, 
         email: data.email,
@@ -36,8 +36,7 @@ export async function getUserDocument(uid: string): Promise<AppUser | null> {
     return null;
   } catch (error: any) {
     console.error("Error getting user document from Firestore. Message:", error.message);
-    // return null or throw error depending on how you want to handle it
-    throw new Error(`Gagal mengambil dokumen pengguna: ${error.message || error}`);
+    throw new Error(`Gagal mengambil dokumen pengguna: ${error.message || String(error)}`);
   }
 }
 
@@ -75,7 +74,11 @@ export async function checkAndCreateUserDocument(
         uprIdToStore = upr.code;
       } catch (uprError: any) {
         console.error("Error handling UPR during user creation. Message:", uprError.message);
-        throw new Error(`Gagal memproses UPR: ${uprError.message || uprError}`);
+        // Re-throw with a more specific prefix if it's a known error from uprService
+        if (uprError.message && uprError.message.startsWith("Nama UPR")) {
+            throw uprError;
+        }
+        throw new Error(`Gagal memproses UPR: ${uprError.message || String(uprError)}`);
       }
     }
 
@@ -88,21 +91,27 @@ export async function checkAndCreateUserDocument(
         updates.displayName = displayNameFromForm;
         needsUpdate = true;
       }
+      if (firebaseUser.photoURL && existingData.photoURL !== firebaseUser.photoURL) {
+        updates.photoURL = firebaseUser.photoURL;
+        needsUpdate = true;
+      }
       // Only update uprId if it's currently null and a new one is provided,
-      // or if a uprNameInput was provided (implying an attempt to set/change it)
+      // or if a uprNameInput was explicitly provided (implying an attempt to set/change it)
       if (uprNameInput && uprIdToStore && existingData.uprId !== uprIdToStore) {
         updates.uprId = uprIdToStore;
         needsUpdate = true;
+      } else if (!uprNameInput && existingData.uprId === undefined) { // Handle case where uprId might be missing in old docs
+        updates.uprId = null; // Explicitly set to null if not provided and missing
+        needsUpdate = true;
       }
       
-      if (needsUpdate) {
-        console.log('Data to update user document:', updates);
+      if (needsUpdate && Object.keys(updates).length > 0) {
+        console.log('Data to update user document:', JSON.stringify(updates));
         await updateDoc(userDocRef, updates);
       }
       
-      // Re-fetch to ensure we return the most current data including potentially updated fields
-      const updatedDocSnap = await getDoc(userDocRef);
-      const finalData = updatedDocSnap.data();
+      const finalDocSnap = await getDoc(userDocRef);
+      const finalData = finalDocSnap.data();
       const createdAt = finalData?.createdAt instanceof Timestamp 
                         ? finalData.createdAt.toDate().toISOString() 
                         : (existingData.createdAt || new Date().toISOString());
@@ -112,14 +121,14 @@ export async function checkAndCreateUserDocument(
       const newUserDocData = {
         uid: firebaseUser.uid,
         email: firebaseUser.email,
-        displayName: displayNameFromForm || null,
-        photoURL: firebaseUser.photoURL || null,
+        displayName: displayNameFromForm || null, 
+        photoURL: firebaseUser.photoURL || null,    
         role: defaultRole,
-        uprId: uprIdToStore,
+        uprId: uprIdToStore, 
         createdAt: serverTimestamp(),
       };
       
-      console.log('Data to create user document:', newUserDocData); // Logging data before write
+      console.log('Data to create user document:', JSON.stringify(newUserDocData)); 
       await setDoc(userDocRef, newUserDocData);
       
       // Fetch the newly created doc to resolve serverTimestamp
@@ -128,23 +137,21 @@ export async function checkAndCreateUserDocument(
           const data = createdDocSnap.data();
           const createdAt = data.createdAt instanceof Timestamp 
                             ? data.createdAt.toDate().toISOString() 
-                            : new Date().toISOString(); // Fallback
+                            : new Date().toISOString(); 
           return { 
               uid: createdDocSnap.id, 
               ...data,
               createdAt
           } as AppUser;
       } else {
-          // This case should ideally not happen if setDoc was successful
           throw new Error("Gagal mengambil profil pengguna yang baru dibuat dari database.");
       }
     }
   } catch (error: any) {
     console.error("Error in checkAndCreateUserDocument. Message:", error.message);
-    // Re-throw specific errors if needed, or a generic one
-    if (error.message.startsWith("Gagal memproses UPR")) {
-      throw error;
+    if (error.message && (error.message.startsWith("Gagal memproses UPR") || error.message.startsWith("Nama UPR"))) {
+      throw error; // Re-throw UPR related errors to be caught by the registration page
     }
-    throw new Error(`Gagal menyimpan atau memperbarui profil pengguna di database: ${error.message || error}`);
+    throw new Error(`Gagal menyimpan atau memperbarui profil pengguna di database: ${error.message || String(error)}`);
   }
 }

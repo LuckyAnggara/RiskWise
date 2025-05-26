@@ -33,7 +33,7 @@ export default function RegisterPage() {
       return;
     }
     if (!uprName.trim()) {
-      toast({ title: 'Registrasi Gagal', description: 'Nama UPR tidak boleh kosong.', variant: 'destructive' });
+      toast({ title: 'Registrasi Gagal', description: 'Nama Unit Pemilik Risiko (UPR) tidak boleh kosong.', variant: 'destructive' });
       return;
     }
     if (password !== confirmPassword) {
@@ -47,31 +47,26 @@ export default function RegisterPage() {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       firebaseUser = userCredential.user;
 
-      // Update Firebase Auth profile with displayName (best effort)
       if (firebaseUser) {
         try {
             await updateProfile(firebaseUser, { displayName: fullName });
         } catch (profileError: any) {
-            console.warn("Gagal memperbarui profil Firebase Auth (displayName). Pesan:", profileError.message);
-            // Continue even if profile update fails, Firestore document is more critical here
+            console.warn("Gagal memperbarui profil Firebase Auth (displayName). Pesan:", (profileError instanceof Error ? profileError.message : String(profileError)));
         }
       }
       
-      // Attempt to create user document in Firestore with UPR info
       await checkAndCreateUserDocument(firebaseUser, fullName, uprName, 'userSatker');
       toast({ title: 'Registrasi Berhasil', description: 'Akun Anda telah berhasil dibuat. Silakan masuk.' });
       router.push('/login'); 
     
     } catch (error: any) {
-      console.error("Kesalahan pada proses registrasi. Pesan:", error.message);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error("Kesalahan pada proses registrasi. Pesan:", errorMessage);
+      
       let userMessage = "Terjadi kesalahan pada proses registrasi.";
-      if (firebaseUser) { // Auth user created, but Firestore/UPR part failed
-        userMessage = `Registrasi Akun Berhasil, Profil/UPR Gagal Disimpan. Pesan: ${error.message || error}. Silakan coba login atau hubungi administrator.`;
-        // Redirect to login page because auth user was created
-        // No need to explicitly push to login here if we let finally handle setIsLoading
-        // and the user will likely try to login anyway.
-        // router.push('/login'); 
-      } else { // Auth user creation failed
+      if (firebaseUser) { 
+        userMessage = `Registrasi Akun Berhasil, Profil/UPR Gagal Disimpan. Pesan: ${errorMessage}. Silakan coba login atau hubungi administrator.`;
+      } else { 
         if (error.code === 'auth/email-already-in-use') {
           userMessage = 'Alamat email ini sudah terdaftar.';
         } else if (error.code === 'auth/weak-password') {
@@ -79,7 +74,7 @@ export default function RegisterPage() {
         } else if (error.code === 'auth/invalid-email') {
           userMessage = 'Format email tidak valid.';
         } else {
-          userMessage = `Registrasi Akun Gagal. Pesan: ${error.message || error}`;
+          userMessage = `Registrasi Akun Gagal. Pesan: ${errorMessage}`;
         }
       }
       toast({ 
