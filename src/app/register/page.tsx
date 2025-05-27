@@ -1,4 +1,3 @@
-
 // src/app/register/page.tsx
 "use client";
 
@@ -36,21 +35,22 @@ export default function RegisterPage() {
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       firebaseUser = userCredential.user;
-      
-      // Panggil checkAndCreateUserDocument. 
+
+      // Panggil checkAndCreateUserDocument.
       // displayNameFromForm tidak lagi diteruskan dari sini, akan null/undefined.
       // userService akan menginisialisasi profil sebagai "belum lengkap".
-      await checkAndCreateUserDocument(firebaseUser, 'userSatker'); 
-      
+      // checkAndCreateUserDocument now throws simple errors, reducing recursion risk
+      await checkAndCreateUserDocument(firebaseUser, 'userSatker');
+
       toast({ title: 'Akun Berhasil Dibuat', description: 'Silakan lengkapi profil Anda untuk melanjutkan.' });
       router.push('/'); // Arahkan ke dashboard, AppLayout akan handle redirect ke /profile-setup
 
-    } catch (authOrProfileError: any) {
-      console.error("Kesalahan pada proses registrasi:", authOrProfileError.message || String(authOrProfileError));
+    } catch (error: any) { // Catch any error from the process
+      console.error("Kesalahan pada proses registrasi (register page):", error.message || error); // Log the error message or the error itself
       let userMessage = "Terjadi kesalahan pada proses registrasi.";
-      
-      if (authOrProfileError && authOrProfileError.code) { 
-        switch (authOrProfileError.code) {
+
+      if (error && error.code) { // Check for Firebase Auth errors
+        switch (error.code) {
           case 'auth/email-already-in-use':
             userMessage = 'Alamat email ini sudah terdaftar.';
             break;
@@ -60,19 +60,23 @@ export default function RegisterPage() {
           case 'auth/invalid-email':
             userMessage = 'Format email tidak valid.';
             break;
+           case 'auth/network-request-failed': // Added network error
+             userMessage = 'Gagal terhubung ke server. Periksa koneksi internet Anda.';
+             break;
           default:
-            userMessage = `Registrasi Akun Gagal: ${authOrProfileError.message || 'Error tidak diketahui.'}`;
+            // Catch any other auth errors
+            userMessage = `Registrasi Akun Gagal: ${error.message || 'Error tidak diketahui.'}`;
         }
-      } else if (authOrProfileError instanceof Error) {
-        // Ini mungkin error dari checkAndCreateUserDocument atau error lain
-         userMessage = `Registrasi Akun Berhasil, tetapi gagal memproses profil awal: ${authOrProfileError.message}. Silakan coba login.`;
+      } else if (error && error.message) { // Prioritize error.message if available
+        // Catch errors thrown from userService (like Firestore failures)
+        userMessage = `Registrasi Gagal: ${error.message}`;
       }
-      
-      toast({ 
-        title: 'Registrasi Gagal', 
-        description: userMessage, 
+
+      toast({
+        title: 'Registrasi Gagal',
+        description: userMessage,
         variant: 'destructive',
-        duration: 7000 
+        duration: 7000
       });
     } finally {
       setIsLoading(false);

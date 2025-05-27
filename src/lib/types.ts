@@ -123,6 +123,7 @@ export interface AppUser {
   createdAt: string;
   updatedAt?: string;
   activePeriod?: string | null;
+  uprId?:string | null;
   availablePeriods?: string[] | null;
 }
 
