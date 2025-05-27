@@ -22,7 +22,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Checkbox } from "@/components/ui/checkbox";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useAuth } from '@/contexts/auth-context';
-import { getGoals, type GoalsResult, getGoalById } from '@/services/goalService'; // Updated import
+import { getGoalById } from '@/services/goalService'; 
 import { getPotentialRisksByGoalId, addPotentialRisk, deletePotentialRiskAndSubCollections } from '@/services/potentialRiskService';
 import { getRiskCausesByPotentialRiskId } from '@/services/riskCauseService';
 
@@ -55,7 +55,7 @@ export default function GoalRisksPage() {
 
   const { toast } = useToast();
   
-  const currentUprId = useMemo(() => appUser?.uprId || appUser?.displayName || null, [appUser]);
+  const currentUprId = useMemo(() => appUser?.uprId || null, [appUser]);
   const currentPeriod = useMemo(() => appUser?.activePeriod || DEFAULT_PERIOD, [appUser]);
 
   const loadData = useCallback(async () => {
@@ -69,12 +69,13 @@ export default function GoalRisksPage() {
     }
     setIsLoading(true);
     try {
-      const currentGoal = await getGoalById(goalId); // Use getGoalById
-      setGoal(currentGoal);
-
+      const currentGoal = await getGoalById(goalId); 
+      
       const uniqueOwners = new Set<string>();
       const causeCounts: Record<string,number> = {};
+
       if (currentGoal && currentGoal.uprId === currentUprId && currentGoal.period === currentPeriod) {
+        setGoal(currentGoal);
         const currentPotentialRisks = await getPotentialRisksByGoalId(goalId, currentUprId, currentPeriod);
         setPotentialRisks(currentPotentialRisks);
         for (const pRisk of currentPotentialRisks) {
@@ -82,15 +83,15 @@ export default function GoalRisksPage() {
           const causes = await getRiskCausesByPotentialRiskId(pRisk.id, currentUprId, currentPeriod);
           causeCounts[pRisk.id] = causes.length;
         }
-      } else if (currentGoal) { // Goal found, but not for current UPR/Period context
+      } else if (currentGoal) { 
         toast({
           title: "Konteks Tidak Cocok",
-          description: `Sasaran "${currentGoal.name}" tidak termasuk dalam UPR/Periode saat ini.`,
+          description: `Sasaran "${currentGoal.name}" tidak termasuk dalam UPR/Periode aktif saat ini.`,
           variant: "warning",
         });
-        setGoal(null); // Don't display it
+        setGoal(null); 
         setPotentialRisks([]);
-      } else { // Goal not found at all
+      } else { 
          setGoal(null);
          setPotentialRisks([]);
       }
@@ -116,41 +117,22 @@ export default function GoalRisksPage() {
     }
   }, [loadData, currentUprId, currentPeriod, goalId, currentUser, authLoading, appUser]);
 
-  const handlePotentialRisksIdentified = async (newPRSuggestions: Array<{ description: string; category: RiskCategory | null }>) => {
-    if (!goal || !currentUser || !currentUprId || !currentPeriod) {
-        toast({ title: "Konteks Tidak Lengkap", description: "Sasaran atau pengguna tidak ditemukan.", variant: "destructive" });
-        return;
-    }
-    setIsLoading(true);
-    let currentSequence = potentialRisks.length;
-    const creationPromises = newPRSuggestions.map(suggestion => {
-        currentSequence++;
-        const newRiskData: Omit<PotentialRisk, 'id' | 'identifiedAt' | 'uprId' | 'period' | 'userId' | 'sequenceNumber'> = {
-            goalId: goal.id,
-            description: suggestion.description,
-            category: suggestion.category,
-            owner: null, 
-        };
-        return addPotentialRisk(newRiskData, goal.id, currentUprId, currentPeriod, currentUser.uid, currentSequence);
-    });
+  // This function is called by RiskIdentificationCard AFTER new risks from AI have been saved to Firestore.
+  // Its only job now is to refresh the local list.
+  const handlePotentialRisksIdentified = (newlyCreatedPRsFromAI: PotentialRisk[]) => {
+    if (!goal) return;
+    
+    // Reload data to ensure consistency and avoid duplicates
+    loadData(); 
 
-    try {
-        const createdRisks = await Promise.all(creationPromises);
-        toast({
-            title: "Potensi Risiko Disimpan!",
-            description: `${createdRisks.length} potensi risiko baru telah ditambahkan dari saran AI.`,
-        });
-        loadData(); 
-    } catch (error: any) {
-        console.error("Error saving AI suggested risks:", error.message);
-        const errorMessage = error instanceof Error ? error.message : "Gagal menyimpan saran risiko dari AI.";
-        toast({ title: "Gagal Menyimpan Risiko", description: errorMessage, variant: "destructive" });
-    } finally {
-        setIsLoading(false);
-    }
+    toast({
+        title: "Potensi Risiko Disimpan!",
+        description: `${newlyCreatedPRsFromAI.length} potensi risiko baru dari AI telah ditambahkan.`,
+    });
   };
   
   const handleDeleteSingleRisk = (pRisk: PotentialRisk) => {
+    if(!currentUser) return;
     setRiskToDelete(pRisk);
     setIsSingleDeleteDialogOpen(true);
   };
@@ -208,7 +190,7 @@ export default function GoalRisksPage() {
   };
 
   const handleDeleteSelectedRisks = () => {
-    if (selectedRiskIds.length === 0) {
+    if (!currentUser || selectedRiskIds.length === 0) {
         toast({ title: "Tidak Ada Risiko Dipilih", description: "Harap pilih setidaknya satu risiko untuk dihapus.", variant: "destructive" });
         return;
     }
@@ -295,11 +277,10 @@ export default function GoalRisksPage() {
   }
   
   if (!currentUser && !authLoading) {
-    // AppLayout should handle redirect
-    return null;
+    return null; 
   }
 
-  if (isLoading && !goal) { // Initial loading for the goal itself
+  if (isLoading && !goal) { 
      return (
       <div className="flex flex-col items-center justify-center h-screen">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
@@ -320,9 +301,9 @@ export default function GoalRisksPage() {
     );
   }
   
-  if (!goal) return null; // Should be caught by above, but good for TS safety
+  if (!goal) return null; 
 
-  const totalTableColumns = 7; // Checkbox, Kode, Deskripsi, Kategori, Pemilik, Penyebab, Aksi
+  const totalTableColumns = 7; 
 
   return (
     <div className="space-y-8">
@@ -465,7 +446,7 @@ export default function GoalRisksPage() {
             </div>
         )}
 
-        {isLoading && potentialRisks.length === 0 && ( // Show specific loading for the list if goal is loaded but risks are not
+        {isLoading && potentialRisks.length === 0 && ( 
              <div className="flex flex-col items-center justify-center py-10">
                 <Loader2 className="h-8 w-8 animate-spin text-primary mb-3" />
                 <p className="text-muted-foreground">Memuat potensi risiko...</p>
@@ -496,7 +477,7 @@ export default function GoalRisksPage() {
                 onDeletePotentialRisk={() => handleDeleteSingleRisk(pRisk)}
                 isSelected={selectedRiskIds.includes(pRisk.id)}
                 onSelectRisk={(checked) => handleSelectRisk(pRisk.id, checked)}
-                onDuplicateRisk={() => handleDuplicateRisk(pRisk.id)} // Pass ID
+                onDuplicateRisk={() => handleDuplicateRisk(pRisk.id)} 
                 canDelete={!!currentUser}
               />
             ))}
