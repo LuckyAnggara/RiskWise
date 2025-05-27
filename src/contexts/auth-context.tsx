@@ -1,48 +1,75 @@
-// src/contexts/auth-context.tsx
+
 "use client";
 
 import React, { createContext, useContext, useEffect, useState, type ReactNode, useCallback } from 'react';
 import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
 import { auth } from '@/lib/firebase/config';
 import { Loader2 } from 'lucide-react';
-import { checkAndCreateUserDocument, getUserDocument } from '@/services/userService';
+import { getUserDocument } from '@/services/userService';
 import type { AppUser } from '@/lib/types';
 
 interface AuthContextType {
   currentUser: FirebaseUser | null;
   appUser: AppUser | null;
   loading: boolean;
+  isProfileComplete: boolean;
   refreshAppUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const DEFAULT_FALLBACK_UPR_ID = 'Pengguna'; // Digunakan jika displayName null
+const DEFAULT_PERIOD = new Date().getFullYear().toString();
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   const [appUser, setAppUser] = useState<AppUser | null>(null);
-  const [authLoading, setAuthLoading] = useState(true);
-  const [profileLoading, setProfileLoading] = useState(false);
+  const [authLoading, setAuthLoading] = useState(true); // Loading status for Firebase Auth
+  const [profileLoading, setProfileLoading] = useState(false); // Loading status for Firestore profile
+  const [isProfileComplete, setIsProfileComplete] = useState(false);
 
-  const fetchAppUser = useCallback(async (user: FirebaseUser | null, displayNameFromForm?: string | null) => {
+  const fetchAppUser = useCallback(async (user: FirebaseUser | null) => {
     if (user) {
-      console.log(`[AuthContext] fetchAppUser called for UID: ${user.uid}`);
+      console.log("[AuthContext] fetchAppUser: Called for UID:", user.uid);
       setProfileLoading(true);
       try {
-        // Always call checkAndCreateUserDocument to handle new users or sync existing ones
-        // In diagnostic mode, this will return a mock or null.
-        const userDoc = await checkAndCreateUserDocument(user, 'userSatker', displayNameFromForm);
-        console.log("[AuthContext] fetchAppUser: AppUser data after checkAndCreateUserDocument:", JSON.stringify(userDoc));
-        setAppUser(userDoc);
+        const userDoc = await getUserDocument(user.uid);
+        console.log("[AuthContext] fetchAppUser: AppUser data from Firestore:", JSON.stringify(userDoc));
+        if (userDoc) {
+          setAppUser(userDoc);
+          // Cek kelengkapan profil di sini
+          const profileIsComplete = !!(userDoc.displayName && userDoc.uprId && userDoc.activePeriod && userDoc.availablePeriods && userDoc.availablePeriods.length > 0);
+          setIsProfileComplete(profileIsComplete);
+          console.log("[AuthContext] fetchAppUser: Profile complete status:", profileIsComplete);
+        } else {
+          // Pengguna ada di Auth, tapi belum ada dokumen di Firestore, atau profil belum lengkap
+          // Buat objek AppUser minimal untuk menghindari error, dan tandai profil belum lengkap
+          setAppUser({
+            uid: user.uid,
+            email: user.email,
+            displayName: user.displayName || null, // Ambil dari Firebase Auth jika ada
+            photoURL: user.photoURL || null,
+            role: 'userSatker', // Role default
+            uprId: user.displayName || null, // UPR ID awal sama dengan displayName jika ada
+            activePeriod: null,
+            availablePeriods: [],
+            createdAt: new Date().toISOString(), // Placeholder
+          });
+          setIsProfileComplete(false);
+          console.log("[AuthContext] fetchAppUser: No Firestore doc or incomplete, profile set to incomplete.");
+        }
       } catch (error: any) {
-        const errorMessage = error instanceof Error && error.message ? error.message : String(error);
-        console.error("[AuthContext] fetchAppUser: Failed to fetch/create AppUser from Firestore. Error type:", typeof error, "Message:", errorMessage);
-        setAppUser(null);
+        const errorMessage = error.message && typeof error.message === 'string' ? error.message : String(error);
+        console.error("[AuthContext] fetchAppUser: Failed to fetch/create AppUser from Firestore:", errorMessage);
+        setAppUser(null); // Pastikan appUser null jika ada error
+        setIsProfileComplete(false);
       } finally {
         setProfileLoading(false);
       }
     } else {
       console.log("[AuthContext] fetchAppUser: No Firebase user, setting appUser to null.");
       setAppUser(null);
+      setIsProfileComplete(false);
       setProfileLoading(false);
     }
   }, []);
@@ -52,14 +79,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAuthLoading(true);
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       console.log("[AuthContext] onAuthStateChanged: Firebase user state changed. User:", user ? user.uid : "null");
-      setCurrentUser(user); // Set Firebase user immediately
-      // Don't set authLoading to false until profile fetching attempt is also done
+      setCurrentUser(user);
       try {
         await fetchAppUser(user);
       } catch (error) {
-        // Error already logged in fetchAppUser
+        console.error("[AuthContext] onAuthStateChanged: Error during fetchAppUser call:", error);
       } finally {
-        setAuthLoading(false); // Firebase Auth state and profile fetch attempt are both settled
+        setAuthLoading(false);
       }
     });
 
@@ -67,33 +93,56 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.log("[AuthContext] onAuthStateChanged listener detached.");
       unsubscribe();
     };
-  }, [fetchAppUser]); // fetchAppUser is stable due to useCallback([])
+  }, [fetchAppUser]);
 
   const refreshAppUser = useCallback(async () => {
     if (currentUser) {
       console.log(`[AuthContext] refreshAppUser called for UID: ${currentUser.uid}`);
-      setProfileLoading(true);
+      setProfileLoading(true); // Set loading true before fetching
       try {
-        // In diagnostic mode, this will use the diagnostic version of getUserDocument
-        const userProfile = await getUserDocument(currentUser.uid);
-        console.log("[AuthContext] refreshAppUser: AppUser data from getUserDocument:", JSON.stringify(userProfile));
-        setAppUser(userProfile);
+        const userDoc = await getUserDocument(currentUser.uid);
+        console.log("[AuthContext] refreshAppUser: AppUser data from Firestore:", JSON.stringify(userDoc));
+        if (userDoc) {
+          setAppUser(userDoc);
+          const profileIsComplete = !!(userDoc.displayName && userDoc.uprId && userDoc.activePeriod && userDoc.availablePeriods && userDoc.availablePeriods.length > 0);
+          setIsProfileComplete(profileIsComplete);
+          console.log("[AuthContext] refreshAppUser: Profile complete status:", profileIsComplete);
+        } else {
+          // Jika dokumen tidak ditemukan setelah refresh (seharusnya tidak terjadi jika update berhasil)
+          // Tetap set ke minimal dan incomplete
+           setAppUser({
+            uid: currentUser.uid,
+            email: currentUser.email,
+            displayName: currentUser.displayName || null,
+            photoURL: currentUser.photoURL || null,
+            role: 'userSatker',
+            uprId: currentUser.displayName || null,
+            activePeriod: null,
+            availablePeriods: [],
+            createdAt: new Date().toISOString(),
+          });
+          setIsProfileComplete(false);
+          console.log("[AuthContext] refreshAppUser: No Firestore doc found after refresh, profile set to incomplete.");
+        }
       } catch (error: any) {
-        const errorMessage = error instanceof Error && error.message ? error.message : String(error);
-        console.error("[AuthContext] refreshAppUser: Error during getUserDocument call. Error type:", typeof error, "Message:", errorMessage);
+        const errorMessage = error.message && typeof error.message === 'string' ? error.message : String(error);
+        console.error("[AuthContext] refreshAppUser: Error fetching user document:", errorMessage);
         setAppUser(null);
+        setIsProfileComplete(false);
       } finally {
-        setProfileLoading(false);
+        setProfileLoading(false); // Ensure loading is false after attempt
       }
     } else {
       console.log("[AuthContext] refreshAppUser: No current user, skipping refresh.");
-      setProfileLoading(false); // Ensure loading is false if no user
+      setAppUser(null);
+      setIsProfileComplete(false);
+      setProfileLoading(false);
     }
   }, [currentUser]);
 
-  const isLoading = authLoading || profileLoading;
+  const isLoadingOverall = authLoading || profileLoading;
 
-  if (isLoading) {
+  if (isLoadingOverall) {
     return (
       <div className="flex flex-col items-center justify-center h-screen bg-background">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
@@ -105,7 +154,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ currentUser, appUser, loading: isLoading, refreshAppUser }}>
+    <AuthContext.Provider value={{ currentUser, appUser, loading: isLoadingOverall, isProfileComplete, refreshAppUser }}>
       {children}
     </AuthContext.Provider>
   );

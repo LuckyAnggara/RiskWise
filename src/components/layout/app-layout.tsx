@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import NextLink from 'next/link'; // Tetap gunakan alias jika ada next-intl Link
+import NextLink from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useTheme } from "next-themes";
 import {
@@ -20,18 +20,19 @@ import { SidebarNav } from "./sidebar-nav";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { LogOut, User, Settings as SettingsIcon, Loader2, Sun, Moon } from "lucide-react";
+import { LogOut, Settings as SettingsIcon, Loader2, Sun, Moon, AlertTriangle } from "lucide-react";
 import { Toaster } from "@/components/ui/toaster";
 import { useAuth } from '@/contexts/auth-context';
 import { auth } from '@/lib/firebase/config';
 import { signOut } from 'firebase/auth';
 import { useToast } from "@/hooks/use-toast";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
-const DEFAULT_FALLBACK_UPR_ID = 'UPR Pengguna';
+const DEFAULT_FALLBACK_UPR_ID = 'Pengguna';
 const DEFAULT_PERIOD = new Date().getFullYear().toString();
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
-  const { currentUser, appUser, loading: authLoading, refreshAppUser } = useAuth(); // Ambil appUser dari context
+  const { currentUser, appUser, loading, isProfileComplete, refreshAppUser } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const { toast } = useToast();
@@ -41,49 +42,37 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const currentPeriodDisplay = appUser?.activePeriod || DEFAULT_PERIOD;
 
   useEffect(() => {
-    console.log("[AppLayout] useEffect triggered. authLoading:", authLoading, "currentUser:", !!currentUser, "appUser:", !!appUser, "pathname:", pathname);
-    const publicPaths = ['/login', '/register']; // Halaman profil setup tidak lagi di sini, akan dihandle terpisah
-    const profileSetupPath = '/profile-setup';
+    console.log("[AppLayout] useEffect triggered. Loading:", loading, "CurrentUser:", !!currentUser, "AppUser:", !!appUser, "isProfileComplete:", isProfileComplete, "Pathname:", pathname);
+    const publicPaths = ['/login', '/register'];
+    const settingsPath = '/settings';
+    // Halaman /profile-setup tidak lagi relevan karena alur dipindahkan ke /settings
 
-    if (!authLoading) {
+    if (!loading) { // Hanya jalankan logika redirect jika auth dan profile loading selesai
       if (currentUser) {
         // Pengguna sudah login
-        if (!appUser) {
-          // Data AppUser masih dimuat atau tidak ada, jangan lakukan apa-apa di sini, tunggu AuthContext
-          console.log("[AppLayout] User logged in, but appUser is still null/undefined. AuthContext should handle fetching.");
-          // Potensi menampilkan loading global jika appUser sedang difetch dan penting untuk layout
-        } else {
-          // AppUser sudah ada
-          const isProfileComplete = appUser.displayName && appUser.uprId && appUser.activePeriod && appUser.availablePeriods && appUser.availablePeriods.length > 0;
-          console.log("[AppLayout] appUser exists. Profile complete:", isProfileComplete);
-
-          if (!isProfileComplete && pathname !== profileSetupPath) {
-            console.log("[AppLayout] Profile incomplete, redirecting to /profile-setup from", pathname);
-            router.push(profileSetupPath);
-          } else if (isProfileComplete && pathname === profileSetupPath) {
-            console.log("[AppLayout] Profile complete and on setup page, redirecting to /");
-            router.push('/');
-          } else if (publicPaths.includes(pathname)) {
-             console.log("[AppLayout] User logged in but on public path, redirecting to /");
-            router.push('/');
-          }
+        if (!isProfileComplete && pathname !== settingsPath) {
+          console.log("[AppLayout] Profile incomplete, redirecting to /settings from", pathname);
+          router.push(settingsPath);
+        } else if (isProfileComplete && publicPaths.includes(pathname)) {
+          // Jika profil sudah lengkap tapi pengguna mencoba akses halaman login/register
+          console.log("[AppLayout] Profile complete and on public path, redirecting to /");
+          router.push('/');
         }
       } else {
         // Pengguna belum login
-        if (!publicPaths.includes(pathname) && pathname !== profileSetupPath) {
-          console.log("[AppLayout] User not logged in and not on public/setup path, redirecting to /login from", pathname);
+        if (!publicPaths.includes(pathname)) {
+          console.log("[AppLayout] User not logged in and not on public path, redirecting to /login from", pathname);
           router.push('/login');
         }
       }
     }
-  }, [currentUser, appUser, authLoading, router, pathname]);
-
+  }, [currentUser, appUser, loading, isProfileComplete, router, pathname]);
 
   const handleLogout = async () => {
     try {
       await signOut(auth);
       toast({ title: 'Keluar Berhasil', description: 'Anda telah berhasil keluar.' });
-      // refreshAppUser(); // Reset appUser di context setelah logout (opsional, karena onAuthStateChanged akan handle)
+      // refreshAppUser(); // AuthContext akan menangani ini via onAuthStateChanged
       router.push('/login');
     } catch (error) {
       console.error("Error logging out:", error);
@@ -91,53 +80,36 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // State loading global berdasarkan AuthContext
-  if (authLoading) {
+  if (loading) {
      return (
       <div className="flex flex-col items-center justify-center h-screen bg-background">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
-        <p className="text-xl text-muted-foreground">Memverifikasi sesi...</p>
+        <p className="text-xl text-muted-foreground">Memverifikasi sesi & profil...</p>
         <Toaster />
       </div>
     );
   }
 
-  // Jika pengguna ada, tetapi appUser belum ada (masih loading dari Firestore setelah auth state berubah)
-  // Ini adalah state antara setelah Firebase Auth selesai tapi sebelum data Firestore user terambil
-  if (currentUser && !appUser) {
-    return (
-      <div className="flex flex-col items-center justify-center h-screen bg-background">
-        <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
-        <p className="text-xl text-muted-foreground">Memuat data profil pengguna...</p>
-        <Toaster />
-      </div>
-    );
-  }
-
-  // Jika tidak ada currentUser DAN path saat ini adalah halaman publik (login/register)
-  // atau jika sedang di halaman profile-setup (karena halaman ini punya layout sendiri)
-  const isPublicPathForUnauthenticated = ['/login', '/register'].includes(pathname);
-  if ((!currentUser && isPublicPathForUnauthenticated) || pathname === '/profile-setup') {
-    console.log("[AppLayout] Rendering only children for path:", pathname);
+  const isPublicPage = ['/login', '/register'].includes(pathname);
+  if (!currentUser && isPublicPage) {
     return <>{children}<Toaster /></>;
   }
   
-  // Jika tidak ada currentUser dan bukan di halaman publik atau profile-setup,
-  // seharusnya redirect ke login sudah terjadi. Jika belum, tampilkan loading.
-  if (!currentUser) {
-    console.log("[AppLayout] No currentUser and not on a public/setup path, showing loading/redirecting...");
+  if (!currentUser && !isPublicPage) {
+    // Ini seharusnya sudah ditangani oleh useEffect di atas yang mengarahkan ke /login
+    // Namun, sebagai fallback, tampilkan loading atau pesan
     return (
       <div className="flex flex-col items-center justify-center h-screen bg-background">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
-        <p className="text-xl text-muted-foreground">Mengarahkan...</p>
+        <p className="text-xl text-muted-foreground">Mengarahkan ke halaman login...</p>
         <Toaster />
       </div>
     );
   }
   
-  // Pada titik ini, currentUser ada, appUser ada, dan profil seharusnya lengkap
-  // atau pengguna berada di halaman profile-setup yang ditangani oleh kondisi di atas.
-  // Jika profil tidak lengkap dan bukan di /profile-setup, redirect seharusnya sudah terjadi.
+  // Jika currentUser ada, tapi appUser masih null (seharusnya tidak terjadi jika loading false)
+  // Atau jika !isProfileComplete dan berada di halaman selain /settings (akan diarahkan oleh useEffect)
+  // Kita tetap render layout dasar, useEffect yang akan mengarahkan jika perlu.
 
   return (
     <SidebarProvider defaultOpen>
@@ -152,7 +124,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         </SidebarHeader>
         <Separator className="group-data-[collapsible=icon]:hidden" />
         <SidebarContent>
-          <SidebarNav />
+          <SidebarNav profileIncomplete={currentUser ? !isProfileComplete : false} />
         </SidebarContent>
         <Separator className="group-data-[collapsible=icon]:hidden" />
         <SidebarFooter className="p-2 group-data-[collapsible=icon]:hidden">
@@ -167,7 +139,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             <SidebarTrigger className="md:hidden" />
             {appUser && (
               <div className="text-sm text-muted-foreground">
-                <span className="font-semibold">UPR:</span> {currentUprDisplay} | <span className="font-semibold">Periode:</span> {currentPeriodDisplay}
+                <span className="font-semibold">UPR:</span> {appUser.displayName || DEFAULT_FALLBACK_UPR_ID} | <span className="font-semibold">Periode:</span> {appUser.activePeriod || DEFAULT_PERIOD}
               </div>
             )}
           </div>
@@ -192,18 +164,18 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               </DropdownMenuContent>
             </DropdownMenu>
 
-            {currentUser && appUser && (
+            {currentUser && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="icon" className="rounded-full">
                     <Avatar className="h-8 w-8">
-                      <AvatarImage src={appUser.photoURL || currentUser.photoURL || "https://placehold.co/100x100.png"} alt={appUser.displayName || currentUser.displayName || currentUser.email || "User"} data-ai-hint="profile person" />
-                      <AvatarFallback>{(appUser.displayName || currentUser.displayName || currentUser.email || "RW").substring(0, 2).toUpperCase()}</AvatarFallback>
+                      <AvatarImage src={appUser?.photoURL || currentUser.photoURL || "https://placehold.co/100x100.png"} alt={appUser?.displayName || currentUser.displayName || currentUser.email || "User"} data-ai-hint="profile person" />
+                      <AvatarFallback>{(appUser?.displayName || currentUser.displayName || currentUser.email || "RW").substring(0, 2).toUpperCase()}</AvatarFallback>
                     </Avatar>
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuLabel>{appUser.displayName || currentUser.displayName || currentUser.email}</DropdownMenuLabel>
+                  <DropdownMenuLabel>{appUser?.displayName || currentUser.displayName || currentUser.email}</DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem asChild>
                     <NextLink href="/settings">
@@ -222,6 +194,19 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           </div>
         </header>
         <main className="flex-1 p-4 md:p-6">
+          {currentUser && !isProfileComplete && pathname !== '/settings' && (
+            <Alert variant="destructive" className="mb-4">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle>Profil Belum Lengkap!</AlertTitle>
+              <AlertDescription>
+                Nama UPR dan Periode Awal Anda belum diatur. Harap lengkapi profil Anda di halaman 
+                <NextLink href="/settings" className="font-semibold underline hover:text-destructive-foreground/80 ml-1">
+                  Pengaturan
+                </NextLink>
+                {' '}untuk dapat menggunakan fitur lain.
+              </AlertDescription>
+            </Alert>
+          )}
           {children}
         </main>
         <Toaster />

@@ -2,7 +2,7 @@
 export const LIKELIHOOD_LEVELS_DESC_MAP = {
   "Hampir tidak terjadi (1)": 1,
   "Jarang terjadi (2)": 2,
-  "Kadang Terjadi (3)": 3,
+  "Kadang Terjadi (3)": 3, // Konsisten dengan input AI
   "Sering terjadi (4)": 4,
   "Hampir pasti terjadi (5)": 5,
 } as const;
@@ -54,6 +54,7 @@ export interface Goal {
   description: string;
   code: string; 
   createdAt: string; 
+  // uprId: string; // Dihapus, akan menggunakan userId sebagai identifier UPR
   period: string; 
   userId: string; 
 }
@@ -61,6 +62,7 @@ export interface Goal {
 export interface PotentialRisk {
   id: string; 
   goalId: string;
+  // uprId: string; // Dihapus
   period: string;
   userId: string;
   description: string;
@@ -75,6 +77,7 @@ export interface RiskCause {
   id: string; 
   potentialRiskId: string; 
   goalId: string; 
+  // uprId: string; // Dihapus
   period: string;
   userId: string;
   description: string;
@@ -93,6 +96,7 @@ export interface ControlMeasure {
   riskCauseId: string;
   potentialRiskId: string; 
   goalId: string; 
+  // uprId: string; // Dihapus
   period: string;
   userId: string;
   controlType: ControlMeasureTypeKey;
@@ -113,14 +117,14 @@ export type UserRole = 'admin' | 'userSatker';
 export interface AppUser {
   uid: string; // Firebase Auth UID
   email: string | null;
-  displayName: string | null; // This will serve as the "UPR Name"
+  displayName: string | null; // Akan berfungsi sebagai Nama UPR
   photoURL: string | null;
   role: UserRole;
+  uprId: string | null; // Akan sama dengan displayName setelah profil lengkap
   activePeriod: string | null;
   availablePeriods: string[] | null;
-  createdAt: string;
-  updatedAt?: string;
-  // uprId field is removed as per new model: 1 user = 1 UPR, UPR name is displayName
+  createdAt: string; // ISO string
+  updatedAt?: string; // ISO string
 }
 
 export const getControlTypeName = (typeKey: ControlMeasureTypeKey): string => {

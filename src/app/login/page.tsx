@@ -14,7 +14,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, LogIn } from 'lucide-react';
 import { AppLogo } from '@/components/icons';
-import { checkAndCreateUserDocument } from '@/services/userService';
+// checkAndCreateUserDocument tidak lagi dipanggil dari sini
 
 const GoogleIcon = (props: React.SVGProps<SVGSVGElement>) => (
   <svg viewBox="0 0 48 48" {...props} className="mr-2 h-5 w-5">
@@ -38,28 +38,18 @@ export default function LoginPage() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    let firebaseUser: FirebaseUser | null = null;
     try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      firebaseUser = userCredential.user;
-      
-      // Pastikan dokumen pengguna ada/dibuat di Firestore
-      // displayNameFromForm tidak diteruskan karena ini halaman login, bukan registrasi
-      await checkAndCreateUserDocument(firebaseUser, 'userSatker'); 
-      
+      await signInWithEmailAndPassword(auth, email, password);
+      // Tidak ada panggilan ke checkAndCreateUserDocument di sini.
+      // AuthContext akan mengambil profil, dan AppLayout akan mengarahkan jika perlu.
       toast({ title: 'Login Berhasil', description: 'Selamat datang kembali!' });
-      router.push('/'); // AppLayout akan menangani redirect ke profile-setup jika perlu
+      router.push('/'); 
     } catch (error: any) {
-      console.error("Kesalahan pada proses login email/password:", error.message || String(error));
-      let toastTitle = 'Login Gagal';
+      const errorMessage = error.message && typeof error.message === 'string' ? error.message : String(error);
+      console.error("Kesalahan pada proses login email/password:", errorMessage);
       let toastDescription = 'Terjadi kesalahan. Silakan coba lagi.';
 
-      if (firebaseUser && error instanceof Error) { // Auth berhasil, tapi Firestore gagal
-        toastTitle = 'Autentikasi Berhasil, Profil Gagal Disinkronkan';
-        toastDescription = `Gagal menyimpan/memperbarui profil Anda di database: ${error.message}. Silakan coba lagi atau hubungi administrator.`;
-        // Tetap arahkan, AppLayout akan handle jika profil belum lengkap
-        router.push('/'); 
-      } else if (error && error.code) { // Error dari Firebase Auth
+      if (error && error.code) {
         switch (error.code) {
           case 'auth/user-not-found':
           case 'auth/wrong-password':
@@ -73,12 +63,12 @@ export default function LoginPage() {
             toastDescription = 'Akun pengguna ini telah dinonaktifkan.';
             break;
           default:
-            toastDescription = `Login gagal: ${(error as Error).message || 'Error tidak diketahui.'}`;
+            toastDescription = `Login gagal: ${errorMessage}`;
         }
-      } else if (error instanceof Error) {
-          toastDescription = error.message;
+      } else {
+          toastDescription = errorMessage;
       }
-      toast({ title: toastTitle, description: toastDescription, variant: 'destructive', duration: 7000 });
+      toast({ title: 'Login Gagal', description: toastDescription, variant: 'destructive', duration: 7000 });
     } finally {
       setIsLoading(false);
     }
@@ -87,26 +77,18 @@ export default function LoginPage() {
   const handleGoogleSignIn = async () => {
     setIsGoogleLoading(true);
     const provider = new GoogleAuthProvider();
-    let firebaseUser: FirebaseUser | null = null;
     try {
-      const result = await signInWithPopup(auth, provider);
-      firebaseUser = result.user;
-      
-      // displayNameFromForm tidak diteruskan, userService akan menggunakan displayName dari Google
-      await checkAndCreateUserDocument(firebaseUser, 'userSatker');
-      
-      toast({ title: 'Login Google Berhasil', description: `Selamat datang, ${firebaseUser.displayName || firebaseUser.email}!` });
-      router.push('/'); // AppLayout akan menangani redirect ke profile-setup jika perlu
+      await signInWithPopup(auth, provider);
+      // Tidak ada panggilan ke checkAndCreateUserDocument di sini.
+      // AuthContext akan mengambil profil, dan AppLayout akan mengarahkan jika perlu.
+      toast({ title: 'Login Google Berhasil', description: `Selamat datang!` });
+      router.push('/');
     } catch (error: any) {
-      console.error("Kesalahan pada proses login Google:", error.message || String(error));
-      let toastTitle = 'Login Google Gagal';
+      const errorMessage = error.message && typeof error.message === 'string' ? error.message : String(error);
+      console.error("Kesalahan pada proses login Google:", errorMessage);
       let toastDescription = 'Terjadi kesalahan. Silakan coba lagi.';
 
-      if (firebaseUser && error instanceof Error) { 
-         toastTitle = 'Autentikasi Google Berhasil, Profil Gagal Disinkronkan';
-         toastDescription = `Gagal menyimpan/memperbarui profil Anda di database: ${error.message}. Silakan coba lagi atau hubungi administrator.`;
-         router.push('/');
-      } else if (error && error.code) {
+      if (error && error.code) {
             switch (error.code) {
                 case 'auth/popup-closed-by-user':
                 toastDescription = 'Proses login Google dibatalkan oleh pengguna.';
@@ -115,12 +97,12 @@ export default function LoginPage() {
                 toastDescription = 'Akun sudah ada dengan metode login lain. Coba masuk dengan metode tersebut.';
                 break;
                 default:
-                toastDescription = `Login Google gagal: ${(error as Error).message || 'Error tidak diketahui.'}`;
+                toastDescription = `Login Google gagal: ${errorMessage}`;
             }
-        } else if (error instanceof Error) {
-            toastDescription = error.message;
+        } else {
+            toastDescription = errorMessage;
         }
-      toast({ title: toastTitle, description: toastDescription, variant: 'destructive', duration: 7000 });
+      toast({ title: 'Login Google Gagal', description: toastDescription, variant: 'destructive', duration: 7000 });
     } finally {
       setIsGoogleLoading(false);
     }
