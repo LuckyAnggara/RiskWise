@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useState } from 'react';
-import NextLink from 'next/link';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { createUserWithEmailAndPassword, updateProfile, type User as FirebaseUser } from 'firebase/auth';
 import { auth } from '@/lib/firebase/config';
@@ -14,18 +14,24 @@ import { useToast } from '@/hooks/use-toast';
 import { Loader2, UserPlus } from 'lucide-react';
 import { AppLogo } from '@/components/icons';
 import { checkAndCreateUserDocument } from '@/services/userService';
+import { useAuth } from '@/contexts/auth-context'; // Import useAuth to potentially call refreshAppUser
 
 export default function RegisterPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  // Nama Lengkap dihapus dari state lokal karena akan diisi di halaman profile-setup
+  const [displayNameFromForm, setDisplayNameFromForm] = useState(''); // For "Nama Lengkap"
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
   const router = useRouter();
+  const { refreshAppUser } = useAuth(); // Get refreshAppUser
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!displayNameFromForm.trim()) {
+      toast({ title: 'Registrasi Gagal', description: 'Nama Lengkap harus diisi.', variant: 'destructive' });
+      return;
+    }
     if (password !== confirmPassword) {
       toast({ title: 'Registrasi Gagal', description: 'Password dan konfirmasi password tidak cocok.', variant: 'destructive' });
       return;
@@ -36,21 +42,32 @@ export default function RegisterPage() {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       firebaseUser = userCredential.user;
 
-      // Panggil checkAndCreateUserDocument.
-      // displayNameFromForm tidak lagi diteruskan dari sini, akan null/undefined.
-      // userService akan menginisialisasi profil sebagai "belum lengkap".
-      // checkAndCreateUserDocument now throws simple errors, reducing recursion risk
-      await checkAndCreateUserDocument(firebaseUser, 'userSatker');
+      // Update Firebase Auth profile displayName if Nama Lengkap is provided
+      if (displayNameFromForm.trim()) {
+        await updateProfile(firebaseUser, { displayName: displayNameFromForm.trim() });
+      }
 
-      toast({ title: 'Akun Berhasil Dibuat', description: 'Silakan lengkapi profil Anda untuk melanjutkan.' });
-      router.push('/'); // Arahkan ke dashboard, AppLayout akan handle redirect ke /profile-setup
+      // Call checkAndCreateUserDocument to ensure Firestore profile exists or is created
+      // Pass displayNameFromForm explicitly.
+      // In diagnostic mode, userService.checkAndCreateUserDocument will return a mock or null.
+      await checkAndCreateUserDocument(firebaseUser, 'userSatker', displayNameFromForm.trim());
+      
+      // After successful user creation & profile check, trigger a refresh of appUser in AuthContext
+      await refreshAppUser();
 
-    } catch (error: any) { // Catch any error from the process
-      console.error("Kesalahan pada proses registrasi (register page):", error.message || error); // Log the error message or the error itself
+      toast({ title: 'Registrasi Berhasil', description: 'Akun Anda telah dibuat. Mengarahkan...' });
+      router.push('/'); // AppLayout will handle redirect to /profile-setup if needed
+
+    } catch (authOrProfileError: any) {
+      const errorMessage = authOrProfileError instanceof Error && authOrProfileError.message 
+        ? authOrProfileError.message 
+        : String(authOrProfileError);
+      console.error("Kesalahan pada proses registrasi (register page). Error type:", typeof authOrProfileError, "Message:", errorMessage);
+      
       let userMessage = "Terjadi kesalahan pada proses registrasi.";
-
-      if (error && error.code) { // Check for Firebase Auth errors
-        switch (error.code) {
+      
+      if (authOrProfileError && authOrProfileError.code) { 
+        switch (authOrProfileError.code) {
           case 'auth/email-already-in-use':
             userMessage = 'Alamat email ini sudah terdaftar.';
             break;
@@ -60,16 +77,14 @@ export default function RegisterPage() {
           case 'auth/invalid-email':
             userMessage = 'Format email tidak valid.';
             break;
-           case 'auth/network-request-failed': // Added network error
+           case 'auth/network-request-failed':
              userMessage = 'Gagal terhubung ke server. Periksa koneksi internet Anda.';
              break;
           default:
-            // Catch any other auth errors
-            userMessage = `Registrasi Akun Gagal: ${error.message || 'Error tidak diketahui.'}`;
+            userMessage = `Registrasi Akun Gagal: ${errorMessage}`;
         }
-      } else if (error && error.message) { // Prioritize error.message if available
-        // Catch errors thrown from userService (like Firestore failures)
-        userMessage = `Registrasi Gagal: ${error.message}`;
+      } else { // Error likely from checkAndCreateUserDocument or other logic
+        userMessage = `Registrasi Gagal: ${errorMessage}`;
       }
 
       toast({
@@ -93,7 +108,18 @@ export default function RegisterPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <form onSubmit={handleRegister} className="space-y-4">
-            {/* Input Nama Lengkap dan Nama UPR dihapus */}
+             <div className="space-y-1.5">
+              <Label htmlFor="displayNameFromForm">Nama Lengkap / Nama UPR</Label>
+              <Input
+                id="displayNameFromForm"
+                type="text"
+                placeholder="Masukkan Nama Lengkap Anda"
+                value={displayNameFromForm}
+                onChange={(e) => setDisplayNameFromForm(e.target.value)}
+                required
+                disabled={isLoading}
+              />
+            </div>
             <div className="space-y-1.5">
               <Label htmlFor="email">Email</Label>
               <Input
@@ -141,9 +167,9 @@ export default function RegisterPage() {
           </form>
         </CardContent>
         <CardFooter className="flex flex-col items-center space-y-2 text-xs">
-          <NextLink href="/login" className="text-primary hover:underline">
+          <Link href="/login" className="text-primary hover:underline">
             Sudah punya akun? Masuk di sini
-          </NextLink>
+          </Link>
            <p className="text-muted-foreground">&copy; {new Date().getFullYear()} RiskWise. Aplikasi Manajemen Risiko.</p>
         </CardFooter>
       </Card>

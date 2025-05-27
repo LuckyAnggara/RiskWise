@@ -10,8 +10,8 @@ import type { AppUser } from '@/lib/types';
 
 interface AuthContextType {
   currentUser: FirebaseUser | null;
-  appUser: AppUser | null; // Data dari Firestore
-  loading: boolean; // Kombinasi loading auth Firebase dan loading appUser dari Firestore
+  appUser: AppUser | null;
+  loading: boolean;
   refreshAppUser: () => Promise<void>;
 }
 
@@ -20,29 +20,30 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   const [appUser, setAppUser] = useState<AppUser | null>(null);
-  const [authLoading, setAuthLoading] = useState(true); // Hanya untuk status Firebase Auth
-  const [profileLoading, setProfileLoading] = useState(false); // Untuk status loading profil Firestore
+  const [authLoading, setAuthLoading] = useState(true);
+  const [profileLoading, setProfileLoading] = useState(false);
 
-  const fetchAppUser = useCallback(async (user: FirebaseUser | null) => {
+  const fetchAppUser = useCallback(async (user: FirebaseUser | null, displayNameFromForm?: string | null) => {
     if (user) {
       console.log(`[AuthContext] fetchAppUser called for UID: ${user.uid}`);
       setProfileLoading(true);
       try {
-        // Coba ambil, jika tidak ada atau ada update (misal displayName dari Google berubah), checkAndCreate akan handle
-        const userProfile = await checkAndCreateUserDocument(user, 'userSatker', user.displayName);
-        console.log("[AuthContext] fetchAppUser: AppUser data after checkAndCreateUserDocument:", JSON.stringify(userProfile));
-        setAppUser(userProfile);
+        // Always call checkAndCreateUserDocument to handle new users or sync existing ones
+        // In diagnostic mode, this will return a mock or null.
+        const userDoc = await checkAndCreateUserDocument(user, 'userSatker', displayNameFromForm);
+        console.log("[AuthContext] fetchAppUser: AppUser data after checkAndCreateUserDocument:", JSON.stringify(userDoc));
+        setAppUser(userDoc);
       } catch (error: any) {
-        const errorMessage = error.message && typeof error.message === 'string' ? error.message : String(error);
-        console.error("[AuthContext] fetchAppUser: Failed to fetch/create AppUser from Firestore:", errorMessage);
-        setAppUser(null); // Pastikan appUser null jika ada error
+        const errorMessage = error instanceof Error && error.message ? error.message : String(error);
+        console.error("[AuthContext] fetchAppUser: Failed to fetch/create AppUser from Firestore. Error type:", typeof error, "Message:", errorMessage);
+        setAppUser(null);
       } finally {
         setProfileLoading(false);
       }
     } else {
       console.log("[AuthContext] fetchAppUser: No Firebase user, setting appUser to null.");
       setAppUser(null);
-      setProfileLoading(false); // Pastikan profileLoading false jika tidak ada user
+      setProfileLoading(false);
     }
   }, []);
 
@@ -51,40 +52,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAuthLoading(true);
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       console.log("[AuthContext] onAuthStateChanged: Firebase user state changed. User:", user ? user.uid : "null");
-      setCurrentUser(user);
-      setAuthLoading(false); // Firebase Auth state sudah diketahui
-      await fetchAppUser(user); // Ambil atau buat profil Firestore
+      setCurrentUser(user); // Set Firebase user immediately
+      // Don't set authLoading to false until profile fetching attempt is also done
+      try {
+        await fetchAppUser(user);
+      } catch (error) {
+        // Error already logged in fetchAppUser
+      } finally {
+        setAuthLoading(false); // Firebase Auth state and profile fetch attempt are both settled
+      }
     });
 
     return () => {
       console.log("[AuthContext] onAuthStateChanged listener detached.");
       unsubscribe();
     };
-  }, [fetchAppUser]); // fetchAppUser sekarang stabil karena useCallback dg dependensi kosong
+  }, [fetchAppUser]); // fetchAppUser is stable due to useCallback([])
 
   const refreshAppUser = useCallback(async () => {
     if (currentUser) {
       console.log(`[AuthContext] refreshAppUser called for UID: ${currentUser.uid}`);
       setProfileLoading(true);
       try {
-        // Hanya ambil data terbaru dari Firestore, jangan panggil checkAndCreate lagi
+        // In diagnostic mode, this will use the diagnostic version of getUserDocument
         const userProfile = await getUserDocument(currentUser.uid);
         console.log("[AuthContext] refreshAppUser: AppUser data from getUserDocument:", JSON.stringify(userProfile));
         setAppUser(userProfile);
       } catch (error: any) {
-        const errorMessage = error.message && typeof error.message === 'string' ? error.message : String(error);
-        console.error("[AuthContext] refreshAppUser: Error during getUserDocument call:", errorMessage);
+        const errorMessage = error instanceof Error && error.message ? error.message : String(error);
+        console.error("[AuthContext] refreshAppUser: Error during getUserDocument call. Error type:", typeof error, "Message:", errorMessage);
         setAppUser(null);
       } finally {
         setProfileLoading(false);
       }
     } else {
       console.log("[AuthContext] refreshAppUser: No current user, skipping refresh.");
+      setProfileLoading(false); // Ensure loading is false if no user
     }
   }, [currentUser]);
 
-  // Loading keseluruhan = loading auth ATAU loading profil (jika ada user)
-  const isLoading = authLoading || (currentUser && profileLoading);
+  const isLoading = authLoading || profileLoading;
 
   if (isLoading) {
     return (
