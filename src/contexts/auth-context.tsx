@@ -1,11 +1,10 @@
-
 "use client";
 
 import React, { createContext, useContext, useEffect, useState, type ReactNode, useCallback } from 'react';
 import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
 import { auth } from '@/lib/firebase/config';
 import { Loader2 } from 'lucide-react';
-import { getUserDocument, checkAndCreateUserDocument } from '@/services/userService';
+import { getUserDocument } from '@/services/userService'; // Hanya import getUserDocument
 import type { AppUser } from '@/lib/types';
 
 interface AuthContextType {
@@ -17,22 +16,23 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export function AuthProvider({ children }: { children: ReactNode }) {
+export function AuthProvider({ children }: { ReactNode }) {
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   const [appUser, setAppUser] = useState<AppUser | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Fungsi ini sekarang hanya bertanggung jawab untuk MENGAMBIL data AppUser yang sudah ada
   const fetchAppUser = useCallback(async (user: FirebaseUser | null) => {
     if (user) {
       console.log(`[AuthContext] fetchAppUser attempting for UID: ${user.uid}`);
       try {
-        const userDoc = await checkAndCreateUserDocument(user);
-        console.log(`[AuthContext] fetchAppUser: AppUser data received/created:`, userDoc ? `${userDoc.uid} - ${userDoc.displayName}` : "null");
+        // Panggil getUserDocument untuk mengambil data AppUser dari Firestore
+        const userDoc = await getUserDocument(user.uid);
+        console.log(`[AuthContext] fetchAppUser: AppUser data received:`, userDoc ? `${userDoc.uid} - ${userDoc.displayName}` : "null");
         setAppUser(userDoc);
       } catch (error: any) {
-        console.error("[AuthContext] fetchAppUser: Failed to fetch/create AppUser from Firestore:", error.message || String(error));
-        setAppUser(null); // Ensure appUser is null on error
-        // Optionally, you could re-throw or set an error state here
+        console.error("[AuthContext] fetchAppUser: Failed to fetch AppUser from Firestore:", error.message || String(error));
+        setAppUser(null); // Pastikan appUser null jika ada error
       }
     } else {
       console.log("[AuthContext] fetchAppUser: No Firebase user, setting appUser to null.");
@@ -49,8 +49,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         await fetchAppUser(user);
       } catch (error) {
-        // This catch might be redundant if fetchAppUser handles its own errors and doesn't re-throw them in a way that breaks this.
-        console.error("[AuthContext] onAuthStateChanged: Error during fetchAppUser call (should be handled within fetchAppUser):", error);
+        console.error("[AuthContext] onAuthStateChanged: Error during fetchAppUser call:", error);
       } finally {
         console.log("[AuthContext] onAuthStateChanged: Setting loading to false.");
         setLoading(false);
@@ -61,7 +60,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.log("[AuthContext] onAuthStateChanged listener detached.");
       unsubscribe();
     };
-  }, [fetchAppUser]); // Removed fetchAppUser from here as its reference is stable due to useCallback with []
+  }, [fetchAppUser]);
 
   const refreshAppUser = useCallback(async () => {
     if (currentUser) {
@@ -79,8 +78,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.log("[AuthContext] refreshAppUser: No current user, skipping refresh.");
     }
   }, [currentUser, fetchAppUser]);
-  
-  if (loading) { 
+
+  if (loading) {
     return (
       <div className="flex flex-col items-center justify-center h-screen">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />

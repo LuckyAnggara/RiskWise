@@ -3,9 +3,9 @@
 "use client";
 
 import React, { useState } from 'react';
-import NextLink from 'next/link'; // Alias Link from next/link
+import NextLink from 'next/link'; 
 import { useRouter } from 'next/navigation';
-import { GoogleAuthProvider, signInWithEmailAndPassword, signInWithPopup } from 'firebase/auth';
+import { GoogleAuthProvider, signInWithEmailAndPassword, signInWithPopup, type User as FirebaseUser } from 'firebase/auth';
 import { auth } from '@/lib/firebase/config';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -38,26 +38,27 @@ export default function LoginPage() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    let firebaseUser = null;
+    let firebaseUser: FirebaseUser | null = null;
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       firebaseUser = userCredential.user;
       
       // Pastikan dokumen pengguna ada/dibuat di Firestore
-      await checkAndCreateUserDocument(firebaseUser); 
+      // displayNameFromForm tidak diteruskan karena ini halaman login, bukan registrasi
+      await checkAndCreateUserDocument(firebaseUser, 'userSatker'); 
       
       toast({ title: 'Login Berhasil', description: 'Selamat datang kembali!' });
-      router.push('/');
+      router.push('/'); // AppLayout akan menangani redirect ke profile-setup jika perlu
     } catch (error: any) {
-      console.error("Kesalahan pada proses login email/password. Detail Error:", String(error));
+      console.error("Kesalahan pada proses login email/password:", error.message || String(error));
       let toastTitle = 'Login Gagal';
       let toastDescription = 'Terjadi kesalahan. Silakan coba lagi.';
 
-      if (firebaseUser && error) { // Auth berhasil, tapi Firestore gagal
+      if (firebaseUser && error instanceof Error) { // Auth berhasil, tapi Firestore gagal
         toastTitle = 'Autentikasi Berhasil, Profil Gagal Disinkronkan';
-        toastDescription = `Gagal menyimpan/memperbarui profil Anda di database. Silakan coba lagi atau hubungi administrator. Detail: ${error instanceof Error ? error.message : String(error)}`;
-        // Tetap arahkan ke dashboard karena Auth berhasil, user bisa coba update profil nanti.
-         router.push('/'); 
+        toastDescription = `Gagal menyimpan/memperbarui profil Anda di database: ${error.message}. Silakan coba lagi atau hubungi administrator.`;
+        // Tetap arahkan, AppLayout akan handle jika profil belum lengkap
+        router.push('/'); 
       } else if (error && error.code) { // Error dari Firebase Auth
         switch (error.code) {
           case 'auth/user-not-found':
@@ -72,7 +73,7 @@ export default function LoginPage() {
             toastDescription = 'Akun pengguna ini telah dinonaktifkan.';
             break;
           default:
-            toastDescription = `Login gagal: ${error.message || 'Error tidak diketahui.'}`;
+            toastDescription = `Login gagal: ${(error as Error).message || 'Error tidak diketahui.'}`;
         }
       } else if (error instanceof Error) {
           toastDescription = error.message;
@@ -86,23 +87,24 @@ export default function LoginPage() {
   const handleGoogleSignIn = async () => {
     setIsGoogleLoading(true);
     const provider = new GoogleAuthProvider();
-    let firebaseUser = null;
+    let firebaseUser: FirebaseUser | null = null;
     try {
       const result = await signInWithPopup(auth, provider);
       firebaseUser = result.user;
       
-      await checkAndCreateUserDocument(firebaseUser);
+      // displayNameFromForm tidak diteruskan, userService akan menggunakan displayName dari Google
+      await checkAndCreateUserDocument(firebaseUser, 'userSatker');
       
       toast({ title: 'Login Google Berhasil', description: `Selamat datang, ${firebaseUser.displayName || firebaseUser.email}!` });
-      router.push('/');
+      router.push('/'); // AppLayout akan menangani redirect ke profile-setup jika perlu
     } catch (error: any) {
-      console.error("Kesalahan pada proses login Google. Detail Error:", String(error));
+      console.error("Kesalahan pada proses login Google:", error.message || String(error));
       let toastTitle = 'Login Google Gagal';
       let toastDescription = 'Terjadi kesalahan. Silakan coba lagi.';
 
-      if (firebaseUser && error) { 
+      if (firebaseUser && error instanceof Error) { 
          toastTitle = 'Autentikasi Google Berhasil, Profil Gagal Disinkronkan';
-         toastDescription = `Gagal menyimpan/memperbarui profil Anda di database. Silakan coba lagi atau hubungi administrator. Detail: ${error instanceof Error ? error.message : String(error)}`;
+         toastDescription = `Gagal menyimpan/memperbarui profil Anda di database: ${error.message}. Silakan coba lagi atau hubungi administrator.`;
          router.push('/');
       } else if (error && error.code) {
             switch (error.code) {
@@ -113,7 +115,7 @@ export default function LoginPage() {
                 toastDescription = 'Akun sudah ada dengan metode login lain. Coba masuk dengan metode tersebut.';
                 break;
                 default:
-                toastDescription = `Login Google gagal: ${error.message || 'Error tidak diketahui.'}`;
+                toastDescription = `Login Google gagal: ${(error as Error).message || 'Error tidak diketahui.'}`;
             }
         } else if (error instanceof Error) {
             toastDescription = error.message;
@@ -203,5 +205,3 @@ export default function LoginPage() {
     </div>
   );
 }
-
-    

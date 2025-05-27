@@ -111,15 +111,15 @@ export interface ControlMeasure {
   updatedAt?: string;
 }
 
-export type UserRole = 'admin' | 'userSatker';
+
+export type UserRole = 'admin' | 'editor' | 'userSatker' | 'member'; // Sesuaikan peran Anda
 
 export interface AppUser {
   uid: string;
   email: string | null;
-  displayName: string | null; 
+  displayName: string | null;
   photoURL: string | null;
   role: UserRole;
-  uprId: string | null; // Akan diisi dengan nilai dari displayName pengguna
   createdAt: string;
   updatedAt?: string;
   activePeriod?: string | null;
