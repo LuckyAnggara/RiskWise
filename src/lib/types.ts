@@ -54,17 +54,15 @@ export interface Goal {
   description: string;
   code: string; 
   createdAt: string; 
-  uprId: string; 
   period: string; 
-  userId?: string; 
+  userId: string; 
 }
 
 export interface PotentialRisk {
   id: string; 
   goalId: string;
-  uprId: string; 
   period: string;
-  userId?: string;
+  userId: string;
   description: string;
   category: RiskCategory | null;
   owner: string | null; 
@@ -77,9 +75,8 @@ export interface RiskCause {
   id: string; 
   potentialRiskId: string; 
   goalId: string; 
-  uprId: string; 
   period: string;
-  userId?: string;
+  userId: string;
   description: string;
   source: RiskSource;
   keyRiskIndicator: string | null;
@@ -96,9 +93,8 @@ export interface ControlMeasure {
   riskCauseId: string;
   potentialRiskId: string; 
   goalId: string; 
-  uprId: string; 
   period: string;
-  userId?: string;
+  userId: string;
   controlType: ControlMeasureTypeKey;
   sequenceNumber: number; 
   description: string;
@@ -112,19 +108,19 @@ export interface ControlMeasure {
 }
 
 
-export type UserRole = 'admin' | 'editor' | 'userSatker' | 'member'; // Sesuaikan peran Anda
+export type UserRole = 'admin' | 'userSatker';
 
 export interface AppUser {
-  uid: string;
+  uid: string; // Firebase Auth UID
   email: string | null;
-  displayName: string | null;
+  displayName: string | null; // This will serve as the "UPR Name"
   photoURL: string | null;
   role: UserRole;
+  activePeriod: string | null;
+  availablePeriods: string[] | null;
   createdAt: string;
   updatedAt?: string;
-  activePeriod?: string | null;
-  uprId?:string | null;
-  availablePeriods?: string[] | null;
+  // uprId field is removed as per new model: 1 user = 1 UPR, UPR name is displayName
 }
 
 export const getControlTypeName = (typeKey: ControlMeasureTypeKey): string => {

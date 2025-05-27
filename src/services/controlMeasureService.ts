@@ -21,13 +21,12 @@ import {
 import { CONTROL_MEASURES_COLLECTION } from './collectionNames';
 
 export async function addControlMeasure(
-  data: Omit<ControlMeasure, 'id' | 'createdAt' | 'uprId' | 'period' | 'userId' | 'riskCauseId' | 'potentialRiskId' | 'goalId' | 'sequenceNumber'>,
+  data: Omit<ControlMeasure, 'id' | 'createdAt' | 'period' | 'userId' | 'riskCauseId' | 'potentialRiskId' | 'goalId' | 'sequenceNumber'>,
   riskCauseId: string,
   potentialRiskId: string,
   goalId: string,
-  uprId: string,
-  period: string,
   userId: string,
+  period: string,
   sequenceNumber: number
 ): Promise<ControlMeasure> {
   try {
@@ -36,9 +35,8 @@ export async function addControlMeasure(
       riskCauseId,
       potentialRiskId,
       goalId,
-      uprId,
-      period,
       userId,
+      period,
       sequenceNumber,
       controlType: data.controlType,
       keyControlIndicator: data.keyControlIndicator || null,
@@ -54,26 +52,26 @@ export async function addControlMeasure(
       riskCauseId,
       potentialRiskId,
       goalId,
-      uprId,
-      period,
       userId,
+      period,
       sequenceNumber,
       createdAt: new Date().toISOString(), // Placeholder
     };
-  } catch (error) {
-    console.error("Error adding control measure to Firestore: ", error);
-    throw new Error("Gagal menambahkan tindakan pengendalian ke database.");
+  } catch (error: any) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error("Error adding control measure to Firestore: ", errorMessage);
+    throw new Error("Gagal menambahkan tindakan pengendalian ke database. Pesan: " + errorMessage);
   }
 }
 
-export async function getControlMeasuresByRiskCauseId(riskCauseId: string, uprId: string, period: string): Promise<ControlMeasure[]> {
+export async function getControlMeasuresByRiskCauseId(riskCauseId: string, userId: string, period: string): Promise<ControlMeasure[]> {
   try {
     const q = query(
       collection(db, CONTROL_MEASURES_COLLECTION),
       where("riskCauseId", "==", riskCauseId),
-      where("uprId", "==", uprId),
+      where("userId", "==", userId),
       where("period", "==", period),
-      orderBy("controlType", "asc"), // Or by sequenceNumber if that's preferred for display
+      orderBy("controlType", "asc"), 
       orderBy("sequenceNumber", "asc")
     );
     const querySnapshot = await getDocs(q);
@@ -86,25 +84,46 @@ export async function getControlMeasuresByRiskCauseId(riskCauseId: string, uprId
       const updatedAtISO = data.updatedAt instanceof Timestamp
                            ? data.updatedAt.toDate().toISOString()
                            : (data.updatedAt ? new Date(data.updatedAt).toISOString() : undefined);
-      controlMeasures.push({ id: doc.id, ...data, createdAt: createdAtISO, updatedAt: updatedAtISO } as ControlMeasure);
+      const deadlineISO = data.deadline instanceof Timestamp
+                           ? data.deadline.toDate().toISOString()
+                           : (data.deadline && typeof data.deadline === 'string' ? new Date(data.deadline).toISOString() : null);
+
+      controlMeasures.push({ 
+        id: doc.id, 
+        ...data, 
+        createdAt: createdAtISO, 
+        updatedAt: updatedAtISO,
+        deadline: deadlineISO 
+      } as ControlMeasure);
     });
     return controlMeasures;
-  } catch (error) {
-    console.error("Error getting control measures from Firestore: ", error);
-    throw new Error("Gagal mengambil daftar tindakan pengendalian dari database.");
+  } catch (error: any) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error("Error getting control measures from Firestore: ", errorMessage, error.code, error);
+    let detailedErrorMessage = "Gagal mengambil daftar tindakan pengendalian dari database.";
+    if (error instanceof Error && error.message) {
+        detailedErrorMessage += ` Pesan Asli: ${error.message}`;
+    }
+    if ((error as any).code === 'failed-precondition') {
+        detailedErrorMessage += " Ini seringkali disebabkan oleh indeks komposit yang hilang di Firestore. Silakan periksa Firebase Console Anda (Firestore Database > Indexes) untuk membuat indeks yang diperlukan.";
+    }
+    throw new Error(detailedErrorMessage);
   }
 }
 
-export async function updateControlMeasure(id: string, data: Partial<Omit<ControlMeasure, 'id' | 'riskCauseId' | 'potentialRiskId' | 'goalId' | 'uprId' | 'period' | 'userId'>>): Promise<void> {
+export async function updateControlMeasure(id: string, data: Partial<Omit<ControlMeasure, 'id' | 'riskCauseId' | 'potentialRiskId' | 'goalId' | 'userId' | 'period' | 'createdAt' | 'sequenceNumber'>>): Promise<void> {
   try {
     const docRef = doc(db, CONTROL_MEASURES_COLLECTION, id);
     await updateDoc(docRef, {
         ...data,
+        deadline: data.deadline === undefined ? undefined : (data.deadline || null),
+        budget: data.budget === undefined ? undefined : (data.budget || null),
         updatedAt: serverTimestamp()
     });
-  } catch (error) {
-    console.error("Error updating control measure in Firestore: ", error);
-    throw new Error("Gagal memperbarui tindakan pengendalian di database.");
+  } catch (error: any) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error("Error updating control measure in Firestore: ", errorMessage);
+    throw new Error("Gagal memperbarui tindakan pengendalian di database. Pesan: " + errorMessage);
   }
 }
 
@@ -115,9 +134,10 @@ export async function deleteControlMeasure(id: string, batch?: WriteBatch): Prom
   } else {
     try {
       await deleteDoc(controlMeasureRef);
-    } catch (error) {
-      console.error("Error deleting control measure from Firestore: ", error);
-      throw new Error("Gagal menghapus tindakan pengendalian dari database.");
+    } catch (error: any) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error("Error deleting control measure from Firestore: ", errorMessage);
+      throw new Error("Gagal menghapus tindakan pengendalian dari database. Pesan: " + errorMessage);
     }
   }
 }

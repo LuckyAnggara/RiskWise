@@ -20,41 +20,37 @@ import {
 } from 'firebase/firestore';
 import { 
     GOALS_COLLECTION,
-    POTENTIAL_RISKS_COLLECTION,
 } from '@/services/collectionNames';
-import { deletePotentialRiskAndSubCollections } from './potentialRiskService'; // Untuk cascading delete
+import { deletePotentialRiskAndSubCollections } from './potentialRiskService';
 
 export interface GoalsResult {
   success: boolean;
   goals?: Goal[];
   message?: string;
-  code?: 'NO_UPRID' | 'UNKNOWN_ERROR';
 }
 
 export async function addGoal(
-  goalData: Omit<Goal, 'id' | 'code' | 'createdAt' | 'uprId' | 'period' | 'userId'>,
-  uprId: string,
-  period: string,
-  userId: string
+  goalData: Omit<Goal, 'id' | 'code' | 'createdAt' | 'period' | 'userId'>,
+  userId: string,
+  period: string
 ): Promise<Goal> {
   try {
     const goalsCollectionRef = collection(db, GOALS_COLLECTION);
     
-    // Fetch existing goals for the same uprId and period to determine the next code
     const q = query(
         goalsCollectionRef,
-        where("uprId", "==", uprId),
+        where("userId", "==", userId),
         where("period", "==", period)
     );
     const querySnapshot = await getDocs(q);
     const existingGoalsForContext: Goal[] = [];
     querySnapshot.forEach(doc => {
-        existingGoalsForContext.push({ id: doc.id, ...doc.data() } as Goal);
+        const data = doc.data();
+        existingGoalsForContext.push({ id: doc.id, code: data.code, ...data } as Goal);
     });
 
     const firstLetter = goalData.name.charAt(0).toUpperCase();
-    const prefix = /^[A-Z]$/.test(firstLetter) ? firstLetter : 'X'; // Default to 'X' if not a letter
-
+    const prefix = /^[A-Z]$/.test(firstLetter) ? firstLetter : 'S'; // Default to 'S' (Sasaran)
     let maxNum = 0;
     existingGoalsForContext.forEach(g => {
       if (g.code && typeof g.code === 'string' && g.code.startsWith(prefix)) {
@@ -70,9 +66,8 @@ export async function addGoal(
     const docData = {
       ...goalData,
       code: newGoalCode,
-      uprId,
-      period,
       userId,
+      period,
       createdAt: serverTimestamp()
     };
 
@@ -82,34 +77,33 @@ export async function addGoal(
         id: docRef.id,
         ...goalData,
         code: newGoalCode,
-        uprId,
-        period,
         userId,
+        period,
         createdAt: new Date().toISOString() 
     };
   } catch (error: any) {
-    console.error("Error adding goal to Firestore. Message:", error.message);
-    throw new Error(`Gagal menambahkan sasaran ke database. Pesan: ${error.message || String(error)}`);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error("Error adding goal to Firestore. Message:", errorMessage);
+    throw new Error(`Gagal menambahkan sasaran ke database. Pesan: ${errorMessage}`);
   }
 }
 
-export async function getGoals(uprId: string | null | undefined, period: string): Promise<GoalsResult> {
+export async function getGoals(userId: string | null | undefined, period: string | null | undefined): Promise<GoalsResult> {
   try {
-    if (!uprId || uprId.trim() === '') {
-      console.warn("[goalService] getGoals: uprId is missing or empty.");
+    if (!userId || !period) {
+      console.warn("[goalService] getGoals: userId or period is missing.", {userId, period});
       return {
         success: false,
-        message: "UPR ID tidak tersedia. Pengaturan profil mungkin belum lengkap.",
-        code: 'NO_UPRID',
+        message: "Konteks pengguna (ID Pengguna atau Periode) tidak tersedia.",
         goals: []
       };
     }
 
     const q = query(
       collection(db, GOALS_COLLECTION),
-      where("uprId", "==", uprId),
-      where("period", "==", period)
-      // orderBy("code", "asc") // Ordering handled client-side for now to avoid complex index requirements upfront
+      where("userId", "==", userId),
+      where("period", "==", period),
+      orderBy("code", "asc")
     );
 
     const querySnapshot = await getDocs(q);
@@ -128,16 +122,15 @@ export async function getGoals(uprId: string | null | undefined, period: string)
         description: data.description,
         code: data.code || '', 
         createdAt: createdAtISO,
-        uprId: data.uprId,
-        period: data.period,
         userId: data.userId,
+        period: data.period,
       } as Goal);
     });
     
-    const sortedGoals = goals.sort((a, b) => (a.code || '').localeCompare(b.code || '', undefined, {numeric: true, sensitivity: 'base'}));
-    return { success: true, goals: sortedGoals };
+    return { success: true, goals: goals };
   } catch (error: any) {
-    console.error("Error getting goals from Firestore. Message:", error.message);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error("Error getting goals from Firestore. Message:", errorMessage, error.code, error);
     let detailedErrorMessage = "Gagal mengambil daftar sasaran dari database.";
     if (error instanceof Error && error.message) {
       detailedErrorMessage += ` Pesan Asli: ${error.message}`;
@@ -149,16 +142,19 @@ export async function getGoals(uprId: string | null | undefined, period: string)
   }
 }
 
-export async function getGoalById(goalId: string, uprId: string, period: string): Promise<Goal | null> {
+export async function getGoalById(goalId: string, userId: string, period: string): Promise<Goal | null> {
   try {
+    if (!userId || !period) {
+      console.warn(`[goalService] getGoalById: userId or period is missing for goalId ${goalId}`);
+      return null;
+    }
     const goalRef = doc(db, GOALS_COLLECTION, goalId);
     const docSnap = await getDoc(goalRef);
 
     if (docSnap.exists()) {
       const data = docSnap.data();
-      // Validate against current UPR and Period context
-      if (data.uprId !== uprId || data.period !== period) {
-        console.warn(`Goal ${goalId} found, but does not match current UPR/Period context. Expected UPR: ${uprId}, Period: ${period}. Found: UPR: ${data.uprId}, Period: ${data.period}`);
+      if (data.userId !== userId || data.period !== period) {
+        console.warn(`Goal ${goalId} found, but does not match current user/period context. Expected User: ${userId}, Period: ${period}. Found: User: ${data.userId}, Period: ${data.period}`);
         return null;
       }
 
@@ -173,22 +169,21 @@ export async function getGoalById(goalId: string, uprId: string, period: string)
         description: data.description,
         code: data.code || '',
         createdAt: createdAtISO,
-        uprId: data.uprId,
-        period: data.period,
         userId: data.userId,
+        period: data.period,
       } as Goal;
     } else {
       console.log(`Goal dengan ID ${goalId} tidak ditemukan.`);
       return null;
     }
   } catch (error: any) {
-    console.error(`Error getting goal by ID ${goalId} from Firestore: `, error.message);
-    throw new Error(`Gagal mengambil detail sasaran. Pesan: ${error.message || String(error)}`);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error(`Error getting goal by ID ${goalId} from Firestore: `, errorMessage);
+    throw new Error(`Gagal mengambil detail sasaran. Pesan: ${errorMessage}`);
   }
 }
 
-
-export async function updateGoal(goalId: string, updatedData: Partial<Omit<Goal, 'id' | 'uprId' | 'period' | 'userId' | 'code' | 'createdAt'>>): Promise<void> {
+export async function updateGoal(goalId: string, updatedData: Partial<Omit<Goal, 'id' | 'userId' | 'period' | 'code' | 'createdAt'>>): Promise<void> {
   try {
     const goalRef = doc(db, GOALS_COLLECTION, goalId);
     await updateDoc(goalRef, {
@@ -196,34 +191,47 @@ export async function updateGoal(goalId: string, updatedData: Partial<Omit<Goal,
       updatedAt: serverTimestamp()
     });
   } catch (error: any) {
-    console.error("Error updating goal in Firestore. Message:", error.message);
-    throw new Error(`Gagal memperbarui sasaran di database. Pesan: ${error.message || String(error)}`);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error("Error updating goal in Firestore. Message:", errorMessage);
+    throw new Error(`Gagal memperbarui sasaran di database. Pesan: ${errorMessage}`);
   }
 }
 
-export async function deleteGoal(goalId: string, uprId: string, period: string): Promise<void> {
+export async function deleteGoal(goalId: string, userId: string, period: string): Promise<void> {
   const batch = writeBatch(db);
   try {
     const goalRef = doc(db, GOALS_COLLECTION, goalId);
+    
+    // Ensure the goal belongs to the user and period before deleting
+    const goalDoc = await getDoc(goalRef);
+    if (goalDoc.exists()) {
+        const goalData = goalDoc.data();
+        if (goalData.userId !== userId || goalData.period !== period) {
+            throw new Error("Sasaran tidak dapat dihapus: tidak cocok dengan konteks pengguna/periode.");
+        }
+    } else {
+        throw new Error("Sasaran tidak ditemukan untuk dihapus.");
+    }
     batch.delete(goalRef);
-
-    const potentialRisksQuery = query(
-      collection(db, POTENTIAL_RISKS_COLLECTION),
+    
+    // Delete related PotentialRisks (and their sub-collections)
+    // This requires fetching potential risks for this goal, userId, and period
+    const q = query(
+      collection(db, "potentialRisks"), // Assuming POTENTIAL_RISKS_COLLECTION is "potentialRisks"
       where("goalId", "==", goalId),
-      where("uprId", "==", uprId),
+      where("userId", "==", userId),
       where("period", "==", period)
     );
-    const potentialRisksSnapshot = await getDocs(potentialRisksQuery);
+    const potentialRisksSnapshot = await getDocs(q);
     
     for (const prDoc of potentialRisksSnapshot.docs) {
-      // deletePotentialRiskAndSubCollections will handle deleting PR, its RiskCauses, and their ControlMeasures
-      await deletePotentialRiskAndSubCollections(prDoc.id, uprId, period, batch);
+      // deletePotentialRiskAndSubCollections needs to be adapted to use userId and period
+      await deletePotentialRiskAndSubCollections(prDoc.id, userId, period, batch);
     }
     await batch.commit();
   } catch (error: any) {
-    console.error("Error deleting goal and related data from Firestore. Message:", error.message);
-    throw new Error(`Gagal menghapus sasaran dan data terkait. Pesan: ${error.message || String(error)}`);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error("Error deleting goal and related data from Firestore. Message:", errorMessage);
+    throw new Error(`Gagal menghapus sasaran dan data terkait. Pesan: ${errorMessage}`);
   }
 }
-
-    
