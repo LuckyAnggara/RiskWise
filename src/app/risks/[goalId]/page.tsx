@@ -72,12 +72,13 @@ export default function GoalRisksPage() {
     }
     setIsLoading(true);
     try {
-      const currentGoalResult = await getGoalById(goalId); 
-      
+      console.info(appUser);
+      const currentGoalResult = await getGoalById(goalId,currentUprId, currentPeriod); 
+
       const uniqueOwners = new Set<string>();
       const causeCounts: Record<string,number> = {};
 
-      if (currentGoalResult && currentGoalResult.uprId === currentUprId && currentGoalResult.period === currentPeriod) {
+      if (currentGoalResult && currentGoalResult.userId === currentUprId && currentGoalResult.period === currentPeriod) {
         setGoal(currentGoalResult);
         const currentPotentialRisks = await getPotentialRisksByGoalId(goalId, currentUprId, currentPeriod);
         setPotentialRisks(currentPotentialRisks);
@@ -250,7 +251,7 @@ export default function GoalRisksPage() {
             category: riskToDuplicate.category,
             owner: riskToDuplicate.owner,
         };
-        const newPotentialRisk = await addPotentialRisk(newPRData, goal.id, currentUprId, currentPeriod, currentUser.uid, newSequenceNumber);
+        const newPotentialRisk = await addPotentialRisk(newPRData, goal.id, currentUprId, currentPeriod,  newSequenceNumber);
         
         toast({ title: "Risiko Diduplikasi", description: `Potensi risiko "${newPotentialRisk.description}" telah berhasil diduplikasi. Penyebab dan kontrol belum disalin.`});
         loadData(); 
