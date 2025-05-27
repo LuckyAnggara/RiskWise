@@ -20,6 +20,7 @@ import {
   type WriteBatch
 } from 'firebase/firestore';
 import { RISK_CAUSES_COLLECTION, CONTROL_MEASURES_COLLECTION } from './collectionNames';
+import { deleteControlMeasure } from './controlMeasureService'; // Import deleteControlMeasure
 
 export async function addRiskCause(
   data: Omit<RiskCause, 'id' | 'createdAt' | 'uprId' | 'period' | 'userId' | 'potentialRiskId' | 'goalId' | 'sequenceNumber' >,
@@ -54,11 +55,11 @@ export async function addRiskCause(
       period,
       userId,
       sequenceNumber,
-      createdAt: new Date().toISOString(), // Placeholder
+      createdAt: new Date().toISOString(), 
     };
   } catch (error: any) {
-    console.error("Error adding risk cause to Firestore: ", error.message, error.code, error);
-    throw new Error(`Gagal menambahkan penyebab risiko ke database. Pesan: ${error.message}`);
+    console.error("Error adding risk cause to Firestore: ", error.message);
+    throw new Error(`Gagal menambahkan penyebab risiko ke database. Pesan: ${error.message || String(error)}`);
   }
 }
 
@@ -95,23 +96,30 @@ export async function getRiskCausesByPotentialRiskId(potentialRiskId: string, up
     });
     return riskCauses;
   } catch (error: any) {
-    console.error("Error getting risk causes from Firestore: ", error.message, error.code, error.details);
+    console.error("Error getting risk causes from Firestore: ", error.message);
     let detailedErrorMessage = "Gagal mengambil daftar penyebab risiko dari database.";
-    if (error.code === 'failed-precondition') {
-        detailedErrorMessage += " Ini seringkali disebabkan oleh indeks komposit yang hilang di Firestore. Silakan periksa Firebase Console Anda (Firestore Database > Indexes) untuk membuat indeks yang diperlukan. Link untuk membuat indeks mungkin ada di log error server/konsol browser Anda.";
-    } else if (error.message) {
+    if (error instanceof Error && error.message) {
         detailedErrorMessage += ` Pesan Asli: ${error.message}`;
+    }
+    if ((error as any).code === 'failed-precondition') {
+        detailedErrorMessage += " Ini seringkali disebabkan oleh indeks komposit yang hilang di Firestore. Silakan periksa Firebase Console Anda (Firestore Database > Indexes) untuk membuat indeks yang diperlukan.";
     }
     throw new Error(detailedErrorMessage);
   }
 }
 
-export async function getRiskCauseById(id: string): Promise<RiskCause | null> {
+export async function getRiskCauseById(id: string, uprId: string, period: string): Promise<RiskCause | null> {
   try {
     const docRef = doc(db, RISK_CAUSES_COLLECTION, id);
     const docSnap = await getDoc(docRef);
     if (docSnap.exists()) {
       const data = docSnap.data();
+      // Validate against current UPR and Period context
+      if (data.uprId !== uprId || data.period !== period) {
+        console.warn(`RiskCause ${id} found, but does not match current UPR/Period context. Expected UPR: ${uprId}, Period: ${period}. Found: UPR: ${data.uprId}, Period: ${data.period}`);
+        return null;
+      }
+
        const createdAtISO = data.createdAt instanceof Timestamp
                            ? data.createdAt.toDate().toISOString()
                            : (data.createdAt && typeof data.createdAt === 'string' ? new Date(data.createdAt).toISOString() : new Date().toISOString());
@@ -131,8 +139,8 @@ export async function getRiskCauseById(id: string): Promise<RiskCause | null> {
     }
     return null;
   } catch (error: any) {
-    console.error("Error getting risk cause by ID from Firestore: ", error.message, error.code, error);
-    throw new Error(`Gagal mengambil detail penyebab risiko dari database. Pesan: ${error.message}`);
+    console.error("Error getting risk cause by ID from Firestore: ", error.message);
+    throw new Error(`Gagal mengambil detail penyebab risiko dari database. Pesan: ${error.message || String(error)}`);
   }
 }
 
@@ -148,8 +156,8 @@ export async function updateRiskCause(id: string, data: Partial<Omit<RiskCause, 
         analysisUpdatedAt: serverTimestamp()
     });
   } catch (error: any) {
-    console.error("Error updating risk cause in Firestore: ", error.message, error.code, error);
-    throw new Error(`Gagal memperbarui penyebab risiko di database. Pesan: ${error.message}`);
+    console.error("Error updating risk cause in Firestore: ", error.message);
+    throw new Error(`Gagal memperbarui penyebab risiko di database. Pesan: ${error.message || String(error)}`);
   }
 }
 
@@ -164,7 +172,8 @@ export async function deleteRiskCauseAndSubCollections(riskCauseId: string, uprI
     );
     const controlsSnapshot = await getDocs(controlsQuery);
     controlsSnapshot.forEach(doc => {
-      localBatch.delete(doc.ref);
+      // deleteControlMeasure(doc.id, localBatch); // deleteControlMeasure should accept a batch
+      localBatch.delete(doc.ref); // Simpler direct delete
     });
 
     const riskCauseRef = doc(db, RISK_CAUSES_COLLECTION, riskCauseId);
@@ -174,7 +183,9 @@ export async function deleteRiskCauseAndSubCollections(riskCauseId: string, uprI
       await localBatch.commit();
     }
   } catch (error: any) {
-    console.error("Error deleting risk cause and its control measures: ", error.message, error.code, error);
-    throw new Error(`Gagal menghapus penyebab risiko dan tindakan pengendalian terkait. Pesan: ${error.message}`);
+    console.error("Error deleting risk cause and its control measures: ", error.message);
+    throw new Error(`Gagal menghapus penyebab risiko dan tindakan pengendalian terkait. Pesan: ${error.message || String(error)}`);
   }
 }
+
+    
