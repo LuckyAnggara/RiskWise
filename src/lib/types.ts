@@ -2,7 +2,7 @@
 export const LIKELIHOOD_LEVELS_DESC_MAP = {
   "Hampir tidak terjadi (1)": 1,
   "Jarang terjadi (2)": 2,
-  "Kadang Terjadi (3)": 3, // Konsisten dengan input AI
+  "Kadang Terjadi (3)": 3,
   "Sering terjadi (4)": 4,
   "Hampir pasti terjadi (5)": 5,
 } as const;
@@ -26,12 +26,12 @@ export type RiskLevelDisplay = CalculatedRiskLevelCategory | 'N/A';
 
 
 export const RISK_CATEGORIES = [
-  'Kebijakan', 
-  'Hukum', 
-  'Reputasi', 
-  'Kepatuhan', 
-  'Keuangan', 
-  'Fraud', 
+  'Kebijakan',
+  'Hukum',
+  'Reputasi',
+  'Kepatuhan',
+  'Keuangan',
+  'Fraud',
   'Operasional'
 ] as const;
 export type RiskCategory = typeof RISK_CATEGORIES[number];
@@ -52,60 +52,57 @@ export interface Goal {
   id: string;
   name: string;
   description: string;
-  code: string; 
-  createdAt: string; 
-  // uprId: string; // Dihapus, akan menggunakan userId sebagai identifier UPR
-  period: string; 
-  userId: string; 
+  code: string;
+  createdAt: string;
+  userId: string; // Non-optional
+  period: string; // Non-optional
+  updatedAt?: string;
 }
 
 export interface PotentialRisk {
-  id: string; 
+  id: string;
   goalId: string;
-  // uprId: string; // Dihapus
-  period: string;
-  userId: string;
+  userId: string; // Made non-optional
+  period: string; // Made non-optional
   description: string;
   category: RiskCategory | null;
-  owner: string | null; 
-  identifiedAt: string; 
-  sequenceNumber: number; 
+  owner: string | null;
+  identifiedAt: string;
+  sequenceNumber: number;
   updatedAt?: string;
 }
 
 export interface RiskCause {
-  id: string; 
-  potentialRiskId: string; 
-  goalId: string; 
-  // uprId: string; // Dihapus
-  period: string;
-  userId: string;
+  id: string;
+  potentialRiskId: string;
+  goalId: string; // For context and easier querying
+  userId: string; // Made non-optional
+  period: string; // Made non-optional
   description: string;
   source: RiskSource;
   keyRiskIndicator: string | null;
   riskTolerance: string | null;
   likelihood: LikelihoodLevelDesc | null;
-  impact: ImpactLevelDesc | null;        
-  createdAt: string; 
-  analysisUpdatedAt?: string; 
-  sequenceNumber: number; 
+  impact: ImpactLevelDesc | null;
+  createdAt: string;
+  analysisUpdatedAt?: string;
+  sequenceNumber: number;
 }
 
 export interface ControlMeasure {
-  id: string; 
+  id: string;
   riskCauseId: string;
-  potentialRiskId: string; 
-  goalId: string; 
-  // uprId: string; // Dihapus
-  period: string;
-  userId: string;
+  potentialRiskId: string;
+  goalId: string;
+  userId: string; // Made non-optional
+  period: string; // Made non-optional
   controlType: ControlMeasureTypeKey;
-  sequenceNumber: number; 
+  sequenceNumber: number;
   description: string;
   keyControlIndicator: string | null;
   target: string | null;
   responsiblePerson: string | null;
-  deadline: string | null; 
+  deadline: string | null;
   budget: number | null;
   createdAt: string;
   updatedAt?: string;
@@ -115,16 +112,16 @@ export interface ControlMeasure {
 export type UserRole = 'admin' | 'userSatker';
 
 export interface AppUser {
-  uid: string; // Firebase Auth UID
+  uid: string;
   email: string | null;
-  displayName: string | null; // Akan berfungsi sebagai Nama UPR
+  displayName: string | null; // This is the UPR Name
   photoURL: string | null;
   role: UserRole;
-  uprId: string | null; // Akan sama dengan displayName setelah profil lengkap
+  uprId: string | null; // This will be the same as displayName
   activePeriod: string | null;
   availablePeriods: string[] | null;
-  createdAt: string; // ISO string
-  updatedAt?: string; // ISO string
+  createdAt: string;
+  updatedAt?: string;
 }
 
 export const getControlTypeName = (typeKey: ControlMeasureTypeKey): string => {
