@@ -9,15 +9,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, BarChart3, Settings2, ChevronDown, ChevronUp, ShieldCheck } from 'lucide-react';
-import type { Goal, PotentialRisk, RiskCause, LikelihoodLevelDesc, ImpactLevelDesc, RiskCategory } from '@/lib/types';
-import { LIKELIHOOD_LEVELS_MAP, IMPACT_LEVELS_MAP } from '@/lib/types';
-import { getCurrentUprId, getCurrentPeriod, initializeAppContext } from '@/lib/upr-period-context';
+import type { Goal, PotentialRisk, RiskCause, LikelihoodLevelDesc, ImpactLevelDesc, RiskCategory, CalculatedRiskLevelCategory } from '@/lib/types';
+import { LIKELIHOOD_LEVELS_DESC_MAP, IMPACT_LEVELS_DESC_MAP } from '@/lib/types'; // CORRECTED IMPORT
+import { useAuth } from '@/contexts/auth-context';
+import { getGoals } from '@/services/goalService';
+import { getPotentialRisksByGoalId } from '@/services/potentialRiskService';
+import { getRiskCausesByPotentialRiskId } from '@/services/riskCauseService';
 import { RiskPriorityMatrix } from '@/components/risks/risk-priority-matrix';
-import { getCalculatedRiskLevel, getRiskLevelColor } from '@/app/risk-cause-analysis/[riskCauseId]/page'; // Import shared functions
-
-const getGoalsStorageKey = (uprId: string, period: string) => `riskwise-upr${uprId}-period${period}-goals`;
-const getPotentialRisksStorageKeyForGoal = (uprId: string, period: string, goalId: string) => `riskwise-upr${uprId}-period${period}-goal${goalId}-potentialRisks`;
-const getRiskCausesStorageKey = (uprId: string, period: string, potentialRiskId: string) => `riskwise-upr${uprId}-period${period}-potentialRisk${potentialRiskId}-causes`;
+import { getCalculatedRiskLevel, getRiskLevelColor } from '@/app/risk-cause-analysis/[riskCauseId]/page';
 
 interface AnalyzedRiskCause extends RiskCause {
   potentialRiskDescription: string;
@@ -26,75 +25,77 @@ interface AnalyzedRiskCause extends RiskCause {
   goalCode: string;
   potentialRiskSequenceNumber: number;
   riskScore: number | null;
-  riskLevelText: string;
+  riskLevelText: CalculatedRiskLevelCategory | 'N/A';
+  goalId: string; 
 }
 
 type SortableRiskCauseKeys = 'riskScore' | 'likelihood' | 'impact' | 'description';
 
 export default function RiskPriorityPage() {
-  const [currentUprId, setCurrentUprId] = useState('');
-  const [currentPeriod, setCurrentPeriod] = useState('');
+  const { currentUser, appUser, loading: authLoading } = useAuth();
   const [analyzedRiskCauses, setAnalyzedRiskCauses] = useState<AnalyzedRiskCause[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [sortKey, setSortKey] = useState<SortableRiskCauseKeys>('riskScore');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
-  const loadData = useCallback(() => {
-    if (typeof window !== 'undefined' && currentUprId && currentPeriod) {
-      setIsLoading(true);
-      const goalsStorageKey = getGoalsStorageKey(currentUprId, currentPeriod);
-      const storedGoalsData = localStorage.getItem(goalsStorageKey);
-      const loadedGoals: Goal[] = storedGoalsData ? JSON.parse(storedGoalsData) : [];
+  const currentUprId = useMemo(() => appUser?.uprId || null, [appUser]);
+  const currentPeriod = useMemo(() => appUser?.activePeriod || null, [appUser]);
+
+  const loadData = useCallback(async () => {
+    if (!currentUser || !currentUprId || !currentPeriod) {
+      setIsLoading(false);
+      setAnalyzedRiskCauses([]);
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const goalsResult = await getGoals(currentUprId, currentPeriod);
+      let loadedGoals: Goal[] = [];
+      if (goalsResult.success && goalsResult.goals) {
+        loadedGoals = goalsResult.goals;
+      }
 
       let collectedAnalyzedRiskCauses: AnalyzedRiskCause[] = [];
 
-      loadedGoals.forEach(goal => {
-        const potentialRisksStorageKey = getPotentialRisksStorageKeyForGoal(goal.uprId, goal.period, goal.id);
-        const storedPotentialRisksData = localStorage.getItem(potentialRisksStorageKey);
-        if (storedPotentialRisksData) {
-          const goalPotentialRisks: PotentialRisk[] = JSON.parse(storedPotentialRisksData);
-          goalPotentialRisks.forEach(pRisk => {
-            const causesStorageKey = getRiskCausesStorageKey(goal.uprId, goal.period, pRisk.id);
-            const storedCausesData = localStorage.getItem(causesStorageKey);
-            if (storedCausesData) {
-              const pRiskCauses: RiskCause[] = JSON.parse(storedCausesData);
-              pRiskCauses.forEach(cause => {
-                if (cause.likelihood && cause.impact) { // Only include analyzed causes
-                  const { level, score } = getCalculatedRiskLevel(cause.likelihood, cause.impact);
-                  collectedAnalyzedRiskCauses.push({
-                    ...cause,
-                    potentialRiskDescription: pRisk.description,
-                    potentialRiskCategory: pRisk.category,
-                    potentialRiskSequenceNumber: pRisk.sequenceNumber,
-                    goalName: goal.name,
-                    goalCode: goal.code || '',
-                    riskScore: score,
-                    riskLevelText: level,
-                  });
-                }
+      for (const goal of loadedGoals) {
+        const potentialRisks = await getPotentialRisksByGoalId(goal.id, currentUprId, currentPeriod);
+        for (const pRisk of potentialRisks) {
+          const pRiskCauses = await getRiskCausesByPotentialRiskId(pRisk.id, currentUprId, currentPeriod);
+          pRiskCauses.forEach(cause => {
+            if (cause.likelihood && cause.impact) { // Only include analyzed causes
+              const { level, score } = getCalculatedRiskLevel(cause.likelihood, cause.impact);
+              collectedAnalyzedRiskCauses.push({
+                ...cause,
+                potentialRiskDescription: pRisk.description,
+                potentialRiskCategory: pRisk.category,
+                potentialRiskSequenceNumber: pRisk.sequenceNumber,
+                goalName: goal.name,
+                goalCode: goal.code || '',
+                goalId: goal.id,
+                riskScore: score,
+                riskLevelText: level,
               });
             }
           });
         }
-      });
+      }
       setAnalyzedRiskCauses(collectedAnalyzedRiskCauses);
+    } catch (error) {
+      console.error("Error loading data for Risk Priority page:", error);
+      setAnalyzedRiskCauses([]); 
+    } finally {
       setIsLoading(false);
     }
-  }, [currentUprId, currentPeriod]);
+  }, [currentUser, currentUprId, currentPeriod]);
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const context = initializeAppContext();
-      setCurrentUprId(context.uprId);
-      setCurrentPeriod(context.period);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (currentUprId && currentPeriod) {
+    if (!authLoading && currentUser && currentUprId && currentPeriod) {
       loadData();
+    } else if (!authLoading && (!currentUser || !currentUprId || !currentPeriod)) {
+      setIsLoading(false); 
+      setAnalyzedRiskCauses([]);
     }
-  }, [loadData, currentUprId, currentPeriod]);
+  }, [authLoading, currentUser, currentUprId, currentPeriod, loadData]);
 
   const sortedRiskCauses = useMemo(() => {
     return [...analyzedRiskCauses].sort((a, b) => {
@@ -102,14 +103,14 @@ export default function RiskPriorityPage() {
       let valB: any = b[sortKey];
 
       if (sortKey === 'riskScore') {
-        valA = a.riskScore ?? -1; // Treat null/undefined scores as lowest
+        valA = a.riskScore ?? -1; 
         valB = b.riskScore ?? -1;
       } else if (sortKey === 'likelihood' && a.likelihood && b.likelihood) {
-        valA = LIKELIHOOD_LEVELS_MAP[a.likelihood] ?? 0;
-        valB = LIKELIHOOD_LEVELS_MAP[b.likelihood] ?? 0;
+        valA = LIKELIHOOD_LEVELS_DESC_MAP[a.likelihood] ?? 0;
+        valB = LIKELIHOOD_LEVELS_DESC_MAP[b.likelihood] ?? 0;
       } else if (sortKey === 'impact' && a.impact && b.impact) {
-        valA = IMPACT_LEVELS_MAP[a.impact] ?? 0;
-        valB = IMPACT_LEVELS_MAP[b.impact] ?? 0;
+        valA = IMPACT_LEVELS_DESC_MAP[a.impact] ?? 0;
+        valB = IMPACT_LEVELS_DESC_MAP[b.impact] ?? 0;
       }
 
 
@@ -128,7 +129,7 @@ export default function RiskPriorityPage() {
       setSortOrder(prevOrder => (prevOrder === 'asc' ? 'desc' : 'asc'));
     } else {
       setSortKey(key);
-      setSortOrder('desc'); // Default to descending for new sort key
+      setSortOrder('desc'); 
     }
   };
 
@@ -137,11 +138,19 @@ export default function RiskPriorityPage() {
     return sortOrder === 'asc' ? <ChevronUp className="h-4 w-4 ml-1" /> : <ChevronDown className="h-4 w-4 ml-1" />;
   };
 
-  if (isLoading) {
+  if (isLoading || authLoading || (currentUser && (!currentUprId || !currentPeriod)) ) {
     return (
       <div className="flex flex-col items-center justify-center h-screen">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
         <p className="text-xl text-muted-foreground">Memuat data prioritas risiko...</p>
+      </div>
+    );
+  }
+  
+  if (!currentUser) {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen">
+        <p className="text-xl text-muted-foreground">Silakan login untuk melihat halaman ini.</p>
       </div>
     );
   }
@@ -150,7 +159,7 @@ export default function RiskPriorityPage() {
     <div className="space-y-6">
       <PageHeader
         title="Prioritas Risiko"
-        description={`Visualisasi dan daftar penyebab risiko yang telah dianalisis untuk UPR: ${currentUprId}, Periode: ${currentPeriod}.`}
+        description={`Visualisasi dan daftar penyebab risiko yang telah dianalisis untuk UPR: ${currentUprId || '...'}, Periode: ${currentPeriod || '...'}.`}
       />
 
       <Card>
@@ -205,8 +214,8 @@ export default function RiskPriorityPage() {
                           {causeCode} - {cause.description}
                         </TableCell>
                         <TableCell>
-                          <Badge className={`${getRiskLevelColor(cause.riskLevelText as any)} text-xs`}>
-                            {cause.riskLevelText === 'N/A' ? 'N/A' : `${cause.riskLevelText} (${cause.riskScore})`}
+                          <Badge className={`${getRiskLevelColor(cause.riskLevelText)} text-xs`}>
+                            {cause.riskLevelText === 'N/A' ? 'N/A' : `${cause.riskLevelText} (${cause.riskScore || 'N/A'})`}
                           </Badge>
                         </TableCell>
                          <TableCell>
@@ -245,5 +254,3 @@ export default function RiskPriorityPage() {
     </div>
   );
 }
-
-    
