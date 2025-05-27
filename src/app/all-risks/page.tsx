@@ -22,7 +22,6 @@ import { useAuth } from '@/contexts/auth-context';
 import { getGoals, type GoalsResult } from '@/services/goalService';
 import { getPotentialRisksByGoalId, deletePotentialRiskAndSubCollections, addPotentialRisk } from '@/services/potentialRiskService';
 import { getRiskCausesByPotentialRiskId } from '@/services/riskCauseService';
-// import { getControlMeasuresByRiskCauseId, addControlMeasure as addControlMeasureService } from '@/services/controlMeasureService'; // Not used directly here for now
 
 const DEFAULT_PERIOD = new Date().getFullYear().toString();
 
@@ -47,10 +46,13 @@ export default function AllRisksPage() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [riskToDelete, setRiskToDelete] = useState<PotentialRisk | null>(null); 
   const [isBulkDeleteDialogOpen, setIsBulkDeleteDialogOpen] = useState(false);
+  
+  const [deletingRiskId, setDeletingRiskId] = useState<string | null>(null);
+  const [isBulkDeleting, setIsBulkDeleting] = useState<boolean>(false);
 
   const { toast } = useToast();
   
-  const currentUprId = useMemo(() => appUser?.uprId || appUser?.displayName || null, [appUser]);
+  const currentUprId = useMemo(() => appUser?.uprId || null, [appUser]);
   const currentPeriod = useMemo(() => appUser?.activePeriod || DEFAULT_PERIOD, [appUser]);
 
   const loadData = useCallback(async () => {
@@ -82,7 +84,6 @@ export default function AllRisksPage() {
         for (const pRisk of goalPotentialRisks) {
           collectedPotentialRisks.push(pRisk);
           if (pRisk.owner) uniqueOwners.add(pRisk.owner);
-          // Fetch cause counts for each potential risk
           const causes = await getRiskCausesByPotentialRiskId(pRisk.id, currentUprId, currentPeriod);
           causeCounts[pRisk.id] = causes.length;
         }
@@ -103,9 +104,8 @@ export default function AllRisksPage() {
     if (currentUser && currentUprId && currentPeriod) {
       loadData();
     } else if (!authLoading && !currentUser) {
-        setIsLoading(false); // User not logged in, no data to load. AppLayout should redirect.
+        setIsLoading(false); 
     } else if (currentUser && (!currentUprId || !currentPeriod) && !authLoading && appUser !== undefined) {
-        // User logged in, appUser might still be loading or has no period/uprId
         setIsLoading(true);
     }
   }, [loadData, currentUprId, currentPeriod, currentUser, authLoading, appUser]);
@@ -122,6 +122,7 @@ export default function AllRisksPage() {
   const confirmDeleteRisk = async () => {
     if (!riskToDelete || !currentUser || !currentUprId || !currentPeriod) return;
     
+    setDeletingRiskId(riskToDelete.id);
     try {
       await deletePotentialRiskAndSubCollections(riskToDelete.id, currentUprId, currentPeriod);
       toast({ title: "Potensi Risiko Dihapus", description: `Potensi risiko "${riskToDelete.description}" dan semua data terkait telah dihapus.`, variant: "destructive" });
@@ -132,6 +133,7 @@ export default function AllRisksPage() {
     } finally {
         setIsDeleteDialogOpen(false);
         setRiskToDelete(null);
+        setDeletingRiskId(null);
     }
   };
 
@@ -243,7 +245,7 @@ export default function AllRisksPage() {
 
   const confirmDeleteSelectedRisks = async () => {
     if (!currentUser || !currentUprId || !currentPeriod) return;
-    setIsLoading(true);
+    setIsBulkDeleting(true);
     let deletedCount = 0;
     
     const deletionPromises = selectedRiskIds.map(riskId => {
@@ -270,7 +272,7 @@ export default function AllRisksPage() {
     } finally {
         setIsBulkDeleteDialogOpen(false);
         setSelectedRiskIds([]);
-        setIsLoading(false);
+        setIsBulkDeleting(false);
     }
   };
 
@@ -300,9 +302,6 @@ export default function AllRisksPage() {
         };
         const newPotentialRisk = await addPotentialRisk(newPRData, parentGoal.id, currentUprId, currentPeriod, currentUser.uid, newSequenceNumber);
         
-        // TODO: Implement duplication for RiskCauses and ControlMeasures associated with original risk
-        // This would involve fetching them and re-creating them for the newPotentialRisk.id
-
         toast({ title: "Risiko Diduplikasi", description: `Potensi risiko "${newPotentialRisk.description}" telah berhasil diduplikasi. Penyebab dan kontrol belum disalin.`});
         loadData(); 
     } catch (error: any) {
@@ -323,7 +322,6 @@ export default function AllRisksPage() {
   }
   
   if (!currentUser && !authLoading) {
-    // AppLayout should handle redirect
     return null;
   }
 
@@ -439,8 +437,8 @@ export default function AllRisksPage() {
       
       {selectedRiskIds.length > 0 && (
           <div className="flex justify-end mb-4">
-            <Button variant="destructive" onClick={handleDeleteSelectedRisks} className="w-full sm:w-auto" disabled={!currentUser || isLoading}>
-                <Trash2 className="mr-2 h-4 w-4" />
+            <Button variant="destructive" onClick={handleDeleteSelectedRisks} className="w-full sm:w-auto" disabled={!currentUser || isLoading || isBulkDeleting}>
+                {isBulkDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
                 Hapus ({selectedRiskIds.length}) yang Dipilih
             </Button>
           </div>
@@ -481,7 +479,7 @@ export default function AllRisksPage() {
                             checked={selectedRiskIds.length === filteredAndSortedRisks.length && filteredAndSortedRisks.length > 0}
                             onCheckedChange={(checked) => handleSelectAllRisks(Boolean(checked))}
                             aria-label="Pilih semua risiko yang terlihat"
-                            disabled={filteredAndSortedRisks.length === 0 || !currentUser}
+                            disabled={filteredAndSortedRisks.length === 0 || !currentUser || isBulkDeleting}
                         />
                     </TableHead>
                     <TableHead className="w-[40px] sticky left-10 bg-background z-10"></TableHead> 
@@ -512,20 +510,21 @@ export default function AllRisksPage() {
                         : 'Sasaran tidak ditemukan';
                     
                     const returnPath = `/all-risks`;
+                    const isCurrentlyDeletingThis = deletingRiskId === pRisk.id || (isBulkDeleting && selectedRiskIds.includes(pRisk.id));
 
                     return (
                         <Fragment key={pRisk.id}>
-                        <TableRow>
+                        <TableRow className={isCurrentlyDeletingThis ? "opacity-50" : ""}>
                             <TableCell className="sticky left-0 bg-background z-10">
                                 <Checkbox
                                     checked={selectedRiskIds.includes(pRisk.id)}
                                     onCheckedChange={(checked) => handleSelectRisk(pRisk.id, Boolean(checked))}
                                     aria-label={`Pilih risiko ${pRisk.description}`}
-                                    disabled={!currentUser}
+                                    disabled={!currentUser || isCurrentlyDeletingThis}
                                 />
                             </TableCell>
                             <TableCell className="sticky left-10 bg-background z-10">
-                            <Button variant="ghost" size="icon" onClick={() => toggleExpandRisk(pRisk.id)} aria-label={isExpanded ? "Sembunyikan deskripsi" : "Tampilkan deskripsi"} className="h-8 w-8">
+                            <Button variant="ghost" size="icon" onClick={() => toggleExpandRisk(pRisk.id)} aria-label={isExpanded ? "Sembunyikan deskripsi" : "Tampilkan deskripsi"} className="h-8 w-8" disabled={isCurrentlyDeletingThis}>
                                 {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                             </Button>
                             </TableCell>
@@ -546,28 +545,32 @@ export default function AllRisksPage() {
                             <TableCell className="text-center text-xs">{riskCauseCounts[pRisk.id] || 0}</TableCell>
                             
                             <TableCell className="text-right sticky right-0 bg-background z-10 pr-4">
-                            <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon" className="h-8 w-8">
-                                    <Settings2 className="h-4 w-4" />
-                                </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => handleOpenEditPotentialRiskPage(pRisk.id)}>
-                                    <Edit className="mr-2 h-4 w-4" /> Edit Detail & Penyebab
-                                </DropdownMenuItem>
-                                 <DropdownMenuItem onClick={() => router.push(`/risk-analysis?potentialRiskId=${pRisk.id}&from=${encodeURIComponent(returnPath)}`)}>
-                                    <BarChart3 className="mr-2 h-4 w-4" /> Analisis Semua Penyebab
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleDuplicateRisk(pRisk.id)} disabled={!currentUser}>
-                                    <Copy className="mr-2 h-4 w-4" /> Duplikat Risiko
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem onClick={() => handleDeleteSingleRisk(pRisk)} className="text-destructive focus:text-destructive focus:bg-destructive/10" disabled={!currentUser}>
-                                    <Trash2 className="mr-2 h-4 w-4" /> Hapus Potensi Risiko
-                                </DropdownMenuItem>
-                                </DropdownMenuContent>
-                            </DropdownMenu>
+                             {isCurrentlyDeletingThis ? (
+                                <Loader2 className="h-5 w-5 animate-spin mx-auto" />
+                              ) : (
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" size="icon" className="h-8 w-8" disabled={!currentUser}>
+                                      <Settings2 className="h-4 w-4" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuItem onClick={() => handleOpenEditPotentialRiskPage(pRisk.id)}>
+                                      <Edit className="mr-2 h-4 w-4" /> Edit Detail & Penyebab
+                                    </DropdownMenuItem>
+                                     <DropdownMenuItem onClick={() => router.push(`/risk-analysis?potentialRiskId=${pRisk.id}&from=${encodeURIComponent(returnPath)}`)}>
+                                        <BarChart3 className="mr-2 h-4 w-4" /> Analisis Semua Penyebab
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => handleDuplicateRisk(pRisk.id)} disabled={!currentUser}>
+                                      <Copy className="mr-2 h-4 w-4" /> Duplikat Risiko
+                                    </DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem onClick={() => handleDeleteSingleRisk(pRisk)} className="text-destructive focus:text-destructive focus:bg-destructive/10" disabled={!currentUser}>
+                                      <Trash2 className="mr-2 h-4 w-4" /> Hapus Potensi Risiko
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              )}
                             </TableCell>
                         </TableRow>
                         {isExpanded && (
@@ -626,3 +629,6 @@ export default function AllRisksPage() {
     </div>
   );
 }
+
+
+    

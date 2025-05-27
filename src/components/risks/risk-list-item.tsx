@@ -1,11 +1,11 @@
 
 "use client";
 
-import type { PotentialRisk, RiskCause } from '@/lib/types';
+import type { PotentialRisk } from '@/lib/types'; // Removed RiskCause as it's not directly used for display here
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { ShieldCheck, Edit, Trash2, Settings2, PlusCircle, Zap, ListChecks, Copy, BarChart3 } from 'lucide-react';
+import { Edit, Trash2, Settings2, PlusCircle, Zap, Copy, BarChart3, Loader2 } from 'lucide-react'; // Added Loader2
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   DropdownMenu,
@@ -14,7 +14,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useRouter } from 'next/navigation'; // Import useRouter
+import { useRouter } from 'next/navigation';
 
 interface RiskListItemProps {
   potentialRisk: PotentialRisk;
@@ -24,21 +24,10 @@ interface RiskListItemProps {
   onDeletePotentialRisk: (potentialRisk: PotentialRisk) => void;
   isSelected: boolean;
   onSelectRisk: (checked: boolean) => void;
-  onDuplicateRisk: () => void;
-  canDelete: boolean; // Added
+  onDuplicateRisk: () => void; // Changed to not take ID, as it's known from potentialRisk prop
+  canDelete: boolean;
+  isDeleting?: boolean; // New prop to indicate if this specific card is being deleted
 }
-
-const getCauseSourceColorClasses = (source: RiskCause['source']) => {
-  switch (source) {
-    case 'Internal':
-      return "bg-sky-100 text-sky-800 border-sky-300 dark:bg-sky-900/50 dark:text-sky-300 dark:border-sky-700";
-    case 'Eksternal':
-      return "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/50 dark:text-amber-300 dark:border-amber-700";
-    default:
-      return "border-transparent bg-secondary text-secondary-foreground";
-  }
-};
-
 
 export function RiskListItem({ 
   potentialRisk, 
@@ -49,14 +38,22 @@ export function RiskListItem({
   isSelected,
   onSelectRisk,
   onDuplicateRisk,
-  canDelete
+  canDelete,
+  isDeleting
 }: RiskListItemProps) {
   const router = useRouter();
   const displayGoalCode = goalCode || 'S?'; 
   const potentialRiskCodeDisplay = `${displayGoalCode}.PR${potentialRisk.sequenceNumber || '?'}`;
+  const returnPath = `/risks/${potentialRisk.goalId}`;
+
 
   return (
-    <Card className="flex flex-col h-full">
+    <Card className={`flex flex-col h-full relative ${isDeleting ? "opacity-50 pointer-events-none" : ""}`}>
+      {isDeleting && (
+        <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10 rounded-lg">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      )}
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between"> 
           <div className="flex items-center flex-grow min-w-0 mr-2 space-x-2"> 
@@ -65,7 +62,7 @@ export function RiskListItem({
               checked={isSelected}
               onCheckedChange={onSelectRisk}
               aria-label={`Pilih potensi risiko ${potentialRisk.description}`}
-              disabled={!canDelete} // Disable if cannot delete (e.g., not logged in)
+              disabled={!canDelete || isDeleting}
             />
             <CardTitle className="text-base font-semibold leading-tight truncate" title={potentialRisk.description}>
               {potentialRiskCodeDisplay} - {potentialRisk.description}
@@ -75,22 +72,22 @@ export function RiskListItem({
           <div className="flex-shrink-0"> 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" aria-label="Opsi potensi risiko" className="h-8 w-8">
+                <Button variant="ghost" size="icon" aria-label="Opsi potensi risiko" className="h-8 w-8" disabled={!canDelete || isDeleting}>
                   <Settings2 className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => onEditDetails(potentialRisk.id)}> 
+                <DropdownMenuItem onClick={() => onEditDetails(potentialRisk.id)} disabled={isDeleting}> 
                   <Edit className="mr-2 h-4 w-4" /> Edit Detail & Penyebab
                 </DropdownMenuItem>
-                 <DropdownMenuItem onClick={() => router.push(`/risk-analysis?potentialRiskId=${potentialRisk.id}`)}>
+                 <DropdownMenuItem onClick={() => router.push(`/risk-analysis?potentialRiskId=${potentialRisk.id}&from=${encodeURIComponent(returnPath)}`)} disabled={isDeleting}>
                     <BarChart3 className="mr-2 h-4 w-4" /> Analisis Semua Penyebab
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={onDuplicateRisk} disabled={!canDelete}>
+                <DropdownMenuItem onClick={onDuplicateRisk} disabled={!canDelete || isDeleting}>
                   <Copy className="mr-2 h-4 w-4" /> Duplikat Risiko
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => onDeletePotentialRisk(potentialRisk)} className="text-destructive focus:text-destructive focus:bg-destructive/10" disabled={!canDelete}>
+                <DropdownMenuItem onClick={() => onDeletePotentialRisk(potentialRisk)} className="text-destructive focus:text-destructive focus:bg-destructive/10" disabled={!canDelete || isDeleting}>
                   <Trash2 className="mr-2 h-4 w-4" /> Hapus Potensi Risiko
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -118,11 +115,11 @@ export function RiskListItem({
         
         <div>
             <h4 className="text-sm font-semibold mb-1 flex items-center">
-                <ListChecks className="h-4 w-4 mr-2 text-primary" />
-                Potensi Penyebab: <Badge variant="outline" className="ml-1">{riskCausesCount}</Badge>
+                <Zap className="h-4 w-4 mr-2 text-primary" />
+                Penyebab Risiko: <Badge variant="outline" className="ml-1">{riskCausesCount}</Badge>
             </h4>
             {riskCausesCount > 0 ? (
-                 <Button variant="link" size="sm" className="p-0 h-auto mt-1.5 text-primary hover:underline text-xs" onClick={() => onEditDetails(potentialRisk.id)}>
+                 <Button variant="link" size="sm" className="p-0 h-auto mt-1.5 text-primary hover:underline text-xs" onClick={() => onEditDetails(potentialRisk.id)} disabled={isDeleting}>
                     Lihat/Kelola Semua Penyebab
                 </Button>
             ) : (
@@ -130,11 +127,14 @@ export function RiskListItem({
             )}
         </div>
       </CardContent>
-      <CardFooter className="pt-2">
-          <Button variant="outline" size="sm" onClick={() => onEditDetails(potentialRisk.id)} className="w-full text-xs">
-            <Zap className="mr-2 h-3 w-3" /> Kelola Detail & Penyebab
+      <CardFooter className="pt-2 pb-3">
+          <Button variant="outline" size="sm" onClick={() => onEditDetails(potentialRisk.id)} className="w-full text-xs" disabled={isDeleting}>
+            <Edit className="mr-2 h-3 w-3" /> Kelola Detail & Penyebab
           </Button>
       </CardFooter>
     </Card>
   );
 }
+
+
+    
