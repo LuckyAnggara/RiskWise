@@ -56,7 +56,7 @@ export async function addMonitoringSession(
       ...data,
       userId,
       period,
-      status: newDocData.status,
+      status: newDocData.status as MonitoringSession['status'],
       createdAt: createdAtTimestamp.toISOString(),
       updatedAt: updatedAtTimestamp.toISOString(),
     } as MonitoringSession;
@@ -77,8 +77,8 @@ export async function getMonitoringSessions(userId: string, period: string): Pro
     const q = query(
       collection(db, MONITORING_SESSIONS_COLLECTION),
       where("userId", "==", userId),
-      where("period", "==", period), // Menyaring berdasarkan periode aplikasi
-      orderBy("endDate", "desc") // Menampilkan yang terbaru di atas
+      where("period", "==", period), 
+      orderBy("endDate", "desc") 
     );
     const querySnapshot = await getDocs(q);
     const sessions: MonitoringSession[] = [];
@@ -98,10 +98,10 @@ export async function getMonitoringSessions(userId: string, period: string): Pro
     return sessions;
   } catch (error: any) {
     const errorMessage = error.message || String(error);
-    console.error("Error getting monitoring sessions from Firestore: ", errorMessage);
+    console.error("Error getting monitoring sessions from Firestore: ", error.message, error.code, error);
     let detailedErrorMessage = "Gagal mengambil daftar sesi pemantauan.";
     if (error.code === 'failed-precondition') {
-      detailedErrorMessage += " Ini mungkin karena indeks komposit yang hilang. Periksa Firebase Console.";
+      detailedErrorMessage += " Ini mungkin karena indeks komposit yang hilang. Periksa Firebase Console (Firestore Database > Indexes) dan buat indeks yang disarankan.";
     } else {
       detailedErrorMessage += ` Pesan: ${errorMessage}`;
     }
@@ -109,4 +109,37 @@ export async function getMonitoringSessions(userId: string, period: string): Pro
   }
 }
 
-// Fungsi update dan delete bisa ditambahkan di sini nanti jika diperlukan
+export async function getMonitoringSessionById(sessionId: string, userId: string, period: string): Promise<MonitoringSession | null> {
+  if (!sessionId || !userId || !period) {
+    console.warn("[monitoringService] getMonitoringSessionById: sessionId, userId, or period is missing.", { sessionId, userId, period });
+    return null;
+  }
+  try {
+    const docRef = doc(db, MONITORING_SESSIONS_COLLECTION, sessionId);
+    const docSnap = await getDoc(docRef);
+
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      if (data.userId !== userId || data.period !== period) {
+        console.warn(`[monitoringService] MonitoringSession ${sessionId} found, but does not match current user/period context. Expected User: ${userId}, Period: ${period}. Found: User: ${data.userId}, Period: ${data.period}`);
+        return null; // Atau throw error
+      }
+      const createdAtTimestamp = data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date(data.createdAt);
+      const updatedAtTimestamp = data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : (data.updatedAt ? new Date(data.updatedAt) : null);
+
+      return {
+        id: docSnap.id,
+        ...data,
+        createdAt: createdAtTimestamp.toISOString(),
+        updatedAt: updatedAtTimestamp ? updatedAtTimestamp.toISOString() : undefined,
+      } as MonitoringSession;
+    } else {
+      console.warn(`[monitoringService] MonitoringSession with ID ${sessionId} not found.`);
+      return null;
+    }
+  } catch (error: any) {
+    const errorMessage = error.message || String(error);
+    console.error(`[monitoringService] Error getting monitoring session by ID ${sessionId} from Firestore: `, errorMessage);
+    throw new Error(`Gagal mengambil detail sesi pemantauan. Pesan: ${errorMessage}`);
+  }
+}

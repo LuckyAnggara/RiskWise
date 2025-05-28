@@ -4,7 +4,7 @@
 export const LIKELIHOOD_LEVELS_DESC_MAP = {
   "Hampir tidak terjadi (1)": 1,
   "Jarang terjadi (2)": 2,
-  "Kadang Terjadi (3)": 3,
+  "Kadang Terjadi (3)": 3, // Konsisten dengan input pengguna, mungkin "Kadang terjadi (3)"
   "Sering terjadi (4)": 4,
   "Hampir pasti terjadi (5)": 5,
 } as const;
@@ -54,7 +54,6 @@ export type MonitoringPeriodFrequency = typeof MONITORING_PERIOD_FREQUENCIES[num
 
 export interface MonitoringSettings {
   defaultFrequency: MonitoringPeriodFrequency | null;
-  // Tambahkan pengaturan lain jika perlu
 }
 
 export interface Goal {
@@ -125,10 +124,10 @@ export interface AppUser {
   displayName: string | null;
   photoURL: string | null;
   role: UserRole;
-  uprId: string | null; // Akan sama dengan displayName
+  uprId: string | null; 
   activePeriod: string | null;
   availablePeriods: string[] | null;
-  monitoringSettings?: MonitoringSettings | null; // Pengaturan pemantauan
+  monitoringSettings?: MonitoringSettings | null;
   createdAt: string;
   updatedAt?: string;
 }
@@ -136,35 +135,38 @@ export interface AppUser {
 export interface MonitoringSession {
   id: string;
   userId: string;
-  period: string; // Periode aplikasi saat sesi ini dibuat (mis. "2024")
-  name: string; // Nama periode pemantauan (mis. "Triwulan I 2024", "Pemantauan Bulanan - Jan 2024")
+  period: string; 
+  name: string; 
   startDate: string; // ISO string date
   endDate: string;   // ISO string date
   status: 'Aktif' | 'Selesai' | 'Dibatalkan';
   createdAt: string;
   updatedAt?: string;
-  // Mungkin ada field untuk ringkasan hasil pemantauan jika perlu
+}
+
+export interface MonitoredControlMeasureData {
+  controlMeasureId: string;
+  realizationKci: string | number | null; 
+  performancePercentage?: number | null; 
+  supportingEvidenceUrl?: string | null;
+  monitoringResultNotes?: string;
+  followUpPlan?: string;
 }
 
 export interface RiskExposure {
-  id: string;
+  id: string; // Akan sama dengan riskCauseId untuk sesi ini untuk upsert mudah
   monitoringSessionId: string;
-  riskCauseId: string;
+  riskCauseId: string; // Referensi ke RiskCause yang dipantau
+  potentialRiskId: string; // Untuk konteks
+  goalId: string; // Untuk konteks
   userId: string;
-  period: string; // Periode aplikasi
-  exposureValue: number; // Nilai risiko yang terjadi (diinput manual)
-  exposureUnit: string; // Satuan nilai (mis. "jumlah kejadian", "Rp", "%") - Opsional, tergantung KRI
-  notes?: string;
-  recordedAt: string; // Timestamp saat data ini direkam
-  // Field untuk realisasi KCI dari ControlMeasure terkait
-  monitoredControlMeasures?: Array<{
-    controlMeasureId: string;
-    realizationKci: string | number | null; // Realisasi dari KCI
-    performancePercentage?: number | null; // Hasil perhitungan kinerja pengendalian
-    supportingEvidenceUrl?: string | null;
-    monitoringResultNotes?: string;
-    followUpPlan?: string;
-  }>;
+  period: string; // Periode aplikasi saat sesi pemantauan dibuat
+  exposureValue: number | null; 
+  exposureUnit: string | null; 
+  exposureNotes?: string | null;
+  recordedAt: string; // ISO string date
+  monitoredControls?: MonitoredControlMeasureData[]; // Data pemantauan untuk setiap kontrol terkait
+  updatedAt?: string; // ISO string date
 }
 
 
