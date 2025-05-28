@@ -4,7 +4,7 @@
 export const LIKELIHOOD_LEVELS_DESC_MAP = {
   "Hampir tidak terjadi (1)": 1,
   "Jarang terjadi (2)": 2,
-  "Kadang Terjadi (3)": 3, // Konsisten dengan input pengguna, mungkin "Kadang terjadi (3)"
+  "Kadang Terjadi (3)": 3,
   "Sering terjadi (4)": 4,
   "Hampir pasti terjadi (5)": 5,
 } as const;
@@ -60,11 +60,11 @@ export interface Goal {
   id: string;
   name: string;
   description: string;
-  code: string;
+  code: string; // e.g., "A1", "B2"
   userId: string;
   period: string;
-  createdAt: string;
-  updatedAt?: string;
+  createdAt: string; // ISO string
+  updatedAt?: string; // ISO string
 }
 
 export interface PotentialRisk {
@@ -72,48 +72,48 @@ export interface PotentialRisk {
   goalId: string;
   userId: string;
   period: string;
-  sequenceNumber: number;
+  sequenceNumber: number; // Nomor urut untuk PR di dalam Goal, e.g., 1, 2, 3
   description: string;
   category: RiskCategory | null;
   owner: string | null;
-  identifiedAt: string;
-  updatedAt?: string;
+  identifiedAt: string; // ISO string
+  updatedAt?: string; // ISO string
 }
 
 export interface RiskCause {
   id: string;
   potentialRiskId: string;
-  goalId: string;
+  goalId: string; // Denormalized for easier querying/context
   userId: string;
   period: string;
-  sequenceNumber: number;
+  sequenceNumber: number; // Nomor urut untuk RC di dalam PotentialRisk, e.g., 1, 2, 3
   description: string;
   source: RiskSource;
   keyRiskIndicator: string | null;
   riskTolerance: string | null;
   likelihood: LikelihoodLevelDesc | null;
   impact: ImpactLevelDesc | null;
-  createdAt: string;
-  analysisUpdatedAt?: string;
+  createdAt: string; // ISO string
+  analysisUpdatedAt?: string; // ISO string
 }
 
 export interface ControlMeasure {
   id: string;
   riskCauseId: string;
-  potentialRiskId: string;
-  goalId: string;
+  potentialRiskId: string; // Denormalized
+  goalId: string; // Denormalized
   userId: string;
   period: string;
   controlType: ControlMeasureTypeKey;
-  sequenceNumber: number;
+  sequenceNumber: number; // Nomor urut untuk CM di dalam RiskCause berdasarkan type
   description: string;
   keyControlIndicator: string | null;
   target: string | null;
   responsiblePerson: string | null;
   deadline: string | null; // ISO string date
   budget: number | null;
-  createdAt: string;
-  updatedAt?: string;
+  createdAt: string; // ISO string
+  updatedAt?: string; // ISO string
 }
 
 export type UserRole = 'admin' | 'userSatker';
@@ -121,15 +121,16 @@ export type UserRole = 'admin' | 'userSatker';
 export interface AppUser {
   uid: string;
   email: string | null;
-  displayName: string | null;
+  displayName: string | null; // Ini juga akan menjadi Nama UPR
   photoURL: string | null;
   role: UserRole;
-  uprId: string | null; 
+  uprId: string | null; // Akan selalu sama dengan displayName
   activePeriod: string | null;
   availablePeriods: string[] | null;
+  riskAppetite: number | null; // Selera Risiko, default 5
   monitoringSettings?: MonitoringSettings | null;
-  createdAt: string;
-  updatedAt?: string;
+  createdAt: string; // ISO string
+  updatedAt?: string; // ISO string
 }
 
 export interface MonitoringSession {
@@ -140,8 +141,8 @@ export interface MonitoringSession {
   startDate: string; // ISO string date
   endDate: string;   // ISO string date
   status: 'Aktif' | 'Selesai' | 'Dibatalkan';
-  createdAt: string;
-  updatedAt?: string;
+  createdAt: string; // ISO string date
+  updatedAt?: string; // ISO string date
 }
 
 export interface MonitoredControlMeasureData {
@@ -154,18 +155,18 @@ export interface MonitoredControlMeasureData {
 }
 
 export interface RiskExposure {
-  id: string; // Akan sama dengan riskCauseId untuk sesi ini untuk upsert mudah
+  id: string; 
   monitoringSessionId: string;
-  riskCauseId: string; // Referensi ke RiskCause yang dipantau
-  potentialRiskId: string; // Untuk konteks
-  goalId: string; // Untuk konteks
+  riskCauseId: string; 
+  potentialRiskId: string; 
+  goalId: string; 
   userId: string;
-  period: string; // Periode aplikasi saat sesi pemantauan dibuat
+  period: string; 
   exposureValue: number | null; 
   exposureUnit: string | null; 
   exposureNotes?: string | null;
   recordedAt: string; // ISO string date
-  monitoredControls?: MonitoredControlMeasureData[]; // Data pemantauan untuk setiap kontrol terkait
+  monitoredControls?: MonitoredControlMeasureData[]; 
   updatedAt?: string; // ISO string date
 }
 
