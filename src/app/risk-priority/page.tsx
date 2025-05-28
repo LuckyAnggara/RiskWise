@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, Fragment } from 'react';
 import Link from 'next/link';
 import { PageHeader } from '@/components/ui/page-header';
 import { Button } from '@/components/ui/button';
@@ -9,10 +9,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, BarChart3, Settings2, ChevronDown, ChevronUp, ShieldCheck } from 'lucide-react';
-import type { RiskCause, LikelihoodLevelDesc, ImpactLevelDesc, RiskCategory, CalculatedRiskLevelCategory } from '@/lib/types';
-import { LIKELIHOOD_LEVELS_DESC_MAP, IMPACT_LEVELS_DESC_MAP } from '@/lib/types'; // CORRECTED IMPORT
+import type { Goal, PotentialRisk, RiskCause, LikelihoodLevelDesc, ImpactLevelDesc, RiskCategory, CalculatedRiskLevelCategory } from '@/lib/types';
+import { LIKELIHOOD_LEVELS_DESC_MAP, IMPACT_LEVELS_DESC_MAP } from '@/lib/types';
 import { useAuth } from '@/contexts/auth-context';
-// Services will be called via store
 import { useAppStore } from '@/stores/useAppStore';
 import { RiskPriorityMatrix } from '@/components/risks/risk-priority-matrix';
 import { getCalculatedRiskLevel, getRiskLevelColor } from '@/app/risk-cause-analysis/[riskCauseId]/page';
@@ -37,8 +36,10 @@ export default function RiskPriorityPage() {
     goals,
     potentialRisks,
     riskCauses: storeRiskCauses,
-    fetchGoals, // This will trigger the chain: goals -> potentialRisks -> riskCauses -> controlMeasures
+    fetchGoals,
     riskCausesLoading,
+    goalsLoading,
+    potentialRisksLoading,
   } = store;
 
   const [isLoadingPage, setIsLoadingPage] = useState(true);
@@ -46,6 +47,7 @@ export default function RiskPriorityPage() {
   
   const [sortKey, setSortKey] = useState<SortableRiskCauseKeys>('riskScore');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [expandedCauseId, setExpandedCauseId] = useState<string | null>(null);
 
   const currentUserId = useMemo(() => currentUser?.uid || null, [currentUser]);
   const currentPeriod = useMemo(() => appUser?.activePeriod || null, [appUser]);
@@ -53,18 +55,19 @@ export default function RiskPriorityPage() {
 
   useEffect(() => {
     if (!authLoading && currentUserId && currentPeriod) {
-      // Fetch initial data if not already loaded or loading by store
-      if (store.goals.length === 0 && !store.goalsLoading) {
+      if (goals.length === 0 && !goalsLoading) {
         console.log("[RiskPriorityPage] Triggering fetchGoals from store.");
         fetchGoals(currentUserId, currentPeriod); 
       }
     }
-  }, [authLoading, currentUserId, currentPeriod, fetchGoals, store.goals.length, store.goalsLoading]);
+  }, [authLoading, currentUserId, currentPeriod, fetchGoals, goals.length, goalsLoading]);
   
   useEffect(() => {
-    // This effect will run when storeRiskCauses changes or related loadings change
-    if (!authLoading && !store.goalsLoading && !store.potentialRisksLoading && !riskCausesLoading && currentUserId && currentPeriod) {
-      console.log("[RiskPriorityPage] storeRiskCauses updated or loading finished. Count:", storeRiskCauses.length);
+    const allStoreLoadingFlags = authLoading || goalsLoading || potentialRisksLoading || riskCausesLoading;
+    setIsLoadingPage(allStoreLoadingFlags);
+
+    if (!allStoreLoadingFlags && currentUserId && currentPeriod) {
+      console.log("[RiskPriorityPage] Store data updated or loading finished. Store Risk Causes Count:", storeRiskCauses.length);
       const enriched = storeRiskCauses
         .filter(cause => cause.userId === currentUserId && cause.period === currentPeriod && cause.likelihood && cause.impact)
         .map(cause => {
@@ -85,14 +88,10 @@ export default function RiskPriorityPage() {
         });
       console.log("[RiskPriorityPage] Enriched causes for priority page:", enriched.length);
       setAnalyzedRiskCauses(enriched);
-      setIsLoadingPage(false);
-    } else if (authLoading || store.goalsLoading || store.potentialRisksLoading || riskCausesLoading) {
-      setIsLoadingPage(true);
-    } else if (!authLoading && !currentUserId && !currentPeriod) { // User not logged in or context not ready
-        setIsLoadingPage(false);
+    } else if (!currentUserId || !currentPeriod) {
         setAnalyzedRiskCauses([]);
     }
-  }, [storeRiskCauses, riskCausesLoading, potentialRisks, goals, authLoading, store.goalsLoading, store.potentialRisksLoading, currentUserId, currentPeriod]);
+  }, [storeRiskCauses, riskCausesLoading, potentialRisks, goals, authLoading, goalsLoading, potentialRisksLoading, currentUserId, currentPeriod]);
 
 
   const sortedRiskCauses = useMemo(() => {
@@ -113,7 +112,6 @@ export default function RiskPriorityPage() {
         valA = a.description;
         valB = b.description;
       }
-
 
       if (typeof valA === 'string' && typeof valB === 'string') {
         return sortOrder === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
@@ -136,7 +134,11 @@ export default function RiskPriorityPage() {
 
   const SortIndicator = ({ columnKey }: { columnKey: SortableRiskCauseKeys }) => {
     if (sortKey !== columnKey) return null;
-    return sortOrder === 'asc' ? <ChevronUp className="h-4 w-4 ml-1" /> : <ChevronDown className="h-4 w-4 ml-1" />;
+    return sortOrder === 'asc' ? <ChevronUp className="h-4 w-4 ml-1 inline-block" /> : <ChevronDown className="h-4 w-4 ml-1 inline-block" />;
+  };
+
+  const toggleExpandCause = (causeId: string) => {
+    setExpandedCauseId(currentId => (currentId === causeId ? null : causeId));
   };
 
   if (isLoadingPage) {
@@ -159,6 +161,8 @@ export default function RiskPriorityPage() {
       </div>
     );
   }
+
+  const numberOfColumns = 7; // Expand Icon, Kode, Penyebab, Tingkat, Kemungkinan, Dampak, Aksi
 
   return (
     <div className="space-y-6">
@@ -192,8 +196,9 @@ export default function RiskPriorityPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-[40px] text-center"></TableHead> {/* For expand button */}
                     <TableHead className="min-w-[120px]">Kode</TableHead>
-                    <TableHead className="min-w-[250px] max-w-xs cursor-pointer hover:bg-muted/50" onClick={() => handleSort('description')}>
+                    <TableHead className="min-w-[300px] max-w-md cursor-pointer hover:bg-muted/50" onClick={() => handleSort('description')}>
                       <div className="flex items-center">Penyebab Risiko <SortIndicator columnKey="description" /></div>
                     </TableHead>
                     <TableHead className="min-w-[150px] cursor-pointer hover:bg-muted/50" onClick={() => handleSort('riskScore')}>
@@ -205,8 +210,6 @@ export default function RiskPriorityPage() {
                     <TableHead className="min-w-[180px] cursor-pointer hover:bg-muted/50" onClick={() => handleSort('impact')}>
                        <div className="flex items-center">Dampak <SortIndicator columnKey="impact" /></div>
                     </TableHead>
-                    <TableHead className="min-w-[250px] max-w-xs">Potensi Risiko Induk</TableHead>
-                    <TableHead className="min-w-[200px] max-w-sm">Sasaran Induk</TableHead>
                     <TableHead className="text-right w-[120px]">Aksi</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -214,42 +217,53 @@ export default function RiskPriorityPage() {
                   {sortedRiskCauses.map((cause) => {
                     const causeCode = `${cause.goalCode || '[S?]'}.PR${cause.potentialRiskSequenceNumber || '?'}.PC${cause.sequenceNumber || '?'}`;
                     const returnPath = `/risk-priority`;
+                    const isExpanded = expandedCauseId === cause.id;
                     return (
-                      <TableRow key={cause.id}>
-                        <TableCell className="font-mono text-xs">{causeCode}</TableCell>
-                        <TableCell className="font-medium text-xs max-w-xs truncate" title={cause.description}>
-                          {cause.description}
-                        </TableCell>
-                        <TableCell>
-                          <Badge className={`${getRiskLevelColor(cause.riskLevelText)} text-xs`}>
-                            {cause.riskLevelText === 'N/A' ? 'N/A' : `${cause.riskLevelText} (${cause.riskScore ?? 'N/A'})`}
-                          </Badge>
-                        </TableCell>
-                         <TableCell>
-                            <Badge variant={cause.likelihood ? "outline" : "ghost"} className={`text-xs ${!cause.likelihood ? "text-muted-foreground" : ""}`}>
-                                {cause.likelihood ? `${cause.likelihood}` : 'N/A'}
-                            </Badge>
-                        </TableCell>
-                        <TableCell>
-                            <Badge variant={cause.impact ? "outline" : "ghost"} className={`text-xs ${!cause.impact ? "text-muted-foreground" : ""}`}>
-                                {cause.impact ? `${cause.impact}` : 'N/A'}
-                            </Badge>
-                        </TableCell>
-                        <TableCell className="text-xs max-w-xs truncate" title={cause.potentialRiskDescription}>
-                           PR{cause.potentialRiskSequenceNumber || '?'} - {cause.potentialRiskDescription}
-                           {cause.potentialRiskCategory && <Badge variant="secondary" className="ml-1 text-[10px]">{cause.potentialRiskCategory}</Badge>}
-                        </TableCell>
-                        <TableCell className="text-xs max-w-sm truncate text-muted-foreground" title={cause.goalName}>
-                           {cause.goalCode || '[S?]'} - {cause.goalName}
-                        </TableCell>
-                        <TableCell className="text-right">
-                           <Link href={`/risk-cause-analysis/${cause.id}?from=${encodeURIComponent(returnPath)}`}>
-                            <Button variant="outline" size="sm" className="text-xs">
-                              <BarChart3 className="mr-1 h-3 w-3" /> Analisis/Kontrol
+                      <Fragment key={cause.id}>
+                        <TableRow>
+                          <TableCell className="text-center">
+                            <Button variant="ghost" size="icon" onClick={() => toggleExpandCause(cause.id)} className="h-8 w-8">
+                              {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                             </Button>
-                          </Link>
-                        </TableCell>
-                      </TableRow>
+                          </TableCell>
+                          <TableCell className="font-mono text-xs">{causeCode}</TableCell>
+                          <TableCell className="font-medium text-xs max-w-md truncate" title={cause.description}>
+                            {cause.description}
+                          </TableCell>
+                          <TableCell>
+                            <Badge className={`${getRiskLevelColor(cause.riskLevelText)} text-xs`}>
+                              {cause.riskLevelText === 'N/A' ? 'N/A' : `${cause.riskLevelText} (${cause.riskScore ?? 'N/A'})`}
+                            </Badge>
+                          </TableCell>
+                           <TableCell>
+                              <Badge variant={cause.likelihood ? "outline" : "ghost"} className={`text-xs ${!cause.likelihood ? "text-muted-foreground" : ""}`}>
+                                  {cause.likelihood ? `${cause.likelihood}` : 'N/A'}
+                              </Badge>
+                          </TableCell>
+                          <TableCell>
+                              <Badge variant={cause.impact ? "outline" : "ghost"} className={`text-xs ${!cause.impact ? "text-muted-foreground" : ""}`}>
+                                  {cause.impact ? `${cause.impact}` : 'N/A'}
+                              </Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
+                             <Link href={`/risk-cause-analysis/${cause.id}?from=${encodeURIComponent(returnPath)}`}>
+                              <Button variant="outline" size="sm" className="text-xs">
+                                <BarChart3 className="mr-1 h-3 w-3" /> Analisis/Kontrol
+                              </Button>
+                            </Link>
+                          </TableCell>
+                        </TableRow>
+                        {isExpanded && (
+                          <TableRow className="bg-muted/10 hover:bg-muted/20">
+                            <TableCell colSpan={numberOfColumns} className="p-3">
+                              <div className="pl-10 space-y-1 text-xs">
+                                <p><strong>Potensi Risiko Induk:</strong> (PR{cause.potentialRiskSequenceNumber || '?'}) {cause.potentialRiskDescription} {cause.potentialRiskCategory && <Badge variant="secondary" className="ml-1 text-[10px]">{cause.potentialRiskCategory}</Badge>}</p>
+                                <p><strong>Sasaran Induk:</strong> ({cause.goalCode || '[S?]'}) {cause.goalName}</p>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </Fragment>
                     );
                   })}
                 </TableBody>
@@ -262,5 +276,3 @@ export default function RiskPriorityPage() {
   );
 }
 
-
-    
