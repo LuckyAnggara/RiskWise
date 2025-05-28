@@ -29,15 +29,22 @@ const goalSchema = z.object({
 type GoalFormData = z.infer<typeof goalSchema>;
 
 interface AddGoalDialogProps {
-  onGoalSave: (goalData: GoalFormData, existingGoalId?: string) => Promise<void>;
+  onGoalSave: (
+    goalData: Omit<Goal, 'id' | 'code' | 'createdAt' | 'userId' | 'period'>, 
+    existingGoalId?: string
+  ) => Promise<void>; // Dibuat async karena sekarang memanggil store yang async
   existingGoal?: Goal | null;
   triggerButton?: React.ReactNode;
+  currentUprId: string; // Diperlukan untuk deskripsi jika ada
+  currentPeriod: string; // Diperlukan untuk deskripsi jika ada
 }
 
 export function AddGoalDialog({ 
   onGoalSave, 
   existingGoal, 
   triggerButton,
+  currentUprId,
+  currentPeriod,
 }: AddGoalDialogProps) {
   const [open, setOpen] = useState(false);
   const {
@@ -67,11 +74,16 @@ export function AddGoalDialog({
   }, [existingGoal, open, reset]);
 
   const onSubmit: SubmitHandler<GoalFormData> = async (data) => {
-    await onGoalSave(data, existingGoal?.id);
+    await onGoalSave(data, existingGoal?.id); // Panggil onGoalSave yang sekarang async
     setOpen(false);
   };
 
   const displayCode = existingGoal?.code || `(Kode Baru)`;
+  const dialogTitle = existingGoal ? `Edit Sasaran (${displayCode})` : "Tambah Sasaran Baru";
+  const dialogDescription = existingGoal 
+    ? `Perbarui detail sasaran Anda.` 
+    : `Definisikan sasaran baru untuk UPR: ${currentUprId || '...'}, Periode: ${currentPeriod || '...'}.`;
+
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => {
@@ -96,9 +108,9 @@ export function AddGoalDialog({
       </DialogTrigger>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>{existingGoal ? `Edit Sasaran (${displayCode})` : "Tambah Sasaran Baru"}</DialogTitle>
+          <DialogTitle>{dialogTitle}</DialogTitle>
           <DialogDescription>
-            {existingGoal ? `Perbarui detail sasaran Anda.` : `Definisikan sasaran baru untuk mulai mengelola risikonya.`}
+            {dialogDescription}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)} className="grid gap-4 py-4">

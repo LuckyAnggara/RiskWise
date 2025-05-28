@@ -12,14 +12,20 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/auth-context';
-import { addGoal, getGoals, updateGoal, deleteGoal, type GoalsResult } from '@/services/goalService';
+// Hapus impor goalService karena akan menggunakan store
+// import { addGoal, getGoals, updateGoal, deleteGoal, type GoalsResult } from '@/services/goalService';
+import { useAppStore } from '@/stores/useAppStore'; // Impor store Zustand
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
-const DEFAULT_PERIOD = new Date().getFullYear().toString();
-
 export default function GoalsPage() {
-  const [goals, setGoals] = useState<Goal[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  // Gunakan state dari Zustand store
+  const goals = useAppStore(state => state.goals);
+  const isLoading = useAppStore(state => state.goalsLoading);
+  const fetchGoals = useAppStore(state => state.fetchGoals);
+  const addGoal = useAppStore(state => state.addGoal);
+  const updateGoal = useAppStore(state => state.updateGoal);
+  const deleteGoal = useAppStore(state => state.deleteGoal);
+
   const [searchTerm, setSearchTerm] = useState('');
   const { toast } = useToast();
   const { currentUser, appUser, loading: authLoading } = useAuth();
@@ -28,55 +34,27 @@ export default function GoalsPage() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [goalToDelete, setGoalToDelete] = useState<Goal | null>(null);
 
-  const currentUprId = useMemo(() => appUser?.uid, [appUser]);
-  const currentPeriod = useMemo(() => appUser?.activePeriod || DEFAULT_PERIOD, [appUser]);
-
-
-  const loadGoals = useCallback(async () => {
-    if (!currentUser || !currentUprId || !currentPeriod) {
-      setGoals([]);
-      setIsLoading(false);
-      return;
-    }
-    setIsLoading(true);
-    try {
-      const result: GoalsResult = await getGoals(currentUprId, currentPeriod);
-      if (result.success && result.goals) {
-        setGoals(result.goals);
-      } else if (!result.success && result.code === 'NO_UPRID' && result.message) {
-        // This case might be less relevant now as uprId comes from appUser
-        toast({ title: "Informasi", description: result.message, variant: "default", duration: 7000 });
-        setGoals([]);
-      } else {
-        toast({ title: "Kesalahan", description: result.message || "Gagal memuat daftar sasaran.", variant: "destructive" });
-        setGoals([]);
-      }
-    } catch (error: any) {
-      console.error("Gagal memuat sasaran. Pesan:", error.message);
-      toast({ title: "Kesalahan Fatal", description: (error instanceof Error ? error.message : "Terjadi kesalahan fatal saat memuat sasaran."), variant: "destructive" });
-      setGoals([]);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [currentUprId, currentPeriod, currentUser, toast]);
+  const currentUserId = useMemo(() => currentUser?.uid || null, [currentUser]);
+  const currentPeriod = useMemo(() => appUser?.activePeriod || null, [appUser]);
+  const uprDisplayName = useMemo(() => appUser?.displayName || 'UPR...', [appUser]);
 
   useEffect(() => {
-    if (currentUser && currentUprId && currentPeriod) {
-      loadGoals();
-    } else if (!authLoading && !currentUser) {
-      // User not logged in, AppLayout should redirect
-      setIsLoading(false);
-      setGoals([]);
-    } else if (currentUser && (!currentUprId || !currentPeriod) && !authLoading && appUser !== undefined) {
-      // User logged in, appUser might still be loading or has no period/uprId
-      // Show loading until appUser is definitely loaded or determined to be incomplete
-      setIsLoading(true); 
+    if (currentUserId && currentPeriod && !authLoading) {
+      console.log("[GoalsPage] Fetching goals for user:", currentUserId, "period:", currentPeriod);
+      fetchGoals(currentUserId, currentPeriod);
+    } else if (!authLoading && (!currentUser || !currentUserId || !currentPeriod)) {
+      console.warn("[GoalsPage] Cannot fetch goals, user context not ready.");
+      // Mungkin set goals ke array kosong jika tidak ada user/konteks
+      useAppStore.setState({ goals: [], goalsLoading: false });
     }
-  }, [currentUprId, currentPeriod, currentUser, authLoading, appUser, loadGoals]);
+  }, [currentUserId, currentPeriod, authLoading, fetchGoals, currentUser]);
 
 
-  const handleGoalSave = async (goalData: Omit<Goal, 'id' | 'code' | 'createdAt' | 'uprId' | 'period' | 'userId'>, existingGoalId?: string) => {
-    if (!currentUser || !currentUprId || !currentPeriod) {
+  const handleGoalSave = async (
+    goalData: Omit<Goal, 'id' | 'code' | 'createdAt' | 'userId' | 'period'>, 
+    existingGoalId?: string
+  ) => {
+    if (!currentUserId || !currentPeriod) {
       toast({ title: "Konteks Tidak Lengkap", description: "UPR, Periode, atau Pengguna tidak ditemukan untuk menyimpan sasaran.", variant: "destructive" });
       return;
     }
@@ -84,13 +62,17 @@ export default function GoalsPage() {
     try {
       if (existingGoalId) {
         await updateGoal(existingGoalId, goalData);
-        const editedGoal = goals.find(g => g.id === existingGoalId);
-        toast({ title: "Sasaran Diperbarui", description: `Sasaran "${goalData.name}" (${editedGoal?.code}) telah berhasil diperbarui.` });
+        const editedGoal = goals.find(g => g.id === existingGoalId); // Ambil dari state saat ini untuk toast
+        toast({ title: "Sasaran Diperbarui", description: `Sasaran "${goalData.name}" (${editedGoal?.code || '...'}) telah berhasil diperbarui.` });
       } else {
-        const newGoal = await addGoal(goalData, currentUprId, currentPeriod, currentUser.uid, goals);
-        toast({ title: "Sasaran Ditambahkan", description: `Sasaran baru "${newGoal.name}" (${newGoal.code}) telah berhasil ditambahkan.` });
+        const newGoal = await addGoal(goalData, currentUserId, currentPeriod);
+        if (newGoal) {
+          toast({ title: "Sasaran Ditambahkan", description: `Sasaran baru "${newGoal.name}" (${newGoal.code}) telah berhasil ditambahkan.` });
+        } else {
+          throw new Error("Gagal membuat sasaran baru atau newGoal adalah null.");
+        }
       }
-      loadGoals(); 
+      // Fetch ulang atau update state di store sudah ditangani oleh action di store
     } catch (error: any) {
       console.error("Gagal menyimpan sasaran. Pesan:", error.message);
       toast({ title: "Kesalahan", description: (error instanceof Error ? error.message : "Gagal menyimpan sasaran."), variant: "destructive" });
@@ -98,13 +80,13 @@ export default function GoalsPage() {
   };
 
   const confirmDelete = async () => {
-    if (!goalToDelete || !currentUprId || !currentPeriod || !currentUser) return;
+    if (!goalToDelete || !currentUserId || !currentPeriod) return;
     try {
-      await deleteGoal(goalToDelete.id, currentUprId, currentPeriod);
+      await deleteGoal(goalToDelete.id, currentUserId, currentPeriod);
       toast({ title: "Sasaran Dihapus", description: `Sasaran "${goalToDelete.name}" (${goalToDelete.code}) dan semua data terkait telah dihapus.`, variant: "destructive" });
       setGoalToDelete(null);
       setIsDeleteDialogOpen(false);
-      loadGoals(); 
+      // Fetch ulang sudah ditangani oleh action di store
     } catch (error: any) {
       console.error("Gagal menghapus sasaran. Pesan:", error.message);
       toast({ title: "Kesalahan", description: (error instanceof Error ? error.message : "Gagal menghapus sasaran."), variant: "destructive" });
@@ -113,7 +95,7 @@ export default function GoalsPage() {
     }
   };
   
-  const handleDeleteGoal = (goal: Goal) => {
+  const handleDeleteGoalClick = (goal: Goal) => {
     setGoalToDelete(goal);
     setIsDeleteDialogOpen(true);
   };
@@ -121,6 +103,8 @@ export default function GoalsPage() {
 
   const filteredGoals = useMemo(() => {
     let sortedGoals = Array.isArray(goals) ? [...goals] : [];
+    sortedGoals.sort((a, b) => (a.code || '').localeCompare(b.code || '', undefined, { numeric: true, sensitivity: 'base' }));
+    
     if (!searchTerm) {
       return sortedGoals;
     }
@@ -131,17 +115,17 @@ export default function GoalsPage() {
     );
   }, [goals, searchTerm]);
   
-  if (authLoading || (currentUser && !appUser)) { 
+  if (authLoading || (!currentUser && !authLoading)) { // Tunggu auth selesai
      return (
       <div className="flex flex-col items-center justify-center h-screen">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
-        <p className="text-xl text-muted-foreground">Memuat data sasaran...</p>
+        <p className="text-xl text-muted-foreground">Memuat data pengguna...</p>
       </div>
     );
   }
-
+  
   if (!currentUser && !authLoading) {
-    // This case should be handled by AppLayout redirecting to /login
+    // AppLayout seharusnya sudah mengarahkan ke /login
     return null; 
   }
   
@@ -149,15 +133,15 @@ export default function GoalsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Sasaran"
-        description={`Definisikan dan kelola tujuan strategis Anda untuk UPR: ${currentUprId || '...'}, Periode: ${currentPeriod || '...'}.`}
+        description={`Definisikan dan kelola tujuan strategis Anda untuk UPR: ${uprDisplayName}, Periode: ${currentPeriod || '...'}.`}
         actions={
           <AddGoalDialog 
             onGoalSave={handleGoalSave}
-            existingGoals={goals} 
-            currentUprId={currentUprId || ''}
-            currentPeriod={currentPeriod || ''}
+            // existingGoals (untuk generate code) sekarang dikelola di store jika perlu, atau logika dipindah ke backend/service
+            currentUprId={currentUserId || ''} // Tetap diperlukan untuk konteks dialog jika ada
+            currentPeriod={currentPeriod || ''} // Tetap diperlukan untuk konteks dialog jika ada
             triggerButton={
-              <Button disabled={!currentUser || !currentUprId || !currentPeriod}>
+              <Button disabled={!currentUser || !currentUserId || !currentPeriod || isLoading}>
                 <PlusCircle className="mr-2 h-4 w-4" /> Tambah Sasaran Baru
               </Button>
             }
@@ -206,11 +190,10 @@ export default function GoalsPage() {
           <div className="mt-6">
             <AddGoalDialog 
               onGoalSave={handleGoalSave} 
-              existingGoals={goals}
-              currentUprId={currentUprId || ''}
+              currentUprId={currentUserId || ''}
               currentPeriod={currentPeriod || ''}
               triggerButton={
-                <Button disabled={!currentUser || !currentUprId || !currentPeriod}>
+                <Button disabled={!currentUser || !currentUserId || !currentPeriod || isLoading}>
                   <PlusCircle className="mr-2 h-4 w-4" /> Tambah Sasaran Baru
                 </Button>
               }
@@ -226,9 +209,7 @@ export default function GoalsPage() {
               key={goal.id} 
               goal={goal} 
               onEditGoal={(editedGoalData) => handleGoalSave(editedGoalData, goal.id)} 
-              onDeleteGoal={() => handleDeleteGoal(goal)}
-              currentUprId={currentUprId || ''}
-              currentPeriod={currentPeriod || ''}
+              onDeleteGoal={() => handleDeleteGoalClick(goal)}
             />
           ))}
         </div>

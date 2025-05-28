@@ -10,16 +10,12 @@ import { AddGoalDialog } from './add-goal-dialog';
 
 interface GoalCardProps {
   goal: Goal;
-  onEditGoal: (goalData: Omit<Goal, 'id' | 'code' | 'createdAt' | 'uprId' | 'period' | 'userId'>, existingGoalId: string) => void;
+  // onEditGoal sekarang akan memanggil action dari store, jadi kita tidak perlu passing currentUprId/Period lagi ke AddGoalDialog dari sini
+  onEditGoal: (goalData: Omit<Goal, 'id' | 'code' | 'createdAt' | 'userId' | 'period'>, existingGoalId: string) => void;
   onDeleteGoal: (goalId: string) => void;
-  currentUprId: string; // Added
-  currentPeriod: string; // Added
 }
 
-export function GoalCard({ goal, onEditGoal, onDeleteGoal, currentUprId, currentPeriod }: GoalCardProps) {
-  // Risk count will now need to be fetched or managed separately if displayed here
-  // For now, we remove the direct riskCount prop display.
-  console.info(goal.id)
+export function GoalCard({ goal, onEditGoal, onDeleteGoal }: GoalCardProps) {
   return (
     <Card className="flex flex-col">
       <CardHeader>
@@ -29,9 +25,8 @@ export function GoalCard({ goal, onEditGoal, onDeleteGoal, currentUprId, current
              <AddGoalDialog 
                 existingGoal={goal} 
                 onGoalSave={(data) => onEditGoal(data, goal.id)}
-                currentUprId={currentUprId} // Pass down
-                currentPeriod={currentPeriod} // Pass down
-                existingGoals={[]} // existingGoals is only for code generation, not strictly needed for edit
+                currentUprId={goal.userId} // Diambil dari goal.userId yang seharusnya merupakan UPR ID
+                currentPeriod={goal.period}
                 triggerButton={
                   <Button variant="ghost" size="icon" aria-label={`Edit sasaran ${goal.name} (${goal.code})`}>
                     <Edit className="h-4 w-4" />
@@ -50,8 +45,6 @@ export function GoalCard({ goal, onEditGoal, onDeleteGoal, currentUprId, current
         <p className="text-xs text-muted-foreground">
           Dibuat: {new Date(goal.createdAt).toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' })}
         </p>
-        {/* Placeholder for risk count if you re-implement fetching it */}
-        {/* <p className="text-xs text-muted-foreground mt-1">X Potensi Risiko</p> */}
       </CardContent>
       <CardFooter className="flex justify-end items-center">
         <Link href={`/risks/${goal.id}`} passHref>
