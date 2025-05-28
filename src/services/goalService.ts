@@ -65,7 +65,7 @@ export async function addGoal(
 
     const docData = {
       ...goalData,
-      code: newGoalCode,
+      code: newGoalCode, // Keep the generated code
       userId,
       period,
       createdAt: serverTimestamp()
@@ -99,6 +99,7 @@ export async function getGoals(userId: string | null | undefined, period: string
       };
     }
 
+    console.log("[goalService] getGoals: Querying with userId:", userId, "and period:", period);
     const q = query(
       collection(db, GOALS_COLLECTION),
       where("userId", "==", userId),
@@ -126,7 +127,8 @@ export async function getGoals(userId: string | null | undefined, period: string
         period: data.period,
       } as Goal);
     });
-    
+
+    console.log("[goalService] getGoals: querySnapshot size:", querySnapshot.size, "Fetched goals:", goals);
     return { success: true, goals: goals };
   } catch (error: any) {
     const errorMessage = error instanceof Error ? error.message : String(error);

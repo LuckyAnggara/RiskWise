@@ -28,7 +28,7 @@ export default function GoalsPage() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [goalToDelete, setGoalToDelete] = useState<Goal | null>(null);
 
-  const currentUprId = useMemo(() => appUser?.uprId || appUser?.displayName || null, [appUser]);
+  const currentUprId = useMemo(() => appUser?.uid, [appUser]);
   const currentPeriod = useMemo(() => appUser?.activePeriod || DEFAULT_PERIOD, [appUser]);
 
 

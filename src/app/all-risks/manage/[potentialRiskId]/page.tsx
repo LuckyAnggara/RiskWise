@@ -115,6 +115,8 @@ export default function ManagePotentialRiskPage() {
   const currentUprDisplay = useMemo(() => appUser?.displayName || 'UPR...', [appUser]);
   const currentPeriodDisplay = useMemo(() => appUser?.activePeriod || 'Periode...', [appUser]);
 
+  const defaultBackPath = useMemo(() => searchParams.get('from') || `/all-risks`, [searchParams]);
+
   const fetchGoals = useCallback(async (userIdForQuery: string, periodForQuery: string): Promise<Goal[]> => {
     if (!userIdForQuery || !periodForQuery) {
       console.warn("fetchGoals: userId atau period tidak tersedia.");
@@ -123,9 +125,11 @@ export default function ManagePotentialRiskPage() {
     }
     try {
       const goalsResult: GoalsResult = await getGoals(userIdForQuery, periodForQuery);
+      console.info(userIdForQuery, periodForQuery)
       let fetchedGoals: Goal[] = [];
       if (goalsResult.success && goalsResult.goals) {
         fetchedGoals = goalsResult.goals.sort((a, b) => (a.code || '').localeCompare(b.code || '', undefined, { numeric: true, sensitivity: 'base' }));
+ console.log("Fetched Goals:", fetchedGoals); // Log data sasaran
         setGoals(fetchedGoals);
         if (fetchedGoals.length > 0 && isCreatingNew && !getValuesPotentialRisk("goalId")) {
           setPotentialRiskValue("goalId", fetchedGoals[0].id);
@@ -179,6 +183,7 @@ export default function ManagePotentialRiskPage() {
 
 
   useEffect(() => {
+    console.log("useEffect dependencies changed:", { authLoading, currentUser, appUser });
     if (authLoading) {
       setPageIsLoading(true);
       return;
@@ -210,7 +215,7 @@ export default function ManagePotentialRiskPage() {
 
 
   const onPotentialRiskSubmit: SubmitHandler<PotentialRiskFormData> = async (data) => {
-    if (!currentUser || !currentUser.uid || !appUser || !appUser.activePeriod || !appUser.displayName) {
+    if (!currentUser || !currentUser.uid || typeof currentUser.uid !== 'string' || currentUser.uid === '' || !appUser || !appUser.activePeriod || typeof appUser.activePeriod !== 'string' || appUser.activePeriod === '' || !appUser.displayName) {
       toast({ title: "Konteks Tidak Lengkap", description: "Informasi pengguna atau periode tidak tersedia. Silakan coba lagi atau muat ulang halaman.", variant: "destructive" });
       return;
     }
@@ -394,8 +399,6 @@ export default function ManagePotentialRiskPage() {
       setIsBrainstormCausesSuggestionsModalOpen(false);
     }
   };
-
-  const defaultBackPath = useMemo(() => searchParams.get('from') || `/all-risks`, [searchParams]);
 
   if (pageIsLoading || authLoading || !currentUser || !appUser || !appUser.activePeriod || !appUser.displayName) {
     return (

@@ -58,7 +58,7 @@ export default function GoalRisksPage() {
 
   const { toast } = useToast();
   
-  const currentUprId = useMemo(() => appUser?.uprId || null, [appUser]);
+  const currentUprId = useMemo(() => appUser?.uid || null, [appUser]);
   const currentPeriod = useMemo(() => appUser?.activePeriod || DEFAULT_PERIOD, [appUser]);
 
   const loadData = useCallback(async () => {

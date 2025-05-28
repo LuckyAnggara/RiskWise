@@ -49,8 +49,12 @@ export function RiskIdentificationCard({ goal, onPotentialRisksIdentified, exist
   };
 
   const handleSaveSelectedRisks = async (selectedSuggestions: AISuggestion[]) => {
-    if (!currentUser) {
-      toast({ title: "Otentikasi Diperlukan", description: "Anda harus login untuk menyimpan potensi risiko.", variant: "destructive" });
+    if (!currentUser || !currentUser.uid || !goal.period) {
+      toast({
+        title: "Konteks Pengguna/Periode Hilang",
+        description: "Tidak dapat menyimpan saran AI. Informasi pengguna atau periode sasaran tidak tersedia.",
+        variant: "destructive"
+      });
       return;
     }
     if (selectedSuggestions.length === 0) return;
@@ -65,7 +69,7 @@ export function RiskIdentificationCard({ goal, onPotentialRisksIdentified, exist
         category: suggestion.category,
         owner: null, // Default owner, can be edited later
       };
-      return addPotentialRisk(newRiskData, goal.id, goal.uprId, goal.period, currentUser.uid, currentSequence);
+      return addPotentialRisk(newRiskData, goal.id, goal.userId, goal.period, currentSequence);
     });
 
     try {

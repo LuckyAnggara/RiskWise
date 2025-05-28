@@ -19,7 +19,7 @@ interface GoalCardProps {
 export function GoalCard({ goal, onEditGoal, onDeleteGoal, currentUprId, currentPeriod }: GoalCardProps) {
   // Risk count will now need to be fetched or managed separately if displayed here
   // For now, we remove the direct riskCount prop display.
-
+  console.info(goal.id)
   return (
     <Card className="flex flex-col">
       <CardHeader>
