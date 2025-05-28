@@ -4,10 +4,11 @@
 import { create } from 'zustand';
 import type { Goal, PotentialRisk, RiskCause, ControlMeasure } from '@/lib/types';
 import { 
-  getGoals as fetchGoalsFromService, 
   addGoal as addGoalToService, 
+  getGoals as fetchGoalsFromService, 
   updateGoal as updateGoalInService, 
-  deleteGoal as deleteGoalFromService 
+  deleteGoal as deleteGoalFromService,
+  type GoalsResult
 } from '@/services/goalService';
 // Impor service lain akan ditambahkan nanti
 // import { getPotentialRisksByGoalId, ... } from '@/services/potentialRiskService';
@@ -49,12 +50,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
     set({ goalsLoading: true });
     try {
-      const result = await fetchGoalsFromService(userId, period);
+      const result: GoalsResult = await fetchGoalsFromService(userId, period);
       if (result.success && result.goals) {
-        set({ goals: result.goals, goalsLoading: false });
+        set({ goals: result.goals.sort((a, b) => (a.code || '').localeCompare(b.code || '', undefined, { numeric: true, sensitivity: 'base' })), goalsLoading: false });
       } else {
         set({ goals: [], goalsLoading: false });
-        // Pertimbangkan untuk menampilkan toast error di sini atau melempar error
         console.error("[AppStore] fetchGoals: Gagal memuat sasaran:", result.message);
       }
     } catch (error: any) {
@@ -65,50 +65,50 @@ export const useAppStore = create<AppState>((set, get) => ({
   addGoal: async (goalData, userId, period) => {
     if (!userId || !period) {
       console.error("[AppStore] addGoal: userId atau period tidak valid.");
-      // Pertimbangkan untuk melempar error atau menampilkan toast
       return null;
     }
     try {
       const newGoal = await addGoalToService(goalData, userId, period);
-      // Setelah berhasil menambah, fetch ulang daftar goals untuk memperbarui state
-      // atau tambahkan newGoal secara optimistik ke state goals yang ada
-      await get().fetchGoals(userId, period); // Fetch ulang
+      if (newGoal) {
+        set(state => ({
+          goals: [...state.goals, newGoal].sort((a, b) => (a.code || '').localeCompare(b.code || '', undefined, { numeric: true, sensitivity: 'base' }))
+        }));
+      }
       return newGoal;
     } catch (error: any) {
       console.error("[AppStore] addGoal: Gagal menambah sasaran:", error.message);
-      // Pertimbangkan untuk menampilkan toast error
-      return null;
+      throw error; // Re-throw error agar bisa ditangani di UI jika perlu
     }
   },
   updateGoal: async (goalId, updatedData) => {
     try {
       await updateGoalInService(goalId, updatedData);
-      // Asumsikan userId dan period ada di dalam store atau bisa diakses
-      // Untuk sekarang, kita tidak punya cara mudah untuk mendapatkan userId dan period di sini
-      // Idealnya, updateGoalInService tidak memerlukan userId/period, atau kita perlu cara untuk mendapatkannya
-      // Untuk sementara, kita tidak fetch ulang di sini, tapi idealnya perlu.
-      // Atau, update item secara manual di state goals.
       set(state => ({
-        goals: state.goals.map(g => g.id === goalId ? { ...g, ...updatedData, updatedAt: new Date().toISOString() } : g)
+        goals: state.goals.map(g => 
+          g.id === goalId 
+            ? { ...g, ...updatedData, updatedAt: new Date().toISOString() } 
+            : g
+        ).sort((a, b) => (a.code || '').localeCompare(b.code || '', undefined, { numeric: true, sensitivity: 'base' }))
       }));
     } catch (error: any) {
       console.error("[AppStore] updateGoal: Gagal memperbarui sasaran:", error.message);
-      // Pertimbangkan untuk menampilkan toast error
+      throw error; // Re-throw error
     }
   },
   deleteGoal: async (goalId, userId, period) => {
     if (!userId || !period) {
       console.error("[AppStore] deleteGoal: userId atau period tidak valid.");
-      // Pertimbangkan untuk menampilkan toast error atau melempar error
-      return;
+      throw new Error("Konteks pengguna atau periode tidak valid untuk menghapus sasaran.");
     }
     try {
       await deleteGoalFromService(goalId, userId, period);
-      // Setelah berhasil menghapus, fetch ulang daftar goals
-      await get().fetchGoals(userId, period); // Fetch ulang
+      set(state => ({
+        goals: state.goals.filter(g => g.id !== goalId)
+        // Tidak perlu sort ulang karena hanya menghapus
+      }));
     } catch (error: any) {
       console.error("[AppStore] deleteGoal: Gagal menghapus sasaran:", error.message);
-      // Pertimbangkan untuk menampilkan toast error
+      throw error; // Re-throw error
     }
   },
 
@@ -117,8 +117,3 @@ export const useAppStore = create<AppState>((set, get) => ({
   // potentialRisksLoading: false,
   // fetchPotentialRisks: async (goalId, userId, period) => { /* ... */ },
 }));
-
-// Catatan: Untuk updateGoal, jika service memerlukan userId dan period,
-// kita perlu cara untuk mendapatkannya. Mungkin store juga perlu menyimpan
-// currentUser dan activePeriod dari AuthContext, atau actions ini perlu menerimanya.
-// Untuk saat ini, updateGoal dibuat optimistik di sisi klien.
