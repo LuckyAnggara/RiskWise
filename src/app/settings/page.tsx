@@ -1,10 +1,10 @@
 
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { PageHeader } from '@/components/ui/page-header';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
@@ -13,21 +13,17 @@ import { useToast } from '@/hooks/use-toast';
 import { Info, PlusCircle, Save, Loader2 } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { auth } from '@/lib/firebase/config';
-import { updateProfile } from 'firebase/auth';
+import { updateProfile as updateFirebaseAuthProfile } from 'firebase/auth'; // Alias untuk menghindari konflik nama
 import { updateUserProfileData } from '@/services/userService';
+import type { MonitoringPeriodFrequency } from '@/lib/types';
+import { MONITORING_PERIOD_FREQUENCIES } from '@/lib/types';
 
-const DEFAULT_INITIAL_PERIOD = new Date().getFullYear().toString();
-const DEFAULT_AVAILABLE_PERIODS = [
-  (new Date().getFullYear() - 1).toString(),
-  DEFAULT_INITIAL_PERIOD,
-  (new Date().getFullYear() + 1).toString()
-];
 
 export default function SettingsPage() {
   const { currentUser, appUser, loading: authLoading, refreshAppUser, isProfileComplete } = useAuth();
   const router = useRouter();
   
-  const [currentDisplayName, setCurrentDisplayName] = useState(''); // Untuk Nama UPR / Nama Pengguna
+  const [currentDisplayName, setCurrentDisplayName] = useState('');
   const [isSavingDisplayName, setIsSavingDisplayName] = useState(false);
 
   const [selectedPeriod, setSelectedPeriod] = useState('');
@@ -36,24 +32,28 @@ export default function SettingsPage() {
   const [isSavingPeriod, setIsSavingPeriod] = useState(false);
   const [isSavingNewPeriod, setIsSavingNewPeriod] = useState(false);
   
-  const [initialPeriodInput, setInitialPeriodInput] = useState(DEFAULT_INITIAL_PERIOD); // Untuk setup profil awal
+  const [initialPeriodInput, setInitialPeriodInput] = useState(() => new Date().getFullYear().toString());
+  const [isSavingProfileSetup, setIsSavingProfileSetup] = useState(false);
 
-  const { toast } = useToast();
+  // State untuk Pengaturan Pemantauan
+  const [defaultMonitoringFrequency, setDefaultMonitoringFrequency] = useState<MonitoringPeriodFrequency | ''>('');
+  const [isSavingMonitoringSettings, setIsSavingMonitoringSettings] = useState(false);
+
 
   useEffect(() => {
     if (appUser) {
       setCurrentDisplayName(appUser.displayName || '');
-      setSelectedPeriod(appUser.activePeriod || (isProfileComplete ? DEFAULT_INITIAL_PERIOD : ''));
-      setAvailablePeriodsState(appUser.availablePeriods || (isProfileComplete ? [...DEFAULT_AVAILABLE_PERIODS] : []));
+      setSelectedPeriod(appUser.activePeriod || '');
+      setAvailablePeriodsState(appUser.availablePeriods || []);
+      setDefaultMonitoringFrequency(appUser.monitoringSettings?.defaultFrequency || '');
       if (!isProfileComplete && !appUser.activePeriod) {
-        setInitialPeriodInput(DEFAULT_INITIAL_PERIOD);
+        setInitialPeriodInput(new Date().getFullYear().toString());
       }
     } else if (!authLoading && currentUser) {
-      // appUser mungkin masih null jika baru login dan fetchAppUser belum selesai
-      // atau jika tidak ada dokumen di Firestore
-      setCurrentDisplayName(currentUser.displayName || currentUser.email?.split('@')[0] || 'Pengguna Baru');
+      setCurrentDisplayName(currentUser.displayName || currentUser.email?.split('@')[0] || '');
       setSelectedPeriod('');
       setAvailablePeriodsState([]);
+      setDefaultMonitoringFrequency('');
     }
   }, [appUser, authLoading, currentUser, isProfileComplete]);
 
@@ -74,30 +74,28 @@ export default function SettingsPage() {
       return;
     }
 
-    setIsSavingDisplayName(true); // Gunakan satu state loading
+    setIsSavingProfileSetup(true);
     try {
-      // Update Firebase Auth displayName
       if (auth.currentUser && auth.currentUser.displayName !== currentDisplayName.trim()) {
-        await updateProfile(auth.currentUser, { displayName: currentDisplayName.trim() });
+        await updateFirebaseAuthProfile(auth.currentUser, { displayName: currentDisplayName.trim() });
       }
       
-      // Buat/Update dokumen pengguna di Firestore
       const profileDataToSave = {
         displayName: currentDisplayName.trim(),
-        // photoURL: appUser?.photoURL, // Pertahankan photoURL yang ada jika ada
         activePeriod: initialPeriodInput.trim(),
-        availablePeriods: [initialPeriodInput.trim()], // Periode awal menjadi satu-satunya periode yang tersedia
+        availablePeriods: [initialPeriodInput.trim()],
+        monitoringSettings: { defaultFrequency: defaultMonitoringFrequency || null }
       };
       await updateUserProfileData(currentUser.uid, profileDataToSave);
       
-      await refreshAppUser(); // Refresh appUser di context
+      await refreshAppUser();
       toast({ title: "Profil Disimpan", description: "Pengaturan profil awal Anda telah berhasil disimpan." });
-      router.push('/'); // Arahkan ke dashboard
+      router.push('/');
     } catch (error: any) {
       console.error("Error saving initial profile:", error);
       toast({ title: "Gagal Menyimpan Profil", description: error.message || "Terjadi kesalahan saat menyimpan profil.", variant: "destructive" });
     } finally {
-      setIsSavingDisplayName(false);
+      setIsSavingProfileSetup(false);
     }
   };
 
@@ -110,8 +108,8 @@ export default function SettingsPage() {
     }
     setIsSavingDisplayName(true);
     try {
-      if (auth.currentUser) {
-        await updateProfile(auth.currentUser, { displayName: currentDisplayName.trim() });
+      if (auth.currentUser && auth.currentUser.displayName !== currentDisplayName.trim()) {
+        await updateFirebaseAuthProfile(auth.currentUser, { displayName: currentDisplayName.trim() });
       }
       await updateUserProfileData(currentUser.uid, { displayName: currentDisplayName.trim() });
       await refreshAppUser();
@@ -130,9 +128,11 @@ export default function SettingsPage() {
     setIsSavingPeriod(true);
     try {
       await updateUserProfileData(currentUser.uid, { activePeriod: newPeriodValue });
-      await refreshAppUser();
-      setSelectedPeriod(newPeriodValue); 
-      toast({ title: "Periode Aktif Diubah", description: `Periode aktif berhasil diatur ke ${newPeriodValue}.` });
+      await refreshAppUser(); // Refresh context
+      setSelectedPeriod(newPeriodValue); // Update local state
+      // Reload diperlukan agar semua data di store dan halaman lain ikut terupdate dengan periode baru
+      window.location.reload(); 
+      toast({ title: "Periode Aktif Diubah", description: `Periode aktif berhasil diatur ke ${newPeriodValue}. Halaman akan dimuat ulang.` });
     } catch (error: any) {
       console.error("Error updating active period:", error);
       toast({ title: "Gagal Mengubah Periode", description: error.message || "Terjadi kesalahan.", variant: "destructive" });
@@ -183,7 +183,26 @@ export default function SettingsPage() {
       setIsSavingNewPeriod(false);
     }
   };
+
+  const handleSaveMonitoringSettings = async () => {
+    if (!currentUser || !appUser) return;
+    setIsSavingMonitoringSettings(true);
+    try {
+      await updateUserProfileData(currentUser.uid, {
+        monitoringSettings: { defaultFrequency: defaultMonitoringFrequency || null }
+      });
+      await refreshAppUser();
+      toast({ title: "Pengaturan Pemantauan Disimpan", description: "Frekuensi pemantauan standar telah diperbarui." });
+    } catch (error: any) {
+      console.error("Error saving monitoring settings:", error);
+      toast({ title: "Gagal Menyimpan Pengaturan", description: error.message || "Terjadi kesalahan.", variant: "destructive" });
+    } finally {
+      setIsSavingMonitoringSettings(false);
+    }
+  };
   
+  const { toast } = useToast(); // Pindahkan hook toast ke sini agar bisa diakses oleh semua handler
+
   if (authLoading || (!currentUser && !authLoading)) {
     return (
       <div className="flex flex-col items-center justify-center h-screen">
@@ -202,15 +221,14 @@ export default function SettingsPage() {
     );
   }
   
-  // Jika profil belum lengkap, tampilkan form setup
-  if (!isProfileComplete && currentUser) {
+  if (!isProfileComplete && currentUser && appUser) {
     return (
       <div className="space-y-6">
         <PageHeader
           title="Lengkapi Profil Anda"
-          description="Untuk melanjutkan, harap isi Nama UPR/Nama Lengkap dan Tahun Periode Awal Anda."
+          description="Untuk melanjutkan, harap isi Nama UPR/Nama Pengguna dan Tahun Periode Awal Anda."
         />
-        <Card>
+        <Card className="max-w-lg mx-auto">
           <CardHeader>
             <CardTitle>Pengaturan Profil Awal</CardTitle>
           </CardHeader>
@@ -222,8 +240,8 @@ export default function SettingsPage() {
                   id="setupDisplayName" 
                   value={currentDisplayName} 
                   onChange={(e) => setCurrentDisplayName(e.target.value)}
-                  placeholder="Masukkan Nama UPR atau Nama Lengkap Anda"
-                  disabled={isSavingDisplayName}
+                  placeholder="Masukkan Nama UPR atau Nama Pengguna Anda"
+                  disabled={isSavingProfileSetup}
                   required
                 />
                 <p className="text-xs text-muted-foreground">Nama ini akan digunakan sebagai identitas UPR Anda.</p>
@@ -239,12 +257,26 @@ export default function SettingsPage() {
                   required
                   pattern="\d{4}"
                   title="Masukkan tahun dalam format YYYY"
-                  disabled={isSavingDisplayName}
+                  disabled={isSavingProfileSetup}
                 />
                 <p className="text-xs text-muted-foreground">Ini akan menjadi periode aktif pertama Anda.</p>
               </div>
-              <Button type="submit" disabled={isSavingDisplayName} className="w-full">
-                {isSavingDisplayName ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <Save className="mr-2 h-4 w-4" />}
+               <div className="space-y-1.5">
+                <Label htmlFor="setupDefaultMonitoringFrequency">Frekuensi Pemantauan Standar (Opsional)</Label>
+                <Select value={defaultMonitoringFrequency} onValueChange={(value) => setDefaultMonitoringFrequency(value as MonitoringPeriodFrequency)}>
+                  <SelectTrigger id="setupDefaultMonitoringFrequency" disabled={isSavingProfileSetup}>
+                    <SelectValue placeholder="Pilih frekuensi standar" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">_Tidak Ada_</SelectItem>
+                    {MONITORING_PERIOD_FREQUENCIES.map(freq => (
+                      <SelectItem key={freq} value={freq}>{freq}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button type="submit" disabled={isSavingProfileSetup} className="w-full">
+                {isSavingProfileSetup ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <Save className="mr-2 h-4 w-4" />}
                 Simpan & Lanjutkan
               </Button>
             </form>
@@ -255,7 +287,6 @@ export default function SettingsPage() {
   }
 
 
-  // Jika profil sudah lengkap, tampilkan halaman pengaturan biasa
   return (
     <div className="space-y-6">
       <PageHeader
@@ -267,7 +298,7 @@ export default function SettingsPage() {
         <CardHeader>
           <CardTitle>Unit Pemilik Risiko (UPR) & Periode</CardTitle>
           <CardDescription>
-            Konfigurasikan UPR dan periode pelaporan aktif untuk aplikasi.
+            Konfigurasikan Nama UPR/Pengguna dan periode pelaporan aktif untuk aplikasi.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -315,7 +346,7 @@ export default function SettingsPage() {
               {isSavingPeriod && <Loader2 className="animate-spin h-5 w-5 text-primary" />}
             </div>
             <p className="text-xs text-muted-foreground">
-              Mengubah periode aktif akan mempengaruhi data yang ditampilkan di seluruh aplikasi.
+              Mengubah periode aktif akan memuat ulang aplikasi.
             </p>
           </div>
         </CardContent>
@@ -355,6 +386,36 @@ export default function SettingsPage() {
           </div>
         </CardContent>
       </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Pengaturan Periode Pemantauan Standar</CardTitle>
+          <CardDescription>Pilih frekuensi standar untuk pemantauan risiko. Ini akan digunakan sebagai default saat membuat sesi pemantauan baru.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-1.5">
+            <Label htmlFor="defaultMonitoringFrequency">Frekuensi Pemantauan Standar</Label>
+            <Select value={defaultMonitoringFrequency} onValueChange={(value) => setDefaultMonitoringFrequency(value as MonitoringPeriodFrequency)}>
+              <SelectTrigger id="defaultMonitoringFrequency" className="w-full md:w-[280px]" disabled={isSavingMonitoringSettings}>
+                <SelectValue placeholder="Pilih frekuensi standar" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">_Tidak Diatur_</SelectItem>
+                {MONITORING_PERIOD_FREQUENCIES.map(freq => (
+                  <SelectItem key={freq} value={freq}>{freq}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </CardContent>
+        <CardFooter>
+          <Button onClick={handleSaveMonitoringSettings} disabled={isSavingMonitoringSettings}>
+            {isSavingMonitoringSettings ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <Save className="mr-2 h-4 w-4" />}
+            Simpan Pengaturan Pemantauan
+          </Button>
+        </CardFooter>
+      </Card>
+
     </div>
   );
 }
