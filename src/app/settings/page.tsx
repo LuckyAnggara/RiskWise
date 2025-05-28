@@ -13,16 +13,19 @@ import { useToast } from '@/hooks/use-toast';
 import { Info, PlusCircle, Save, Loader2 } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { auth } from '@/lib/firebase/config';
-import { updateProfile as updateFirebaseAuthProfile } from 'firebase/auth'; // Alias untuk menghindari konflik nama
+import { updateProfile as updateFirebaseAuthProfile } from 'firebase/auth';
 import { updateUserProfileData } from '@/services/userService';
 import type { MonitoringPeriodFrequency } from '@/lib/types';
 import { MONITORING_PERIOD_FREQUENCIES } from '@/lib/types';
 
+const DEFAULT_INITIAL_PERIOD = new Date().getFullYear().toString();
+const NO_FREQUENCY_SENTINEL = "__NONE__"; // Sentinel value for "no selection"
 
 export default function SettingsPage() {
   const { currentUser, appUser, loading: authLoading, refreshAppUser, isProfileComplete } = useAuth();
   const router = useRouter();
-  
+  const { toast } = useToast();
+
   const [currentDisplayName, setCurrentDisplayName] = useState('');
   const [isSavingDisplayName, setIsSavingDisplayName] = useState(false);
 
@@ -32,10 +35,9 @@ export default function SettingsPage() {
   const [isSavingPeriod, setIsSavingPeriod] = useState(false);
   const [isSavingNewPeriod, setIsSavingNewPeriod] = useState(false);
   
-  const [initialPeriodInput, setInitialPeriodInput] = useState(() => new Date().getFullYear().toString());
+  const [initialPeriodInput, setInitialPeriodInput] = useState(DEFAULT_INITIAL_PERIOD);
   const [isSavingProfileSetup, setIsSavingProfileSetup] = useState(false);
 
-  // State untuk Pengaturan Pemantauan
   const [defaultMonitoringFrequency, setDefaultMonitoringFrequency] = useState<MonitoringPeriodFrequency | ''>('');
   const [isSavingMonitoringSettings, setIsSavingMonitoringSettings] = useState(false);
 
@@ -84,7 +86,7 @@ export default function SettingsPage() {
         displayName: currentDisplayName.trim(),
         activePeriod: initialPeriodInput.trim(),
         availablePeriods: [initialPeriodInput.trim()],
-        monitoringSettings: { defaultFrequency: defaultMonitoringFrequency || null }
+        monitoringSettings: { defaultFrequency: defaultMonitoringFrequency === NO_FREQUENCY_SENTINEL || defaultMonitoringFrequency === '' ? null : defaultMonitoringFrequency }
       };
       await updateUserProfileData(currentUser.uid, profileDataToSave);
       
@@ -102,7 +104,7 @@ export default function SettingsPage() {
 
   const handleDisplayNameChange = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!currentUser || !appUser || !currentDisplayName.trim() || currentDisplayName.trim() === appUser.displayName) {
+    if (!currentUser || !appUser || !currentDisplayName.trim() || currentDisplayName.trim() === (appUser.displayName || '')) {
       toast({ title: "Tidak Ada Perubahan", description: "Nama UPR / Nama Pengguna tidak berubah atau tidak valid.", variant: "default" });
       return;
     }
@@ -128,11 +130,11 @@ export default function SettingsPage() {
     setIsSavingPeriod(true);
     try {
       await updateUserProfileData(currentUser.uid, { activePeriod: newPeriodValue });
-      await refreshAppUser(); // Refresh context
-      setSelectedPeriod(newPeriodValue); // Update local state
-      // Reload diperlukan agar semua data di store dan halaman lain ikut terupdate dengan periode baru
-      window.location.reload(); 
+      await refreshAppUser(); 
+      setSelectedPeriod(newPeriodValue); 
+      
       toast({ title: "Periode Aktif Diubah", description: `Periode aktif berhasil diatur ke ${newPeriodValue}. Halaman akan dimuat ulang.` });
+      setTimeout(() => window.location.reload(), 1000);
     } catch (error: any) {
       console.error("Error updating active period:", error);
       toast({ title: "Gagal Mengubah Periode", description: error.message || "Terjadi kesalahan.", variant: "destructive" });
@@ -188,8 +190,9 @@ export default function SettingsPage() {
     if (!currentUser || !appUser) return;
     setIsSavingMonitoringSettings(true);
     try {
+      const frequencyToSave = defaultMonitoringFrequency === NO_FREQUENCY_SENTINEL ? null : defaultMonitoringFrequency;
       await updateUserProfileData(currentUser.uid, {
-        monitoringSettings: { defaultFrequency: defaultMonitoringFrequency || null }
+        monitoringSettings: { defaultFrequency: frequencyToSave }
       });
       await refreshAppUser();
       toast({ title: "Pengaturan Pemantauan Disimpan", description: "Frekuensi pemantauan standar telah diperbarui." });
@@ -201,7 +204,6 @@ export default function SettingsPage() {
     }
   };
   
-  const { toast } = useToast(); // Pindahkan hook toast ke sini agar bisa diakses oleh semua handler
 
   if (authLoading || (!currentUser && !authLoading)) {
     return (
@@ -212,7 +214,7 @@ export default function SettingsPage() {
     );
   }
   
-  if (!currentUser || (!appUser && !authLoading)) {
+  if (!currentUser || (!appUser && !authLoading && !isProfileComplete) ) {
      return (
          <div className="text-center py-10">
             <p className="text-muted-foreground">Silakan login untuk mengakses pengaturan atau profil belum termuat.</p>
@@ -263,12 +265,15 @@ export default function SettingsPage() {
               </div>
                <div className="space-y-1.5">
                 <Label htmlFor="setupDefaultMonitoringFrequency">Frekuensi Pemantauan Standar (Opsional)</Label>
-                <Select value={defaultMonitoringFrequency} onValueChange={(value) => setDefaultMonitoringFrequency(value as MonitoringPeriodFrequency)}>
+                <Select 
+                    value={defaultMonitoringFrequency || NO_FREQUENCY_SENTINEL} 
+                    onValueChange={(value) => setDefaultMonitoringFrequency(value === NO_FREQUENCY_SENTINEL ? '' : value as MonitoringPeriodFrequency)}
+                >
                   <SelectTrigger id="setupDefaultMonitoringFrequency" disabled={isSavingProfileSetup}>
                     <SelectValue placeholder="Pilih frekuensi standar" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">_Tidak Ada_</SelectItem>
+                    <SelectItem value={NO_FREQUENCY_SENTINEL}>_Tidak Diatur_</SelectItem>
                     {MONITORING_PERIOD_FREQUENCIES.map(freq => (
                       <SelectItem key={freq} value={freq}>{freq}</SelectItem>
                     ))}
@@ -395,12 +400,15 @@ export default function SettingsPage() {
         <CardContent>
           <div className="space-y-1.5">
             <Label htmlFor="defaultMonitoringFrequency">Frekuensi Pemantauan Standar</Label>
-            <Select value={defaultMonitoringFrequency} onValueChange={(value) => setDefaultMonitoringFrequency(value as MonitoringPeriodFrequency)}>
+            <Select 
+                value={defaultMonitoringFrequency || NO_FREQUENCY_SENTINEL} 
+                onValueChange={(value) => setDefaultMonitoringFrequency(value === NO_FREQUENCY_SENTINEL ? '' : value as MonitoringPeriodFrequency)}
+            >
               <SelectTrigger id="defaultMonitoringFrequency" className="w-full md:w-[280px]" disabled={isSavingMonitoringSettings}>
                 <SelectValue placeholder="Pilih frekuensi standar" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">_Tidak Diatur_</SelectItem>
+                <SelectItem value={NO_FREQUENCY_SENTINEL}>_Tidak Diatur_</SelectItem>
                 {MONITORING_PERIOD_FREQUENCIES.map(freq => (
                   <SelectItem key={freq} value={freq}>{freq}</SelectItem>
                 ))}
