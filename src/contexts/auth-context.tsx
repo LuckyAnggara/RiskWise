@@ -5,28 +5,35 @@ import React, { createContext, useContext, useEffect, useState, type ReactNode, 
 import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
 import { auth } from '@/lib/firebase/config';
 import { Loader2 } from 'lucide-react';
-import { getUserDocument } from '@/services/userService';
+import { getUserDocument, updateUserProfileData } from '@/services/userService';
 import type { AppUser } from '@/lib/types';
+import { useAppStore, triggerInitialDataFetch } from '@/stores/useAppStore'; // Import triggerInitialDataFetch
 
 interface AuthContextType {
   currentUser: FirebaseUser | null;
   appUser: AppUser | null;
-  loading: boolean;
+  loading: boolean; // Combined loading state
+  authLoading: boolean; // Specific to Firebase Auth state change
+  profileLoading: boolean; // Specific to Firestore profile fetching/creation
   isProfileComplete: boolean;
   refreshAppUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const DEFAULT_FALLBACK_UPR_ID = 'Pengguna'; // Digunakan jika displayName null
-const DEFAULT_PERIOD = new Date().getFullYear().toString();
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   const [appUser, setAppUser] = useState<AppUser | null>(null);
-  const [authLoading, setAuthLoading] = useState(true); // Loading status for Firebase Auth
-  const [profileLoading, setProfileLoading] = useState(false); // Loading status for Firestore profile
+  const [authLoading, setAuthLoading] = useState(true);
+  const [profileLoading, setProfileLoading] = useState(false); // Initially false
   const [isProfileComplete, setIsProfileComplete] = useState(false);
+  const resetAllStoreData = useAppStore(state => state.resetAllData);
+
+
+  const determineProfileCompleteness = useCallback((userProfile: AppUser | null): boolean => {
+    if (!userProfile) return false;
+    return !!(userProfile.displayName && userProfile.uprId && userProfile.activePeriod && userProfile.availablePeriods && userProfile.availablePeriods.length > 0);
+  }, []);
 
   const fetchAppUser = useCallback(async (user: FirebaseUser | null) => {
     if (user) {
@@ -35,34 +42,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const userDoc = await getUserDocument(user.uid);
         console.log("[AuthContext] fetchAppUser: AppUser data from Firestore:", JSON.stringify(userDoc));
-        if (userDoc) {
-          setAppUser(userDoc);
-          // Cek kelengkapan profil di sini
-          const profileIsComplete = !!(userDoc.displayName && userDoc.uprId && userDoc.activePeriod && userDoc.availablePeriods && userDoc.availablePeriods.length > 0);
-          setIsProfileComplete(profileIsComplete);
-          console.log("[AuthContext] fetchAppUser: Profile complete status:", profileIsComplete);
-        } else {
-          // Pengguna ada di Auth, tapi belum ada dokumen di Firestore, atau profil belum lengkap
-          // Buat objek AppUser minimal untuk menghindari error, dan tandai profil belum lengkap
-          setAppUser({
-            uid: user.uid,
-            email: user.email,
-            displayName: user.displayName || null, // Ambil dari Firebase Auth jika ada
-            photoURL: user.photoURL || null,
-            role: 'userSatker', // Role default
-            uprId: user.displayName || null, // UPR ID awal sama dengan displayName jika ada
-            activePeriod: null,
-            availablePeriods: [],
-            createdAt: new Date().toISOString(), // Placeholder
-          });
-          setIsProfileComplete(false);
-          console.log("[AuthContext] fetchAppUser: No Firestore doc or incomplete, profile set to incomplete.");
+        setAppUser(userDoc); // Set appUser even if it's null (user doc not found)
+        const completeness = determineProfileCompleteness(userDoc);
+        setIsProfileComplete(completeness);
+        console.log("[AuthContext] fetchAppUser: Profile complete status:", completeness);
+
+        if (userDoc && userDoc.uid && userDoc.activePeriod && completeness) {
+            triggerInitialDataFetch(userDoc.uid, userDoc.activePeriod);
+        } else if (userDoc && !completeness) {
+            console.log("[AuthContext] Profile incomplete, not triggering initial data fetch yet.");
+             resetAllStoreData(); // Reset store if profile is incomplete
         }
+
+
       } catch (error: any) {
         const errorMessage = error.message && typeof error.message === 'string' ? error.message : String(error);
         console.error("[AuthContext] fetchAppUser: Failed to fetch/create AppUser from Firestore:", errorMessage);
-        setAppUser(null); // Pastikan appUser null jika ada error
+        setAppUser(null);
         setIsProfileComplete(false);
+        resetAllStoreData();
       } finally {
         setProfileLoading(false);
       }
@@ -70,13 +68,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.log("[AuthContext] fetchAppUser: No Firebase user, setting appUser to null.");
       setAppUser(null);
       setIsProfileComplete(false);
-      setProfileLoading(false);
+      setProfileLoading(false); // Ensure profile loading is false if no user
+      resetAllStoreData();
     }
-  }, []);
+  }, [determineProfileCompleteness, resetAllStoreData]);
 
   useEffect(() => {
     console.log("[AuthContext] onAuthStateChanged listener attached.");
     setAuthLoading(true);
+    // setProfileLoading(true); // Set profile loading true when auth state might change
+
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       console.log("[AuthContext] onAuthStateChanged: Firebase user state changed. User:", user ? user.uid : "null");
       setCurrentUser(user);
@@ -84,8 +85,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await fetchAppUser(user);
       } catch (error) {
         console.error("[AuthContext] onAuthStateChanged: Error during fetchAppUser call:", error);
+        // fetchAppUser's own catch will handle setAppUser(null)
       } finally {
         setAuthLoading(false);
+        // profileLoading is handled by fetchAppUser
       }
     });
 
@@ -93,68 +96,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.log("[AuthContext] onAuthStateChanged listener detached.");
       unsubscribe();
     };
-  }, [fetchAppUser]);
+  }, [fetchAppUser]); // fetchAppUser is memoized, so this is fine
 
   const refreshAppUser = useCallback(async () => {
     if (currentUser) {
       console.log(`[AuthContext] refreshAppUser called for UID: ${currentUser.uid}`);
-      setProfileLoading(true); // Set loading true before fetching
+      setProfileLoading(true);
       try {
         const userDoc = await getUserDocument(currentUser.uid);
-        console.log("[AuthContext] refreshAppUser: AppUser data from Firestore:", JSON.stringify(userDoc));
-        if (userDoc) {
-          setAppUser(userDoc);
-          const profileIsComplete = !!(userDoc.displayName && userDoc.uprId && userDoc.activePeriod && userDoc.availablePeriods && userDoc.availablePeriods.length > 0);
-          setIsProfileComplete(profileIsComplete);
-          console.log("[AuthContext] refreshAppUser: Profile complete status:", profileIsComplete);
+        setAppUser(userDoc);
+        const completeness = determineProfileCompleteness(userDoc);
+        setIsProfileComplete(completeness);
+        console.log("[AuthContext] refreshAppUser: Profile complete status:", completeness);
+        if (userDoc && userDoc.uid && userDoc.activePeriod && completeness) {
+            triggerInitialDataFetch(userDoc.uid, userDoc.activePeriod);
         } else {
-          // Jika dokumen tidak ditemukan setelah refresh (seharusnya tidak terjadi jika update berhasil)
-          // Tetap set ke minimal dan incomplete
-           setAppUser({
-            uid: currentUser.uid,
-            email: currentUser.email,
-            displayName: currentUser.displayName || null,
-            photoURL: currentUser.photoURL || null,
-            role: 'userSatker',
-            uprId: currentUser.displayName || null,
-            activePeriod: null,
-            availablePeriods: [],
-            createdAt: new Date().toISOString(),
-          });
-          setIsProfileComplete(false);
-          console.log("[AuthContext] refreshAppUser: No Firestore doc found after refresh, profile set to incomplete.");
+             resetAllStoreData();
         }
       } catch (error: any) {
         const errorMessage = error.message && typeof error.message === 'string' ? error.message : String(error);
         console.error("[AuthContext] refreshAppUser: Error fetching user document:", errorMessage);
         setAppUser(null);
         setIsProfileComplete(false);
+        resetAllStoreData();
       } finally {
-        setProfileLoading(false); // Ensure loading is false after attempt
+        setProfileLoading(false);
       }
     } else {
       console.log("[AuthContext] refreshAppUser: No current user, skipping refresh.");
       setAppUser(null);
       setIsProfileComplete(false);
       setProfileLoading(false);
+      resetAllStoreData();
     }
-  }, [currentUser]);
+  }, [currentUser, determineProfileCompleteness, resetAllStoreData]);
 
   const isLoadingOverall = authLoading || profileLoading;
 
-  if (isLoadingOverall) {
-    return (
-      <div className="flex flex-col items-center justify-center h-screen bg-background">
-        <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
-        <p className="text-xl text-muted-foreground">
-          {authLoading ? "Memverifikasi sesi..." : "Memuat data profil pengguna..."}
-        </p>
-      </div>
-    );
-  }
-
   return (
-    <AuthContext.Provider value={{ currentUser, appUser, loading: isLoadingOverall, isProfileComplete, refreshAppUser }}>
+    <AuthContext.Provider value={{ currentUser, appUser, loading: isLoadingOverall, authLoading, profileLoading, isProfileComplete, refreshAppUser }}>
       {children}
     </AuthContext.Provider>
   );
