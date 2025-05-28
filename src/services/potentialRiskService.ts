@@ -22,44 +22,52 @@ import {
 import { 
     POTENTIAL_RISKS_COLLECTION,
 } from './collectionNames';
-import { getRiskCausesByPotentialRiskId, deleteRiskCauseAndSubCollections } from './riskCauseService';
+import { getRiskCausesByPotentialRiskId, deleteRiskCauseAndSubCollections } from './riskCauseService'; // For cascading delete
 
 export async function addPotentialRisk(
-  data: Omit<PotentialRisk, 'id' | 'identifiedAt' | 'period' | 'userId' | 'sequenceNumber' | 'goalId'>,
+  data: Omit<PotentialRisk, 'id' | 'identifiedAt' | 'userId' | 'period' | 'sequenceNumber' | 'goalId'>,
   goalId: string,
-  userId: string, // Parameter for the user ID
+  userId: string, 
   period: string,
   sequenceNumber: number
 ): Promise<PotentialRisk> {
   if (!userId || typeof userId !== 'string' || userId.trim() === "") {
     console.error("Error in addPotentialRisk: userId is invalid or not provided.", {userId});
-    throw new Error("User ID tidak valid atau tidak diberikan saat menambahkan potensi risiko.");
+    throw new Error("User ID tidak valid untuk menambahkan potensi risiko.");
   }
   if (!period || typeof period !== 'string' || period.trim() === "") {
     console.error("Error in addPotentialRisk: period is invalid or not provided.", {period});
-    throw new Error("Periode tidak valid atau tidak diberikan saat menambahkan potensi risiko.");
+    throw new Error("Periode tidak valid untuk menambahkan potensi risiko.");
   }
    if (!goalId || typeof goalId !== 'string' || goalId.trim() === "") {
     console.error("Error in addPotentialRisk: goalId is invalid or not provided.", {goalId});
-    throw new Error("Goal ID tidak valid atau tidak diberikan saat menambahkan potensi risiko.");
+    throw new Error("ID Sasaran tidak valid untuk menambahkan potensi risiko.");
   }
 
   try {
     const docDataToSave = {
       ...data,
       goalId,
-      userId, // Use the passed userId
+      userId,
       period,
       sequenceNumber,
       category: data.category || null,
       owner: data.owner || null,
-      identifiedAt: serverTimestamp(),
+      identifiedAt: serverTimestamp(), // Use serverTimestamp
+      updatedAt: serverTimestamp(),
     };
-    console.log("Data to save for new PotentialRisk:", JSON.stringify(docDataToSave, null, 2));
+    console.log("[potentialRiskService] Data to save for new PotentialRisk:", JSON.stringify(docDataToSave, null, 2));
     const docRef = await addDoc(collection(db, POTENTIAL_RISKS_COLLECTION), docDataToSave);
     
-    // For the return object, we use current date as placeholder for serverTimestamp
-    // and ensure all fields match the PotentialRisk type, especially userId and period
+    // Fetch the document to get server-generated timestamps
+    const newDocSnap = await getDoc(docRef);
+    if (!newDocSnap.exists()) {
+        throw new Error("Gagal mengambil dokumen potensi risiko yang baru dibuat.");
+    }
+    const newDocData = newDocSnap.data();
+    const identifiedAtTimestamp = newDocData.identifiedAt instanceof Timestamp ? newDocData.identifiedAt.toDate() : new Date();
+    const updatedAtTimestamp = newDocData.updatedAt instanceof Timestamp ? newDocData.updatedAt.toDate() : new Date();
+
     return {
       id: docRef.id,
       goalId,
@@ -68,9 +76,10 @@ export async function addPotentialRisk(
       description: data.description,
       category: data.category || null,
       owner: data.owner || null,
-      identifiedAt: new Date().toISOString(), // Placeholder, actual value is server timestamp
+      identifiedAt: identifiedAtTimestamp.toISOString(),
+      updatedAt: updatedAtTimestamp.toISOString(),
       sequenceNumber,
-    };
+    } as PotentialRisk; // Cast as PotentialRisk to satisfy return type including timestamps
   } catch (error: any) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.error("Error adding potential risk to Firestore: ", errorMessage, error.code, error.details);
@@ -83,6 +92,11 @@ export async function getPotentialRisksByGoalId(goalId: string, userId: string, 
     console.warn(`[potentialRiskService] getPotentialRisksByGoalId: userId or period is missing for goalId ${goalId}`);
     return [];
   }
+  if (!goalId) {
+    console.warn(`[potentialRiskService] getPotentialRisksByGoalId: goalId is missing.`);
+    return [];
+  }
+
   try {
     const q = query(
       collection(db, POTENTIAL_RISKS_COLLECTION),
@@ -93,25 +107,22 @@ export async function getPotentialRisksByGoalId(goalId: string, userId: string, 
     );
     const querySnapshot = await getDocs(q);
     const potentialRisks: PotentialRisk[] = [];
-    querySnapshot.forEach((doc) => {
-      const data = doc.data();
-      const identifiedAtTimestamp = data.identifiedAt instanceof Timestamp ? data.identifiedAt : (data.identifiedAt?.toDate ? data.identifiedAt.toDate() : null);
-      const identifiedAtISO = identifiedAtTimestamp instanceof Date ? identifiedAtTimestamp.toISOString() : (data.identifiedAt && typeof data.identifiedAt === 'string' ? data.identifiedAt : new Date().toISOString());
+    querySnapshot.forEach((docSnap) => {
+      const data = docSnap.data();
+      const identifiedAtTimestamp = data.identifiedAt instanceof Timestamp ? data.identifiedAt.toDate() : (data.identifiedAt ? new Date(data.identifiedAt) : new Date());
+      const updatedAtTimestamp = data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : (data.updatedAt ? new Date(data.updatedAt) : null);
       
-      const updatedAtTimestamp = data.updatedAt instanceof Timestamp ? data.updatedAt : (data.updatedAt?.toDate ? data.updatedAt.toDate() : null);
-      const updatedAtISO = updatedAtTimestamp instanceof Date ? updatedAtTimestamp.toISOString() : (data.updatedAt && typeof data.updatedAt === 'string' ? data.updatedAt : undefined);
-
       potentialRisks.push({ 
-        id: doc.id, 
-        ...data, 
+        id: docSnap.id, 
+        goalId: data.goalId,
         userId: data.userId,
         period: data.period,
-        goalId: data.goalId,
-        identifiedAt: identifiedAtISO,
-        updatedAt: updatedAtISO,
+        sequenceNumber: data.sequenceNumber,
+        description: data.description,
         category: data.category || null,
         owner: data.owner || null,
-        sequenceNumber: data.sequenceNumber,
+        identifiedAt: identifiedAtTimestamp.toISOString(),
+        updatedAt: updatedAtTimestamp ? updatedAtTimestamp.toISOString() : undefined,
       } as PotentialRisk);
     });
     return potentialRisks;
@@ -119,11 +130,10 @@ export async function getPotentialRisksByGoalId(goalId: string, userId: string, 
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.error("Error getting potential risks from Firestore: ", errorMessage, error.code, error);
     let detailedErrorMessage = "Gagal mengambil daftar potensi risiko dari database.";
-     if (error instanceof Error && error.message) {
-        detailedErrorMessage += ` Pesan Asli: ${error.message}`;
-    }
-    if ((error as any).code === 'failed-precondition') {
-        detailedErrorMessage += " Ini seringkali disebabkan oleh indeks komposit yang hilang di Firestore. Silakan periksa Firebase Console Anda (Firestore Database > Indexes) untuk membuat indeks yang diperlukan. Link untuk membuat indeks mungkin ada di log error server/konsol browser Anda.";
+     if (error.code === 'failed-precondition') {
+        detailedErrorMessage += " Ini seringkali disebabkan oleh indeks komposit yang hilang di Firestore. Silakan periksa Firebase Console Anda (Firestore Database > Indexes) untuk membuat indeks yang diperlukan.";
+    } else {
+        detailedErrorMessage += ` Pesan Asli: ${errorMessage}`;
     }
     throw new Error(detailedErrorMessage);
   }
@@ -144,23 +154,20 @@ export async function getPotentialRiskById(id: string, userId: string, period: s
         return null;
       }
 
-      const identifiedAtTimestamp = data.identifiedAt instanceof Timestamp ? data.identifiedAt : (data.identifiedAt?.toDate ? data.identifiedAt.toDate() : null);
-      const identifiedAtISO = identifiedAtTimestamp instanceof Date ? identifiedAtTimestamp.toISOString() : (data.identifiedAt && typeof data.identifiedAt === 'string' ? data.identifiedAt : new Date().toISOString());
-      
-      const updatedAtTimestamp = data.updatedAt instanceof Timestamp ? data.updatedAt : (data.updatedAt?.toDate ? data.updatedAt.toDate() : null);
-      const updatedAtISO = updatedAtTimestamp instanceof Date ? updatedAtTimestamp.toISOString() : (data.updatedAt && typeof data.updatedAt === 'string' ? data.updatedAt : undefined);
+      const identifiedAtTimestamp = data.identifiedAt instanceof Timestamp ? data.identifiedAt.toDate() : (data.identifiedAt ? new Date(data.identifiedAt) : new Date());
+      const updatedAtTimestamp = data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : (data.updatedAt ? new Date(data.updatedAt) : null);
       
       return { 
         id: docSnap.id, 
-        ...data, 
+        goalId: data.goalId,
         userId: data.userId,
         period: data.period,
-        goalId: data.goalId,
-        identifiedAt: identifiedAtISO,
-        updatedAt: updatedAtISO,
+        sequenceNumber: data.sequenceNumber,
+        description: data.description,
         category: data.category || null,
         owner: data.owner || null,
-        sequenceNumber: data.sequenceNumber,
+        identifiedAt: identifiedAtTimestamp.toISOString(),
+        updatedAt: updatedAtTimestamp ? updatedAtTimestamp.toISOString() : undefined,
       } as PotentialRisk;
     }
     console.warn(`PotentialRisk with ID ${id} not found.`);
@@ -172,7 +179,7 @@ export async function getPotentialRiskById(id: string, userId: string, period: s
   }
 }
 
-export async function updatePotentialRisk(id: string, data: Partial<Omit<PotentialRisk, 'id' | 'userId' | 'period' | 'goalId' | 'identifiedAt' | 'sequenceNumber'>>): Promise<void> {
+export async function updatePotentialRisk(id: string, data: Partial<Omit<PotentialRisk, 'id' | 'userId' | 'period' | 'goalId' | 'identifiedAt' | 'sequenceNumber' | 'updatedAt'>>): Promise<PotentialRisk | null> {
   try {
     const docRef = doc(db, POTENTIAL_RISKS_COLLECTION, id);
     const updateData = {
@@ -181,8 +188,25 @@ export async function updatePotentialRisk(id: string, data: Partial<Omit<Potenti
         owner: data.owner === undefined ? undefined : (data.owner || null),
         updatedAt: serverTimestamp() 
     };
-    console.log("Data to update for PotentialRisk:", id, JSON.stringify(updateData, null, 2));
+    console.log("[potentialRiskService] Data to update for PotentialRisk:", id, JSON.stringify(updateData, null, 2));
     await updateDoc(docRef, updateData);
+    
+    // Fetch the updated document to return it with server-generated timestamp
+    const updatedDocSnap = await getDoc(docRef);
+    if (!updatedDocSnap.exists()) {
+        throw new Error("Dokumen potensi risiko tidak ditemukan setelah pembaruan.");
+    }
+    const updatedDocData = updatedDocSnap.data();
+    const identifiedAtTimestamp = updatedDocData.identifiedAt instanceof Timestamp ? updatedDocData.identifiedAt.toDate() : new Date(updatedDocData.identifiedAt);
+    const updatedAtTimestamp = updatedDocData.updatedAt instanceof Timestamp ? updatedDocData.updatedAt.toDate() : new Date();
+
+    return {
+        id: updatedDocSnap.id,
+        ...updatedDocData,
+        identifiedAt: identifiedAtTimestamp.toISOString(),
+        updatedAt: updatedAtTimestamp.toISOString(),
+    } as PotentialRisk;
+
   } catch (error: any) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.error("Error updating potential risk in Firestore: ", errorMessage);
@@ -192,14 +216,14 @@ export async function updatePotentialRisk(id: string, data: Partial<Omit<Potenti
 
 export async function deletePotentialRiskAndSubCollections(potentialRiskId: string, userId: string, period: string, batch?: WriteBatch): Promise<void> {
   const localBatch = batch || writeBatch(db);
-  console.log(`Attempting to delete PotentialRisk: ${potentialRiskId} for user: ${userId}, period: ${period}`);
+  console.log(`[potentialRiskService] Attempting to delete PotentialRisk: ${potentialRiskId} for user: ${userId}, period: ${period}`);
   try {
     const potentialRiskRef = doc(db, POTENTIAL_RISKS_COLLECTION, potentialRiskId);
-    const prDoc = await getDoc(potentialRiskRef); // Get document to verify ownership and context
+    const prDoc = await getDoc(potentialRiskRef); 
     
     if (!prDoc.exists()) {
       console.warn(`PotentialRisk with ID ${potentialRiskId} not found. Skipping deletion.`);
-      if (!batch) await localBatch.commit(); // Commit if we started a batch
+      if (!batch) { /* Only commit if this function started the batch */ await localBatch.commit(); }
       return;
     }
 
@@ -209,30 +233,30 @@ export async function deletePotentialRiskAndSubCollections(potentialRiskId: stri
         throw new Error("Operasi tidak diizinkan: potensi risiko tidak cocok dengan konteks pengguna/periode.");
     }
 
-    // Delete related RiskCauses (and their ControlMeasures)
     const riskCauses = await getRiskCausesByPotentialRiskId(potentialRiskId, userId, period);
-    console.log(`Found ${riskCauses.length} risk causes for PotentialRisk ${potentialRiskId}`);
+    console.log(`[potentialRiskService] Found ${riskCauses.length} risk causes for PotentialRisk ${potentialRiskId} to be deleted.`);
 
     for (const riskCause of riskCauses) {
-      // deleteRiskCauseAndSubCollections from riskCauseService handles deleting its own ControlMeasures
+      // deleteRiskCauseAndSubCollections will handle deleting its own ControlMeasures
       await deleteRiskCauseAndSubCollections(riskCause.id, userId, period, localBatch);
     }
 
     localBatch.delete(potentialRiskRef);
-    console.log(`PotentialRisk ${potentialRiskId} and its sub-collections added to batch for deletion.`);
+    console.log(`[potentialRiskService] PotentialRisk ${potentialRiskId} and its sub-collections added to batch for deletion.`);
 
-    if (!batch) { // If this function initiated the batch, commit it.
+    if (!batch) { 
       await localBatch.commit();
-      console.log(`PotentialRisk ${potentialRiskId} and related data committed for deletion.`);
+      console.log(`[potentialRiskService] PotentialRisk ${potentialRiskId} and related data committed for deletion.`);
     }
   } catch (error: any) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error("Error deleting potential risk and its sub-collections: ", errorMessage, error.code, error);
-    // Avoid re-throwing if it's just a "not found" during a cascading delete that might have already run partially
-    if (!(error.message && error.message.toLowerCase().includes("no document to update"))){
+    console.error("[potentialRiskService] Error deleting potential risk and its sub-collections: ", errorMessage, error.code, error);
+    if (!(error.message && error.message.toLowerCase().includes("no document to update")) && !(error.message && error.message.toLowerCase().includes("document to update"))){
         throw new Error(`Gagal menghapus potensi risiko dan data terkaitnya. Pesan: ${errorMessage}`);
     } else {
-        console.warn("Skipped re-throwing error during cascading delete, likely already deleted:", errorMessage);
+        console.warn("[potentialRiskService] Skipped re-throwing error during cascading delete, likely already deleted or batch issue:", errorMessage);
     }
   }
 }
+
+    

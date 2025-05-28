@@ -20,6 +20,8 @@ import { useForm, type SubmitHandler } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { PlusCircle, Pencil, Loader2 } from 'lucide-react';
+import { useAppStore } from '@/stores/useAppStore'; // Import the store
+import { useAuth } from '@/contexts/auth-context'; // Import useAuth
 
 const goalSchema = z.object({
   name: z.string().min(3, "Nama sasaran minimal 3 karakter."),
@@ -29,24 +31,22 @@ const goalSchema = z.object({
 type GoalFormData = z.infer<typeof goalSchema>;
 
 interface AddGoalDialogProps {
-  onGoalSave: (
-    goalData: Omit<Goal, 'id' | 'code' | 'createdAt' | 'userId' | 'period'>, 
-    existingGoalId?: string
-  ) => Promise<void>; // Dibuat async karena sekarang memanggil store yang async
+  // onGoalSave is no longer needed as we use store actions directly
   existingGoal?: Goal | null;
   triggerButton?: React.ReactNode;
-  currentUprId: string; // Diperlukan untuk deskripsi jika ada
-  currentPeriod: string; // Diperlukan untuk deskripsi jika ada
+  // currentUprId and currentPeriod are no longer needed as props, will get from AuthContext
 }
 
 export function AddGoalDialog({ 
-  onGoalSave, 
   existingGoal, 
   triggerButton,
-  currentUprId,
-  currentPeriod,
 }: AddGoalDialogProps) {
   const [open, setOpen] = useState(false);
+  
+  const { currentUser, appUser } = useAuth(); // Get user and period from context
+  const addGoalToStore = useAppStore(state => state.addGoal);
+  const updateGoalInStore = useAppStore(state => state.updateGoal);
+  
   const {
     register,
     handleSubmit,
@@ -74,7 +74,20 @@ export function AddGoalDialog({
   }, [existingGoal, open, reset]);
 
   const onSubmit: SubmitHandler<GoalFormData> = async (data) => {
-    await onGoalSave(data, existingGoal?.id); // Panggil onGoalSave yang sekarang async
+    if (!currentUser || !currentUser.uid || !appUser || !appUser.activePeriod) {
+      // Handle error: context not ready
+      console.error("User context not available for saving goal.");
+      // Optionally show a toast message
+      return;
+    }
+
+    const goalDataPayload = { name: data.name, description: data.description };
+
+    if (existingGoal && existingGoal.id) {
+      await updateGoalInStore(existingGoal.id, goalDataPayload, currentUser.uid, appUser.activePeriod);
+    } else {
+      await addGoalToStore(goalDataPayload, currentUser.uid, appUser.activePeriod);
+    }
     setOpen(false);
   };
 
@@ -82,7 +95,7 @@ export function AddGoalDialog({
   const dialogTitle = existingGoal ? `Edit Sasaran (${displayCode})` : "Tambah Sasaran Baru";
   const dialogDescription = existingGoal 
     ? `Perbarui detail sasaran Anda.` 
-    : `Definisikan sasaran baru untuk UPR: ${currentUprId || '...'}, Periode: ${currentPeriod || '...'}.`;
+    : `Definisikan sasaran baru untuk UPR: ${appUser?.displayName || '...'}, Periode: ${appUser?.activePeriod || '...'}.`;
 
 
   return (
@@ -100,7 +113,7 @@ export function AddGoalDialog({
         {triggerButton ? (
           React.cloneElement(triggerButton as React.ReactElement, { onClick: () => setOpen(true) })
         ) : (
-          <Button onClick={() => setOpen(true)}>
+          <Button onClick={() => setOpen(true)} disabled={!currentUser || !appUser || !appUser.activePeriod}>
             {existingGoal ? <Pencil className="mr-2 h-4 w-4" /> : <PlusCircle className="mr-2 h-4 w-4" />}
              {existingGoal ? `Edit Sasaran (${displayCode})` : "Tambah Sasaran Baru"}
           </Button>
@@ -138,13 +151,14 @@ export function AddGoalDialog({
                 {...register("description")}
                 className={errors.description ? "border-destructive" : ""}
                 disabled={isSubmitting}
+                rows={3}
               />
               {errors.description && <p className="text-xs text-destructive mt-1">{errors.description.message}</p>}
             </div>
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={isSubmitting}>Batal</Button>
-            <Button type="submit" disabled={isSubmitting}>
+            <Button type="submit" disabled={isSubmitting || !currentUser || !appUser || !appUser.activePeriod}>
               {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : (existingGoal ? "Simpan Perubahan" : "Simpan Sasaran")}
             </Button>
           </DialogFooter>
@@ -153,3 +167,4 @@ export function AddGoalDialog({
     </Dialog>
   );
 }
+    
