@@ -3,13 +3,13 @@
 
 import React, { useState, useEffect, useCallback, useMemo, Fragment } from 'react';
 import NextLink from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation'; // Added useSearchParams
 import { PageHeader } from '@/components/ui/page-header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import type { Goal, PotentialRisk, RiskCategory } from '@/lib/types';
 import { RISK_CATEGORIES } from '@/lib/types';
-import { PlusCircle, Loader2, Settings2, Trash2, Edit, ListChecks, ChevronDown, ChevronUp, Search, Filter, Copy } from 'lucide-react';
+import { PlusCircle, Loader2, Settings2, Trash2, Edit, ListChecks, ChevronDown, ChevronUp, Search, Filter, Copy, BarChart3 } from 'lucide-react'; // Added BarChart3
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -24,16 +24,17 @@ import { useAppStore } from '@/stores/useAppStore';
 
 export default function AllRisksPage() {
   const router = useRouter();
+  const searchParams = useSearchParams(); // Initialize useSearchParams
   const { currentUser, appUser, loading: authLoading } = useAuth();
   
-  // State from Zustand store
-  const goals = useAppStore(state => state.goals);
-  const fetchGoals = useAppStore(state => state.fetchGoals);
-  const potentialRisks = useAppStore(state => state.potentialRisks);
-  const potentialRisksLoading = useAppStore(state => state.potentialRisksLoading);
-  const fetchPotentialRisks = useAppStore(state => state.fetchPotentialRisks);
-  const deletePotentialRiskFromStore = useAppStore(state => state.deletePotentialRisk);
-  const addPotentialRiskToStore = useAppStore(state => state.addPotentialRisk);
+  const store = useAppStore();
+  const goals = store.goals;
+  const fetchGoals = store.fetchGoals;
+  const potentialRisks = store.potentialRisks;
+  const potentialRisksLoading = store.potentialRisksLoading;
+  const fetchPotentialRisks = store.fetchPotentialRisks;
+  const deletePotentialRiskFromStore = store.deletePotentialRisk;
+  const addPotentialRiskToStore = store.addPotentialRisk;
 
 
   const [expandedRiskId, setExpandedRiskId] = useState<string | null>(null);
@@ -56,16 +57,24 @@ export default function AllRisksPage() {
   const currentPeriod = useMemo(() => appUser?.activePeriod || null, [appUser]);
 
   useEffect(() => {
+    console.log("[AllRisksPage] useEffect triggered. AuthLoading:", authLoading, "currentUser:", !!currentUser, "currentUserId:", currentUserId, "currentPeriod:", currentPeriod);
     if (currentUserId && currentPeriod && !authLoading) {
-      // Fetch goals if not already loaded, which will then trigger potential risks fetch
-      if (goals.length === 0) { // Or based on a more specific loading flag for goals if available
+      if (goals.length === 0 && !store.goalsLoading) { // Only fetch goals if not already loaded or loading
+        console.log("[AllRisksPage] Fetching goals from store...");
         fetchGoals(currentUserId, currentPeriod);
-      } else {
-        // If goals are already loaded, directly fetch potential risks
+      } else if (goals.length > 0 && potentialRisks.length === 0 && !potentialRisksLoading) {
+        // If goals are loaded, but potential risks are not, fetch potential risks
+        console.log("[AllRisksPage] Goals loaded, fetching potential risks from store...");
         fetchPotentialRisks(currentUserId, currentPeriod);
+      } else if (goals.length === 0 && store.goalsLoading) {
+        console.log("[AllRisksPage] Goals are currently being fetched by store, waiting...");
+      } else if (potentialRisks.length === 0 && potentialRisksLoading) {
+        console.log("[AllRisksPage] PotentialRisks are currently being fetched by store, waiting...");
+      } else {
+        console.log("[AllRisksPage] Data (goals/potentialRisks) already loaded or no need to fetch.");
       }
     }
-  }, [currentUserId, currentPeriod, authLoading, fetchGoals, fetchPotentialRisks, goals.length]);
+  }, [currentUserId, currentPeriod, authLoading, fetchGoals, fetchPotentialRisks, goals, potentialRisks, store.goalsLoading, potentialRisksLoading]);
   
   const allOwners = useMemo(() => {
     const ownersSet = new Set<string>();
@@ -76,7 +85,7 @@ export default function AllRisksPage() {
   }, [potentialRisks]);
 
   const handleOpenEditPotentialRiskPage = (pRiskId: string) => {
-    router.push(`/all-risks/manage/${pRiskId}?from=/all-risks`);
+    router.push(`/all-risks/manage/${pRiskId}?from=${encodeURIComponent("/all-risks")}`);
   };
   
   const handleDeleteSingleRisk = (pRisk: PotentialRisk) => {
@@ -92,7 +101,6 @@ export default function AllRisksPage() {
     try {
       await deletePotentialRiskFromStore(riskToDelete.id, currentUserId, currentPeriod);
       toast({ title: "Potensi Risiko Dihapus", description: `Potensi risiko "${riskToDelete.description}" dan semua data terkait telah dihapus.`, variant: "destructive" });
-      // Store state should update automatically, no need to call loadData()
       setSelectedRiskIds(prev => prev.filter(id => id !== riskToDelete.id));
     } catch (error: any) {
         const errorMessage = error.message || String(error);
@@ -232,13 +240,12 @@ export default function AllRisksPage() {
         toast({ title: "Hapus Massal Berhasil", description: `${deletedCount} potensi risiko dan semua data terkait telah dihapus.`, variant: "destructive" });
     }
     if (errors.length > 0) {
-        toast({ title: "Gagal Sebagian", description: `Gagal menghapus potensi risiko: ${errors.join(', ')}.`, variant: "destructive" });
+        toast({ title: "Gagal Sebagian", description: `Gagal menghapus potensi risiko: ${errors.join(', ')}. Pesan: ${errors.length > 0 ? errors[0] : ''}`, variant: "destructive" });
     }
     
     setIsBulkDeleteDialogOpen(false);
     setSelectedRiskIds([]);
     setIsBulkDeleting(false);
-    // Store state should update automatically
   };
 
   const handleDuplicateRisk = async (riskToDuplicateId: string) => {
@@ -255,7 +262,6 @@ export default function AllRisksPage() {
         return;
     }
     
-    // setIsPageLoading(true); // Consider a specific loading state for duplication if needed
     try {
         const existingPRsForGoal = potentialRisks.filter(pr => pr.goalId === parentGoal.id);
         const newSequenceNumber = existingPRsForGoal.length + 1;
@@ -270,21 +276,18 @@ export default function AllRisksPage() {
         
         if (newPotentialRisk) {
           toast({ title: "Risiko Diduplikasi", description: `Potensi risiko "${newPotentialRisk.description}" telah berhasil diduplikasi. Penyebab dan kontrol belum disalin.`});
-          // Store updates, no need to call loadData();
         } else {
           throw new Error("Gagal membuat duplikasi potensi risiko di store.");
         }
     } catch (error: any) {
         console.error("Error duplicating risk:", error.message);
         toast({ title: "Gagal Menduplikasi", description: `Terjadi kesalahan saat menduplikasi: ${error.message}`, variant: "destructive" });
-    } finally {
-      // setIsPageLoading(false);
     }
   };
 
-  const isLoading = authLoading || potentialRisksLoading;
+  const isLoadingPage = authLoading || potentialRisksLoading || store.goalsLoading;
 
-  if (isLoading && potentialRisks.length === 0) { 
+  if (isLoadingPage && potentialRisks.length === 0) { 
     return (
       <div className="flex flex-col items-center justify-center h-screen">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
@@ -298,7 +301,7 @@ export default function AllRisksPage() {
   }
 
   const relevantGoalsForFilter = Array.isArray(goals) ? goals.filter(g => g.userId === currentUserId && g.period === currentPeriod) : [];
-  const totalTableColumns = 7; // Adjusted for no likelihood/impact columns
+  const totalTableColumns = 7; 
 
   return (
     <div className="space-y-6">
@@ -315,21 +318,21 @@ export default function AllRisksPage() {
         }
       />
 
-      <div className="flex flex-col md:flex-row gap-2 mb-4 items-start md:items-center">
-        <div className="relative flex-grow md:flex-grow-0 md:max-w-xs w-full md:w-auto">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-                placeholder="Cari kode, deskripsi..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 w-full"
-                disabled={isLoading}
-            />
-        </div>
-        <div className="flex flex-wrap gap-2">
+      <div className="flex flex-col md:flex-row gap-2 mb-4 justify-between items-center">
+        <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto items-stretch sm:items-center">
+            <div className="relative flex-grow sm:flex-grow-0">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                    placeholder="Cari kode, deskripsi..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-10 w-full"
+                    disabled={isLoadingPage}
+                />
+            </div>
             <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="w-full sm:w-auto" disabled={isLoading}>
+                <Button variant="outline" className="w-full sm:w-auto" disabled={isLoadingPage}>
                     <Filter className="mr-2 h-4 w-4" />
                     Filter Kategori {selectedCategories.length > 0 ? `(${selectedCategories.length})` : ''}
                 </Button>
@@ -353,7 +356,7 @@ export default function AllRisksPage() {
 
             <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="w-full sm:w-auto" disabled={isLoading || allOwners.length === 0}>
+                <Button variant="outline" className="w-full sm:w-auto" disabled={isLoadingPage || allOwners.length === 0}>
                     <Filter className="mr-2 h-4 w-4" />
                     Filter Pemilik {selectedOwners.length > 0 ? `(${selectedOwners.length})` : ''}
                 </Button>
@@ -381,7 +384,7 @@ export default function AllRisksPage() {
 
             <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="w-full sm:w-auto" disabled={isLoading || relevantGoalsForFilter.length === 0}>
+                <Button variant="outline" className="w-full sm:w-auto" disabled={isLoadingPage || relevantGoalsForFilter.length === 0}>
                     <Filter className="mr-2 h-4 w-4" />
                     Filter Sasaran {selectedGoalIds.length > 0 ? `(${selectedGoalIds.length})` : ''}
                 </Button>
@@ -407,25 +410,23 @@ export default function AllRisksPage() {
                 </DropdownMenuContent>
             </DropdownMenu>
         </div>
-      </div>
-      
-      {selectedRiskIds.length > 0 && (
-          <div className="mb-4 text-right">
-            <Button variant="destructive" onClick={handleDeleteSelectedRisks} className="w-full sm:w-auto" disabled={!currentUser || isLoading || isBulkDeleting}>
+         {selectedRiskIds.length > 0 && (
+            <Button variant="destructive" onClick={handleDeleteSelectedRisks} className="w-full mt-2 sm:mt-0 sm:w-auto" disabled={!currentUser || isLoadingPage || isBulkDeleting}>
                 {isBulkDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
                 Hapus ({selectedRiskIds.length}) yang Dipilih
             </Button>
-          </div>
-      )}
+        )}
+      </div>
+      
 
-      {isLoading && filteredAndSortedRisks.length === 0 && ( // Show main loading only if no risks are displayed yet
+      {isLoadingPage && filteredAndSortedRisks.length === 0 && ( 
          <div className="flex flex-col items-center justify-center py-10">
           <Loader2 className="h-10 w-10 animate-spin text-primary mb-3" />
           <p className="text-muted-foreground">Memuat daftar potensi risiko...</p>
         </div>
       )}
 
-      {!isLoading && filteredAndSortedRisks.length === 0 && (
+      {!isLoadingPage && filteredAndSortedRisks.length === 0 && (
         <div className="text-center py-10 border-2 border-dashed border-muted-foreground/30 rounded-lg">
           <ListChecks className="mx-auto h-12 w-12 text-muted-foreground" />
           <h3 className="mt-2 text-lg font-medium">
@@ -441,7 +442,7 @@ export default function AllRisksPage() {
         </div>
       )}
 
-      {!isLoading && filteredAndSortedRisks.length > 0 && (
+      {!isLoadingPage && filteredAndSortedRisks.length > 0 && (
         <Card className="w-full">
           <CardContent className="p-0">
             <div className="relative w-full overflow-x-auto">
@@ -453,7 +454,7 @@ export default function AllRisksPage() {
                             checked={selectedRiskIds.length === filteredAndSortedRisks.length && filteredAndSortedRisks.length > 0}
                             onCheckedChange={(checked) => handleSelectAllRisks(Boolean(checked))}
                             aria-label="Pilih semua risiko yang terlihat"
-                            disabled={filteredAndSortedRisks.length === 0 || !currentUser || isBulkDeleting || isLoading}
+                            disabled={filteredAndSortedRisks.length === 0 || !currentUser || isBulkDeleting || isLoadingPage}
                         />
                     </TableHead>
                     <TableHead className="w-[40px] sticky left-10 bg-background z-10"></TableHead> 
@@ -483,9 +484,9 @@ export default function AllRisksPage() {
                         ? `Sasaran ${goalCodeDisplay}: ${associatedGoal.name}`
                         : 'Sasaran tidak ditemukan';
                     
-                    const returnPath = `/all-risks`;
+                    const returnPath = `/all-risks`; // Return path untuk AllRisksPage
                     const isCurrentlyDeletingThis = deletingRiskId === pRisk.id || (isBulkDeleting && selectedRiskIds.includes(pRisk.id));
-                    // const riskCauseCount = riskCauseCounts[pRisk.id] || 0; // Placeholder, needs riskCause state in store
+                    const riskCauseCount = store.riskCauses.filter(rc => rc.potentialRiskId === pRisk.id).length;
 
                     return (
                         <Fragment key={pRisk.id}>
@@ -495,11 +496,11 @@ export default function AllRisksPage() {
                                     checked={selectedRiskIds.includes(pRisk.id)}
                                     onCheckedChange={(checked) => handleSelectRisk(pRisk.id, Boolean(checked))}
                                     aria-label={`Pilih risiko ${pRisk.description}`}
-                                    disabled={!currentUser || isCurrentlyDeletingThis || isLoading}
+                                    disabled={!currentUser || isCurrentlyDeletingThis || isLoadingPage}
                                 />
                             </TableCell>
                             <TableCell className="sticky left-10 bg-background z-10">
-                            <Button variant="ghost" size="icon" onClick={() => toggleExpandRisk(pRisk.id)} aria-label={isExpanded ? "Sembunyikan deskripsi" : "Tampilkan deskripsi"} className="h-8 w-8" disabled={isCurrentlyDeletingThis || isLoading}>
+                            <Button variant="ghost" size="icon" onClick={() => toggleExpandRisk(pRisk.id)} aria-label={isExpanded ? "Sembunyikan deskripsi" : "Tampilkan deskripsi"} className="h-8 w-8" disabled={isCurrentlyDeletingThis || isLoadingPage}>
                                 {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                             </Button>
                             </TableCell>
@@ -517,7 +518,7 @@ export default function AllRisksPage() {
                             >
                             {associatedGoalText}
                             </TableCell>
-                            <TableCell className="text-center text-xs">{/* riskCauseCount - Diimplementasikan nanti dengan RiskCause state */}?</TableCell> 
+                            <TableCell className="text-center text-xs">{riskCauseCount}</TableCell> 
                             
                             <TableCell className="text-right sticky right-0 bg-background z-10 pr-4">
                              {isCurrentlyDeletingThis ? (
@@ -525,7 +526,7 @@ export default function AllRisksPage() {
                               ) : (
                                 <DropdownMenu>
                                   <DropdownMenuTrigger asChild>
-                                    <Button variant="ghost" size="icon" className="h-8 w-8" disabled={!currentUser || isLoading}>
+                                    <Button variant="ghost" size="icon" className="h-8 w-8" disabled={!currentUser || isLoadingPage}>
                                       <Settings2 className="h-4 w-4" />
                                     </Button>
                                   </DropdownMenuTrigger>
@@ -536,11 +537,11 @@ export default function AllRisksPage() {
                                     <DropdownMenuItem onClick={() => router.push(`/risk-analysis?potentialRiskId=${pRisk.id}&from=${encodeURIComponent(returnPath)}`)}>
                                         <BarChart3 className="mr-2 h-4 w-4" /> Analisis Semua Penyebab
                                     </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => handleDuplicateRisk(pRisk.id)} disabled={!currentUser || isLoading}>
+                                    <DropdownMenuItem onClick={() => handleDuplicateRisk(pRisk.id)} disabled={!currentUser || isLoadingPage}>
                                       <Copy className="mr-2 h-4 w-4" /> Duplikat Risiko
                                     </DropdownMenuItem>
                                     <DropdownMenuSeparator />
-                                    <DropdownMenuItem onClick={() => handleDeleteSingleRisk(pRisk)} className="text-destructive focus:text-destructive focus:bg-destructive/10" disabled={!currentUser || isLoading}>
+                                    <DropdownMenuItem onClick={() => handleDeleteSingleRisk(pRisk)} className="text-destructive focus:text-destructive focus:bg-destructive/10" disabled={!currentUser || isLoadingPage}>
                                       <Trash2 className="mr-2 h-4 w-4" /> Hapus Potensi Risiko
                                     </DropdownMenuItem>
                                   </DropdownMenuContent>
@@ -604,5 +605,3 @@ export default function AllRisksPage() {
     </div>
   );
 }
-
-    
