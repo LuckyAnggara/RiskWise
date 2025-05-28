@@ -52,11 +52,13 @@ export default function AllRisksPage() {
 
   const { toast } = useToast();
   
-  const currentUprId = useMemo(() => appUser?.uprId || null, [appUser]);
-  const currentPeriod = useMemo(() => appUser?.activePeriod || DEFAULT_PERIOD, [appUser]);
+  const currentUprId = useMemo(() => appUser?.uid || null, [appUser]);
+  const currentPeriod = useMemo(() => appUser?.activePeriod || null, [appUser]);
 
   const loadData = useCallback(async () => {
+    console.log("[AllRisksPage] loadData triggered. Context:", { currentUser: !!currentUser, currentUprId, currentPeriod });
     if (!currentUser || !currentUprId || !currentPeriod) {
+        console.log("[AllRisksPage] Bailing out of loadData early due to missing context.");
         setIsLoading(false);
         setGoals([]);
         setAllPotentialRisks([]);
@@ -66,12 +68,22 @@ export default function AllRisksPage() {
     }
     setIsLoading(true);
     try {
+      console.log(`[AllRisksPage] Fetching goals for userId: ${currentUprId}, period: ${currentPeriod}`);
       const goalsResult = await getGoals(currentUprId, currentPeriod);
       let loadedGoals: Goal[] = [];
+
       if (goalsResult.success && goalsResult.goals) {
         loadedGoals = goalsResult.goals;
+        console.log(`[AllRisksPage] Loaded ${loadedGoals.length} goals successfully:`, loadedGoals.map(g => g.id));
       } else {
+        console.warn("[AllRisksPage] Failed to load goals or no goals found:", goalsResult.message);
         toast({title: "Kesalahan Memuat Sasaran", description: goalsResult.message || "Tidak dapat memuat daftar sasaran.", variant: "destructive"});
+        setGoals([]); 
+        setAllPotentialRisks([]);
+        setAllOwners([]);
+        setRiskCauseCounts({});
+        setIsLoading(false);
+        return; 
       }
       setGoals(loadedGoals);
 
@@ -79,42 +91,74 @@ export default function AllRisksPage() {
       const uniqueOwners = new Set<string>();
       const causeCounts: Record<string, number> = {};
 
+      console.log("[AllRisksPage] Starting to fetch potential risks for each goal...");
       for (const goal of loadedGoals) { 
+        console.log(`[AllRisksPage] Fetching potential risks for goalId: ${goal.id}, userId: ${currentUprId}, period: ${currentPeriod}`);
         const goalPotentialRisks = await getPotentialRisksByGoalId(goal.id, currentUprId, currentPeriod);
+        console.log(`[AllRisksPage] Found ${goalPotentialRisks.length} potential risks for goal ${goal.id}.`);
         for (const pRisk of goalPotentialRisks) {
           collectedPotentialRisks.push(pRisk);
           if (pRisk.owner) uniqueOwners.add(pRisk.owner);
+          
+          // console.log(`[AllRisksPage] Fetching risk causes for potentialRiskId: ${pRisk.id}, userId: ${currentUprId}, period: ${currentPeriod}`);
           const causes = await getRiskCausesByPotentialRiskId(pRisk.id, currentUprId, currentPeriod);
+          // console.log(`[AllRisksPage] Found ${causes.length} risk causes for potential risk ${pRisk.id}.`);
           causeCounts[pRisk.id] = causes.length;
         }
       }
+      console.log(`[AllRisksPage] Total potential risks collected: ${collectedPotentialRisks.length}`);
       setAllPotentialRisks(collectedPotentialRisks);
       setAllOwners(Array.from(uniqueOwners).sort((a,b) => a.localeCompare(b)));
       setRiskCauseCounts(causeCounts);
       setSelectedRiskIds([]);
     } catch (error: any) {
-        console.error("Error loading data for AllRisksPage:", error.message);
-        toast({title: "Gagal Memuat Data", description: `Tidak dapat mengambil daftar risiko: ${error.message}`, variant: "destructive"});
+        const errorMessage = error.message || String(error);
+        console.error("Error loading data for AllRisksPage:", errorMessage);
+        toast({title: "Gagal Memuat Data", description: `Tidak dapat mengambil daftar risiko: ${errorMessage}`, variant: "destructive"});
+        setAllPotentialRisks([]); 
+        setGoals([]);
+        setRiskCauseCounts({});
+        setAllOwners([]);
     } finally {
+        console.log("[AllRisksPage] loadData finished, setting isLoading to false.");
         setIsLoading(false);
     }
   }, [currentUser, currentUprId, currentPeriod, toast]);
 
   useEffect(() => {
-    if (currentUser && currentUprId && currentPeriod) {
-      loadData();
-    } else if (!authLoading && !currentUser) {
-        setIsLoading(false); 
-    } else if (currentUser && (!currentUprId || !currentPeriod) && !authLoading && appUser !== undefined) {
-        setIsLoading(true);
+    console.log("[AllRisksPage] useEffect for data loading triggered. Deps:", { currentUser: !!currentUser, currentUprId, currentPeriod, authLoading: authLoading, appUser: !!appUser });
+    if (authLoading) {
+      console.log("[AllRisksPage] Auth is loading, setting page to loading.");
+      setIsLoading(true); 
+      return;
     }
-  }, [loadData, currentUprId, currentPeriod, currentUser, authLoading, appUser]);
+
+    if (currentUser && currentUprId && currentPeriod) {
+      console.log("[AllRisksPage] Context ready, calling loadData.");
+      loadData();
+    } else if (!currentUser) {
+        console.log("[AllRisksPage] No current user, setting isLoading false and clearing data (AppLayout should redirect).");
+        setIsLoading(false); 
+        setAllPotentialRisks([]);
+        setGoals([]);
+        setAllOwners([]);
+        setRiskCauseCounts({});
+    } else if (currentUser && (!currentUprId || !currentPeriod)) {
+        console.warn("[AllRisksPage] User logged in, but UPR ID or Period is missing. Profile might be incomplete. AppLayout should handle redirection to settings.");
+        setIsLoading(false); 
+        setAllPotentialRisks([]);
+        setGoals([]);
+        setAllOwners([]);
+        setRiskCauseCounts({});
+    }
+  }, [loadData, currentUprId, currentPeriod, currentUser, authLoading, appUser]); 
   
   const handleOpenEditPotentialRiskPage = (pRiskId: string) => {
     router.push(`/all-risks/manage/${pRiskId}?from=/all-risks`);
   };
   
   const handleDeleteSingleRisk = (pRisk: PotentialRisk) => {
+    if(!currentUser) return;
     setRiskToDelete(pRisk);
     setIsDeleteDialogOpen(true);
   };
@@ -128,8 +172,9 @@ export default function AllRisksPage() {
       toast({ title: "Potensi Risiko Dihapus", description: `Potensi risiko "${riskToDelete.description}" dan semua data terkait telah dihapus.`, variant: "destructive" });
       loadData(); 
     } catch (error: any) {
-        console.error("Error deleting potential risk:", error.message);
-        toast({ title: "Gagal Menghapus", description: error.message || "Terjadi kesalahan saat menghapus potensi risiko.", variant: "destructive" });
+        const errorMessage = error.message || String(error);
+        console.error("Error deleting potential risk:", errorMessage);
+        toast({ title: "Gagal Menghapus", description: errorMessage, variant: "destructive" });
     } finally {
         setIsDeleteDialogOpen(false);
         setRiskToDelete(null);
@@ -168,11 +213,11 @@ export default function AllRisksPage() {
   const filteredAndSortedRisks = useMemo(() => {
     let tempRisks = Array.isArray(allPotentialRisks) ? [...allPotentialRisks] : [];
     const lowerSearchTerm = searchTerm.toLowerCase();
-    const currentGoals = Array.isArray(goals) ? goals : [];
+    const currentActiveGoals = Array.isArray(goals) ? goals : [];
 
     if (searchTerm) {
       tempRisks = tempRisks.filter(pRisk => {
-        const goal = currentGoals.find(g => g.id === pRisk.goalId);
+        const goal = currentActiveGoals.find(g => g.id === pRisk.goalId);
         const goalName = goal?.name.toLowerCase() || '';
         const goalCode = goal?.code?.toLowerCase() || '';
         const pRiskCode = `${goalCode}.PR${pRisk.sequenceNumber}`.toLowerCase();
@@ -204,8 +249,8 @@ export default function AllRisksPage() {
     }
 
     return tempRisks.sort((a, b) => {
-        const goalA = currentGoals.find(g => g.id === a.goalId);
-        const goalB = currentGoals.find(g => g.id === b.goalId);
+        const goalA = currentActiveGoals.find(g => g.id === a.goalId);
+        const goalB = currentActiveGoals.find(g => g.id === b.goalId);
         
         const codeA = goalA?.code || '';
         const codeB = goalB?.code || '';
@@ -294,13 +339,12 @@ export default function AllRisksPage() {
         const existingPRsForGoal = await getPotentialRisksByGoalId(parentGoal.id, currentUprId, currentPeriod);
         const newSequenceNumber = existingPRsForGoal.length + 1;
 
-        const newPRData: Omit<PotentialRisk, 'id' | 'identifiedAt' | 'uprId' | 'period' | 'userId' | 'sequenceNumber'> = {
-            goalId: riskToDuplicate.goalId,
+        const newPRData: Omit<PotentialRisk, 'id' | 'identifiedAt' | 'userId' | 'period' | 'goalId' | 'sequenceNumber'> = {
             description: `${riskToDuplicate.description} (Salinan)`,
             category: riskToDuplicate.category,
             owner: riskToDuplicate.owner,
         };
-        const newPotentialRisk = await addPotentialRisk(newPRData, parentGoal.id, currentUprId, currentPeriod, currentUser.uid, newSequenceNumber);
+        const newPotentialRisk = await addPotentialRisk(newPRData, parentGoal.id, currentUprId, currentPeriod, newSequenceNumber);
         
         toast({ title: "Risiko Diduplikasi", description: `Potensi risiko "${newPotentialRisk.description}" telah berhasil diduplikasi. Penyebab dan kontrol belum disalin.`});
         loadData(); 
@@ -312,7 +356,7 @@ export default function AllRisksPage() {
     }
   };
 
-  if (authLoading || (currentUser && !appUser)) { 
+  if (authLoading || (currentUser && (!appUser || !currentUprId || !currentPeriod)) ) { 
     return (
       <div className="flex flex-col items-center justify-center h-screen">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
@@ -322,17 +366,19 @@ export default function AllRisksPage() {
   }
   
   if (!currentUser && !authLoading) {
-    return null;
+    // This case should be handled by AppLayout redirecting to /login
+    return null; 
   }
 
-  const relevantGoalsForFilter = Array.isArray(goals) ? goals.filter(g => g.uprId === currentUprId && g.period === currentPeriod) : [];
+  // relevantGoalsForFilter sekarang menggunakan `goals` state yang diisi oleh loadData
+  const relevantGoalsForFilter = Array.isArray(goals) ? goals : [];
   const totalTableColumns = 8; 
 
   return (
     <div className="space-y-6">
       <PageHeader
         title={`Identifikasi Risiko`}
-        description={`Kelola semua potensi risiko yang teridentifikasi di semua sasaran untuk UPR: ${currentUprId || '...'}, Periode: ${currentPeriod || '...'}.`}
+        description={`Kelola semua potensi risiko yang teridentifikasi di semua sasaran untuk UPR: ${appUser?.displayName || '...'}, Periode: ${currentPeriod || '...'}.`}
         actions={
             <NextLink href={`/all-risks/manage/new?from=${encodeURIComponent("/all-risks")}`} passHref>
               <Button disabled={relevantGoalsForFilter.length === 0 || !currentUser}>
@@ -343,7 +389,7 @@ export default function AllRisksPage() {
         }
       />
 
-      <div className="flex flex-col md:flex-row gap-2 mb-4 items-center">
+      <div className="flex flex-col md:flex-row gap-2 mb-4 items-start md:items-center">
         <div className="relative flex-grow md:flex-grow-0 md:max-w-xs w-full md:w-auto">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -354,89 +400,91 @@ export default function AllRisksPage() {
                 disabled={isLoading}
             />
         </div>
-        <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-            <Button variant="outline" className="w-full md:w-auto" disabled={isLoading}>
-                <Filter className="mr-2 h-4 w-4" />
-                Filter Kategori {selectedCategories.length > 0 ? `(${selectedCategories.length})` : ''}
-            </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-[250px]">
-            <DropdownMenuLabel>Pilih Kategori</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <ScrollArea className="h-[200px]">
-                {RISK_CATEGORIES.map((category) => (
-                <DropdownMenuCheckboxItem
-                    key={category}
-                    checked={selectedCategories.includes(category)}
-                    onCheckedChange={() => toggleCategoryFilter(category)}
-                >
-                    {category}
-                </DropdownMenuCheckboxItem>
-                ))}
-            </ScrollArea>
-            </DropdownMenuContent>
-        </DropdownMenu>
-
-        <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-            <Button variant="outline" className="w-full md:w-auto" disabled={isLoading}>
-                <Filter className="mr-2 h-4 w-4" />
-                Filter Pemilik {selectedOwners.length > 0 ? `(${selectedOwners.length})` : ''}
-            </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-[250px]">
-            <DropdownMenuLabel>Pilih Pemilik Risiko</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            {allOwners.length > 0 ? (
+        <div className="flex flex-wrap gap-2">
+            <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="w-full sm:w-auto" disabled={isLoading}>
+                    <Filter className="mr-2 h-4 w-4" />
+                    Filter Kategori {selectedCategories.length > 0 ? `(${selectedCategories.length})` : ''}
+                </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-[250px]">
+                <DropdownMenuLabel>Pilih Kategori</DropdownMenuLabel>
+                <DropdownMenuSeparator />
                 <ScrollArea className="h-[200px]">
-                {allOwners.map((owner) => (
+                    {RISK_CATEGORIES.map((category) => (
                     <DropdownMenuCheckboxItem
-                    key={owner}
-                    checked={selectedOwners.includes(owner)}
-                    onCheckedChange={() => toggleOwnerFilter(owner)}
+                        key={category}
+                        checked={selectedCategories.includes(category)}
+                        onCheckedChange={() => toggleCategoryFilter(category)}
                     >
-                    {owner}
+                        {category}
                     </DropdownMenuCheckboxItem>
-                ))}
+                    ))}
                 </ScrollArea>
-            ) : (
-                <DropdownMenuItem disabled>Tidak ada pemilik risiko.</DropdownMenuItem>
-            )}
-            </DropdownMenuContent>
-        </DropdownMenu>
+                </DropdownMenuContent>
+            </DropdownMenu>
 
-        <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-            <Button variant="outline" className="w-full md:w-auto" disabled={isLoading}>
-                <Filter className="mr-2 h-4 w-4" />
-                Filter Sasaran {selectedGoalIds.length > 0 ? `(${selectedGoalIds.length})` : ''}
-            </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-[300px]">
-            <DropdownMenuLabel>Pilih Sasaran Terkait</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            {relevantGoalsForFilter.length > 0 ? (
-                <ScrollArea className="h-[200px]">
-                {relevantGoalsForFilter.sort((a,b) => (a.code || '').localeCompare(b.code || '', undefined, {numeric: true, sensitivity: 'base'})).map((goal) => (
-                    <DropdownMenuCheckboxItem
-                    key={goal.id}
-                    checked={selectedGoalIds.includes(goal.id)}
-                    onCheckedChange={() => toggleGoalFilter(goal.id)}
-                    >
-                    {goal.code || '[Tanpa Kode]'} - {goal.name}
-                    </DropdownMenuCheckboxItem>
-                ))}
-                </ScrollArea>
-            ) : (
-                <DropdownMenuItem disabled>Tidak ada sasaran tersedia</DropdownMenuItem>
-            )}
-            </DropdownMenuContent>
-        </DropdownMenu>
+            <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="w-full sm:w-auto" disabled={isLoading || allOwners.length === 0}>
+                    <Filter className="mr-2 h-4 w-4" />
+                    Filter Pemilik {selectedOwners.length > 0 ? `(${selectedOwners.length})` : ''}
+                </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-[250px]">
+                <DropdownMenuLabel>Pilih Pemilik Risiko</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {allOwners.length > 0 ? (
+                    <ScrollArea className="h-[200px]">
+                    {allOwners.map((owner) => (
+                        <DropdownMenuCheckboxItem
+                        key={owner}
+                        checked={selectedOwners.includes(owner)}
+                        onCheckedChange={() => toggleOwnerFilter(owner)}
+                        >
+                        {owner}
+                        </DropdownMenuCheckboxItem>
+                    ))}
+                    </ScrollArea>
+                ) : (
+                    <DropdownMenuItem disabled>Tidak ada pemilik risiko.</DropdownMenuItem>
+                )}
+                </DropdownMenuContent>
+            </DropdownMenu>
+
+            <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="w-full sm:w-auto" disabled={isLoading || relevantGoalsForFilter.length === 0}>
+                    <Filter className="mr-2 h-4 w-4" />
+                    Filter Sasaran {selectedGoalIds.length > 0 ? `(${selectedGoalIds.length})` : ''}
+                </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-[300px]">
+                <DropdownMenuLabel>Pilih Sasaran Terkait</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {relevantGoalsForFilter.length > 0 ? (
+                    <ScrollArea className="h-[200px]">
+                    {relevantGoalsForFilter.sort((a,b) => (a.code || '').localeCompare(b.code || '', undefined, {numeric: true, sensitivity: 'base'})).map((goal) => (
+                        <DropdownMenuCheckboxItem
+                        key={goal.id}
+                        checked={selectedGoalIds.includes(goal.id)}
+                        onCheckedChange={() => toggleGoalFilter(goal.id)}
+                        >
+                        {goal.code || '[Tanpa Kode]'} - {goal.name}
+                        </DropdownMenuCheckboxItem>
+                    ))}
+                    </ScrollArea>
+                ) : (
+                    <DropdownMenuItem disabled>Tidak ada sasaran tersedia</DropdownMenuItem>
+                )}
+                </DropdownMenuContent>
+            </DropdownMenu>
+        </div>
       </div>
       
       {selectedRiskIds.length > 0 && (
-          <div className="flex justify-end mb-4">
+          <div className="mb-4 text-right">
             <Button variant="destructive" onClick={handleDeleteSelectedRisks} className="w-full sm:w-auto" disabled={!currentUser || isLoading || isBulkDeleting}>
                 {isBulkDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
                 Hapus ({selectedRiskIds.length}) yang Dipilih
@@ -629,6 +677,5 @@ export default function AllRisksPage() {
     </div>
   );
 }
-
 
     
