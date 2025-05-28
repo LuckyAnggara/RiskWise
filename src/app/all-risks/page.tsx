@@ -3,13 +3,13 @@
 
 import React, { useState, useEffect, useCallback, useMemo, Fragment } from 'react';
 import NextLink from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation'; // Added useSearchParams
+import { useRouter } from 'next/navigation';
 import { PageHeader } from '@/components/ui/page-header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import type { Goal, PotentialRisk, RiskCategory } from '@/lib/types';
 import { RISK_CATEGORIES } from '@/lib/types';
-import { PlusCircle, Loader2, Settings2, Trash2, Edit, ListChecks, ChevronDown, ChevronUp, Search, Filter, Copy, BarChart3 } from 'lucide-react'; // Added BarChart3
+import { PlusCircle, Loader2, Settings2, Trash2, Edit, ListChecks, ChevronDown, ChevronUp, Search, Filter, Copy, BarChart3 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -24,18 +24,16 @@ import { useAppStore } from '@/stores/useAppStore';
 
 export default function AllRisksPage() {
   const router = useRouter();
-  const searchParams = useSearchParams(); // Initialize useSearchParams
   const { currentUser, appUser, loading: authLoading } = useAuth();
   
+  // Menggunakan state dan actions dari Zustand store
   const store = useAppStore();
-  const goals = store.goals;
-  const fetchGoals = store.fetchGoals;
+  const goals = store.goals; // Digunakan untuk filter dan konteks
   const potentialRisks = store.potentialRisks;
   const potentialRisksLoading = store.potentialRisksLoading;
-  const fetchPotentialRisks = store.fetchPotentialRisks;
+  const fetchGoals = store.fetchGoals; // Aksi untuk memuat goals (dan secara berantai, PR, RC, CM)
   const deletePotentialRiskFromStore = store.deletePotentialRisk;
-  const addPotentialRiskToStore = store.addPotentialRisk;
-
+  const addPotentialRiskToStore = store.addPotentialRisk; // Untuk duplikasi
 
   const [expandedRiskId, setExpandedRiskId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -44,8 +42,8 @@ export default function AllRisksPage() {
   const [selectedOwners, setSelectedOwners] = useState<string[]>([]);
   
   const [selectedRiskIds, setSelectedRiskIds] = useState<string[]>([]);
-  const [isSingleDeleteDialogOpen, setIsSingleDeleteDialogOpen] = useState(false);
   const [riskToDelete, setRiskToDelete] = useState<PotentialRisk | null>(null); 
+  const [isSingleDeleteDialogOpen, setIsSingleDeleteDialogOpen] = useState(false);
   const [isBulkDeleteDialogOpen, setIsBulkDeleteDialogOpen] = useState(false);
   
   const [deletingRiskId, setDeletingRiskId] = useState<string | null>(null);
@@ -57,24 +55,15 @@ export default function AllRisksPage() {
   const currentPeriod = useMemo(() => appUser?.activePeriod || null, [appUser]);
 
   useEffect(() => {
-    console.log("[AllRisksPage] useEffect triggered. AuthLoading:", authLoading, "currentUser:", !!currentUser, "currentUserId:", currentUserId, "currentPeriod:", currentPeriod);
     if (currentUserId && currentPeriod && !authLoading) {
-      if (goals.length === 0 && !store.goalsLoading) { // Only fetch goals if not already loaded or loading
-        console.log("[AllRisksPage] Fetching goals from store...");
+      // Jika goals belum dimuat dan tidak sedang loading, panggil fetchGoals.
+      // fetchGoals akan memicu fetchPotentialRisks, dst. secara berantai di store.
+      if (goals.length === 0 && !store.goalsLoading) {
+        console.log("[AllRisksPage] useEffect: Triggering fetchGoals from store.", { currentUserId, currentPeriod });
         fetchGoals(currentUserId, currentPeriod);
-      } else if (goals.length > 0 && potentialRisks.length === 0 && !potentialRisksLoading) {
-        // If goals are loaded, but potential risks are not, fetch potential risks
-        console.log("[AllRisksPage] Goals loaded, fetching potential risks from store...");
-        fetchPotentialRisks(currentUserId, currentPeriod);
-      } else if (goals.length === 0 && store.goalsLoading) {
-        console.log("[AllRisksPage] Goals are currently being fetched by store, waiting...");
-      } else if (potentialRisks.length === 0 && potentialRisksLoading) {
-        console.log("[AllRisksPage] PotentialRisks are currently being fetched by store, waiting...");
-      } else {
-        console.log("[AllRisksPage] Data (goals/potentialRisks) already loaded or no need to fetch.");
       }
     }
-  }, [currentUserId, currentPeriod, authLoading, fetchGoals, fetchPotentialRisks, goals, potentialRisks, store.goalsLoading, potentialRisksLoading]);
+  }, [currentUserId, currentPeriod, authLoading, goals.length, store.goalsLoading, fetchGoals]);
   
   const allOwners = useMemo(() => {
     const ownersSet = new Set<string>();
@@ -212,7 +201,7 @@ export default function AllRisksPage() {
   };
   
   const handleDeleteSelectedRisks = () => {
-    if (selectedRiskIds.length === 0) {
+     if (!currentUser || selectedRiskIds.length === 0) {
       toast({ title: "Tidak Ada Risiko Dipilih", description: "Pilih setidaknya satu potensi risiko untuk dihapus.", variant: "destructive" });
       return;
     }
@@ -263,7 +252,7 @@ export default function AllRisksPage() {
     }
     
     try {
-        const existingPRsForGoal = potentialRisks.filter(pr => pr.goalId === parentGoal.id);
+        const existingPRsForGoal = potentialRisks.filter(pr => pr.goalId === parentGoal.id && pr.userId === currentUserId && pr.period === currentPeriod);
         const newSequenceNumber = existingPRsForGoal.length + 1;
 
         const newPRData: Omit<PotentialRisk, 'id' | 'identifiedAt' | 'userId' | 'period' | 'goalId' | 'sequenceNumber'> = {
@@ -276,6 +265,7 @@ export default function AllRisksPage() {
         
         if (newPotentialRisk) {
           toast({ title: "Risiko Diduplikasi", description: `Potensi risiko "${newPotentialRisk.description}" telah berhasil diduplikasi. Penyebab dan kontrol belum disalin.`});
+          // Store akan memperbarui state, UI akan re-render
         } else {
           throw new Error("Gagal membuat duplikasi potensi risiko di store.");
         }
@@ -285,21 +275,7 @@ export default function AllRisksPage() {
     }
   };
 
-  const isLoadingPage = authLoading || potentialRisksLoading || store.goalsLoading;
-
-  if (isLoadingPage && potentialRisks.length === 0) { 
-    return (
-      <div className="flex flex-col items-center justify-center h-screen">
-        <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
-        <p className="text-xl text-muted-foreground">Memuat data identifikasi risiko...</p>
-      </div>
-    );
-  }
-  
-  if (!currentUser && !authLoading) {
-    return null; 
-  }
-
+  const isLoadingPage = authLoading || store.goalsLoading || potentialRisksLoading;
   const relevantGoalsForFilter = Array.isArray(goals) ? goals.filter(g => g.userId === currentUserId && g.period === currentPeriod) : [];
   const totalTableColumns = 7; 
 
@@ -310,7 +286,7 @@ export default function AllRisksPage() {
         description={`Kelola semua potensi risiko yang teridentifikasi di semua sasaran untuk UPR: ${appUser?.displayName || '...'}, Periode: ${currentPeriod || '...'}.`}
         actions={
             <NextLink href={`/all-risks/manage/new?from=${encodeURIComponent("/all-risks")}`} passHref>
-              <Button disabled={relevantGoalsForFilter.length === 0 || !currentUser}>
+              <Button disabled={relevantGoalsForFilter.length === 0 || !currentUser || isLoadingPage}>
                 <PlusCircle className="mr-2 h-4 w-4" /> Tambah Potensi Risiko Baru
                 {relevantGoalsForFilter.length === 0 && <span className="ml-2 text-xs">(Buat sasaran terlebih dahulu)</span>}
               </Button>
@@ -419,7 +395,7 @@ export default function AllRisksPage() {
       </div>
       
 
-      {isLoadingPage && filteredAndSortedRisks.length === 0 && ( 
+      {isLoadingPage && ( 
          <div className="flex flex-col items-center justify-center py-10">
           <Loader2 className="h-10 w-10 animate-spin text-primary mb-3" />
           <p className="text-muted-foreground">Memuat daftar potensi risiko...</p>
@@ -464,7 +440,7 @@ export default function AllRisksPage() {
                     <TableHead className="min-w-[150px]">Pemilik</TableHead>
                     <TableHead className="min-w-[200px]">Sasaran Terkait</TableHead>
                     <TableHead className="min-w-[100px] text-center">Penyebab</TableHead>
-                    
+                    {/* Kolom Probabilitas, Dampak, Level dihilangkan dari sini */}
                     <TableHead className="text-right min-w-[100px] sticky right-0 bg-background z-10 pr-4">Aksi</TableHead>
                     </TableRow>
                 </TableHeader>
@@ -484,9 +460,11 @@ export default function AllRisksPage() {
                         ? `Sasaran ${goalCodeDisplay}: ${associatedGoal.name}`
                         : 'Sasaran tidak ditemukan';
                     
-                    const returnPath = `/all-risks`; // Return path untuk AllRisksPage
+                    const returnPath = `/all-risks`; 
                     const isCurrentlyDeletingThis = deletingRiskId === pRisk.id || (isBulkDeleting && selectedRiskIds.includes(pRisk.id));
+                    // Mengambil jumlah penyebab dari store jika sudah terintegrasi, atau dari state lokal jika belum
                     const riskCauseCount = store.riskCauses.filter(rc => rc.potentialRiskId === pRisk.id).length;
+
 
                     return (
                         <Fragment key={pRisk.id}>
@@ -534,6 +512,7 @@ export default function AllRisksPage() {
                                     <DropdownMenuItem onClick={() => handleOpenEditPotentialRiskPage(pRisk.id)}>
                                       <Edit className="mr-2 h-4 w-4" /> Edit Detail & Penyebab
                                     </DropdownMenuItem>
+                                    {/* Tombol Analisis Level (Inheren) dan Manage Controls dihilangkan dari sini, fokus pada detail */}
                                     <DropdownMenuItem onClick={() => router.push(`/risk-analysis?potentialRiskId=${pRisk.id}&from=${encodeURIComponent(returnPath)}`)}>
                                         <BarChart3 className="mr-2 h-4 w-4" /> Analisis Semua Penyebab
                                     </DropdownMenuItem>
@@ -605,3 +584,4 @@ export default function AllRisksPage() {
     </div>
   );
 }
+

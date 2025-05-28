@@ -14,51 +14,26 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { getCalculatedRiskLevel, getRiskLevelColor } from '@/app/risk-cause-analysis/[riskCauseId]/page'; // Import shared functions
 
 interface RiskCauseCardItemProps {
   riskCause: RiskCause;
   potentialRiskFullCode: string; 
-  onAnalyze: (causeId: string) => void;
-  onDelete: (causeId: string) => void;
+  // onAnalyze and onDelete will be handled by Link and direct calls from parent
   returnPath: string;
-  canDelete: boolean; // Added to control delete button state
+  canDelete: boolean; 
+  onDeleteClick?: () => void; // Make onDeleteClick optional and specific
 }
 
-const getCalculatedRiskLevel = (likelihood: LikelihoodLevelDesc | null, impact: ImpactLevelDesc | null): { level: CalculatedRiskLevelCategory | 'N/A'; score: number | null } => {
-  if (!likelihood || !impact) return { level: 'N/A', score: null };
-  
-  const likelihoodValue = LIKELIHOOD_LEVELS_DESC_MAP[likelihood];
-  const impactValue = IMPACT_LEVELS_DESC_MAP[impact];
-
-  if (likelihoodValue === undefined || impactValue === undefined) return { level: 'N/A', score: null };
-
-  const score = likelihoodValue * impactValue;
-
-  let level: CalculatedRiskLevelCategory;
-  if (score >= 20) level = 'Sangat Tinggi';
-  else if (score >= 16) level = 'Tinggi';
-  else if (score >= 12) level = 'Sedang';
-  else if (score >= 6) level = 'Rendah';
-  else if (score >= 1) level = 'Sangat Rendah';
-  else level = 'Sangat Rendah'; 
-
-  return { level, score };
-};
-
-const getRiskLevelColor = (level: CalculatedRiskLevelCategory | 'N/A') => {
-  switch (level?.toLowerCase()) {
-    case 'sangat tinggi': return 'bg-red-600 hover:bg-red-700 text-white';
-    case 'tinggi': return 'bg-orange-500 hover:bg-orange-600 text-white';
-    case 'sedang': return 'bg-yellow-400 hover:bg-yellow-500 text-black dark:bg-yellow-500 dark:text-black';
-    case 'rendah': return 'bg-blue-500 hover:bg-blue-600 text-white'; 
-    case 'sangat rendah': return 'bg-green-500 hover:bg-green-600 text-white';
-    default: return 'bg-gray-400 hover:bg-gray-500 text-white';
-  }
-};
-
-export function RiskCauseCardItem({ riskCause, potentialRiskFullCode, onAnalyze, onDelete, returnPath, canDelete }: RiskCauseCardItemProps) {
+export function RiskCauseCardItem({ 
+    riskCause, 
+    potentialRiskFullCode, 
+    returnPath, 
+    canDelete,
+    onDeleteClick 
+}: RiskCauseCardItemProps) {
   const causeCode = `${potentialRiskFullCode}.PC${riskCause.sequenceNumber || '?'}`;
-  const { level: causeRiskLevelText, score: causeRiskScore } = getCalculatedRiskLevel(riskCause.likelihood, riskCause.impact);
+  const {level: causeRiskLevelText, score: causeRiskScore} = getCalculatedRiskLevel(riskCause.likelihood, riskCause.impact);
 
   return (
     <Card className="flex flex-col h-full">
@@ -75,10 +50,16 @@ export function RiskCauseCardItem({ riskCause, potentialRiskFullCode, onAnalyze,
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => onAnalyze(riskCause.id)}>
-                  <BarChart3 className="mr-2 h-4 w-4" /> Analisis Detail
+                <DropdownMenuItem asChild>
+                   <Link href={`/risk-cause-analysis/${riskCause.id}?from=${encodeURIComponent(returnPath)}`}>
+                    <BarChart3 className="mr-2 h-4 w-4" /> Analisis Detail
+                  </Link>
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onDelete(riskCause.id)} className="text-destructive focus:text-destructive focus:bg-destructive/10" disabled={!canDelete}>
+                <DropdownMenuItem 
+                    onClick={onDeleteClick} // Use onDeleteClick
+                    className="text-destructive focus:text-destructive focus:bg-destructive/10" 
+                    disabled={!canDelete}
+                >
                   <Trash2 className="mr-2 h-4 w-4" /> Hapus
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -129,3 +110,4 @@ export function RiskCauseCardItem({ riskCause, potentialRiskFullCode, onAnalyze,
     </Card>
   );
 }
+

@@ -44,7 +44,9 @@ interface GoalState {
   ) => Promise<Goal | null>;
   updateGoal: (
     goalId: string, 
-    updatedData: Partial<Omit<Goal, 'id' | 'userId' | 'period' | 'code' | 'createdAt' | 'updatedAt'>>
+    updatedData: Partial<Omit<Goal, 'id' | 'userId' | 'period' | 'code' | 'createdAt' | 'updatedAt'>>,
+    userId: string, // userId and period might be needed if service requires them for update context
+    period: string
   ) => Promise<Goal | null>;
   deleteGoal: (goalId: string, userId: string, period: string) => Promise<void>;
   getGoalById: (id: string, userId: string, period: string) => Promise<Goal | null>;
@@ -112,10 +114,12 @@ interface ControlMeasureState {
 
 type AppState = GoalState & PotentialRiskState & RiskCauseState & ControlMeasureState;
 
+const CONTROL_MEASURE_TYPE_KEYS: ControlMeasureTypeKey[] = ['Prv', 'RM', 'Crr'];
+
 export const useAppStore = create<AppState>((set, get) => ({
   // --- Goals State and Actions ---
   goals: [],
-  goalsLoading: true,
+  goalsLoading: false, // Default to false, set to true when fetching
   fetchGoals: async (userId, period) => {
     if (!userId || !period) {
       set({ goals: [], goalsLoading: false, potentialRisks: [], potentialRisksLoading: false, riskCauses: [], riskCausesLoading: false, controlMeasures: [], controlMeasuresLoading: false });
@@ -127,15 +131,17 @@ export const useAppStore = create<AppState>((set, get) => ({
       const result: GoalsResult = await fetchGoalsFromService(userId, period);
       if (result.success && result.goals) {
         const sortedGoals = result.goals.sort((a, b) => (a.code || '').localeCompare(b.code || '', undefined, { numeric: true, sensitivity: 'base' }));
-        set({ goals: sortedGoals, goalsLoading: false });
-        await get().fetchPotentialRisks(userId, period); 
+        set({ goals: sortedGoals });
+        await get().fetchPotentialRisks(userId, period); // Chain fetching
       } else {
-        set({ goals: [], goalsLoading: false });
+        set({ goals: [], potentialRisks: [], potentialRisksLoading: false, riskCauses: [], riskCausesLoading: false, controlMeasures: [], controlMeasuresLoading: false });
         console.error("[AppStore] fetchGoals: Failed to load goals:", result.message);
       }
     } catch (error: any) {
       console.error("[AppStore] fetchGoals: Fatal error:", error.message);
-      set({ goals: [], goalsLoading: false });
+      set({ goals: [], potentialRisks: [], potentialRisksLoading: false, riskCauses: [], riskCausesLoading: false, controlMeasures: [], controlMeasuresLoading: false });
+    } finally {
+        set({ goalsLoading: false });
     }
   },
   addGoal: async (goalData, userId, period) => {
@@ -152,9 +158,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       throw error;
     }
   },
-  updateGoal: async (goalId, updatedData) => {
+  updateGoal: async (goalId, updatedData, userId, period) => { // Added userId, period if service needs it
     try {
-      const updatedGoal = await updateGoalInService(goalId, updatedData);
+      // Assuming updateGoalInService is updated to return the full updated Goal object
+      const updatedGoal = await updateGoalInService(goalId, updatedData); 
       if (updatedGoal) {
         set(state => ({
           goals: state.goals.map(g => g.id === goalId ? updatedGoal : g).sort((a, b) => (a.code || '').localeCompare(b.code || '', undefined, { numeric: true, sensitivity: 'base' }))
@@ -188,7 +195,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // --- PotentialRisks State and Actions ---
   potentialRisks: [],
-  potentialRisksLoading: true,
+  potentialRisksLoading: false, // Default to false
   fetchPotentialRisks: async (userId, period) => {
     if (!userId || !period) {
       set({ potentialRisks: [], potentialRisksLoading: false, riskCauses: [], riskCausesLoading: false, controlMeasures: [], controlMeasuresLoading: false });
@@ -198,8 +205,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       const currentGoals = get().goals;
       if (currentGoals.length === 0) {
-        set({ potentialRisks: [], potentialRisksLoading: false });
-        await get().fetchRiskCauses(userId, period);
+         console.log("[AppStore] fetchPotentialRisks: No goals found, skipping PR fetch.");
+        set({ potentialRisks: [], riskCauses: [], riskCausesLoading: false, controlMeasures: [], controlMeasuresLoading: false });
+        // No need to call fetchRiskCauses if there are no goals/potential risks
         return;
       }
       let allPRs: PotentialRisk[] = [];
@@ -210,11 +218,13 @@ export const useAppStore = create<AppState>((set, get) => ({
         }
       }
       const sortedPRs = allPRs.sort((a, b) => (a.sequenceNumber || 0) - (b.sequenceNumber || 0) || a.description.localeCompare(b.description));
-      set({ potentialRisks: sortedPRs, potentialRisksLoading: false });
-      await get().fetchRiskCauses(userId, period);
+      set({ potentialRisks: sortedPRs });
+      await get().fetchRiskCauses(userId, period); // Chain fetching
     } catch (error) {
       console.error("[AppStore] fetchPotentialRisks: Failed:", error);
-      set({ potentialRisks: [], potentialRisksLoading: false });
+      set({ potentialRisks: [], riskCauses: [], riskCausesLoading: false, controlMeasures: [], controlMeasuresLoading: false });
+    } finally {
+        set({ potentialRisksLoading: false });
     }
   },
   addPotentialRisk: async (data, goalId, userId, period, sequenceNumber) => {
@@ -267,7 +277,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // --- RiskCauses State and Actions ---
   riskCauses: [],
-  riskCausesLoading: true,
+  riskCausesLoading: false, // Default to false
   fetchRiskCauses: async (userId, period) => {
     if (!userId || !period) {
       set({ riskCauses: [], riskCausesLoading: false, controlMeasures: [], controlMeasuresLoading: false });
@@ -277,8 +287,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       const currentPotentialRisks = get().potentialRisks;
       if (currentPotentialRisks.length === 0) {
-        set({ riskCauses: [], riskCausesLoading: false });
-        await get().fetchControlMeasures(userId, period);
+        console.log("[AppStore] fetchRiskCauses: No potential risks found, skipping RC fetch.");
+        set({ riskCauses: [], controlMeasures: [], controlMeasuresLoading: false });
+        // No need to call fetchControlMeasures if there are no RCs
         return;
       }
       let allRCs: RiskCause[] = [];
@@ -289,11 +300,13 @@ export const useAppStore = create<AppState>((set, get) => ({
         }
       }
       const sortedRCs = allRCs.sort((a, b) => (a.sequenceNumber || 0) - (b.sequenceNumber || 0) || a.description.localeCompare(b.description));
-      set({ riskCauses: sortedRCs, riskCausesLoading: false });
-      await get().fetchControlMeasures(userId, period);
+      set({ riskCauses: sortedRCs });
+      await get().fetchControlMeasures(userId, period); // Chain fetching
     } catch (error) {
       console.error("[AppStore] fetchRiskCauses: Failed:", error);
-      set({ riskCauses: [], riskCausesLoading: false });
+      set({ riskCauses: [], controlMeasures: [], controlMeasuresLoading: false });
+    } finally {
+        set({ riskCausesLoading: false });
     }
   },
   addRiskCause: async (data, potentialRiskId, goalId, userId, period, sequenceNumber) => {
@@ -345,7 +358,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // --- ControlMeasures State and Actions ---
   controlMeasures: [],
-  controlMeasuresLoading: true,
+  controlMeasuresLoading: false, // Default to false
   fetchControlMeasures: async (userId, period) => {
     if (!userId || !period) {
       set({ controlMeasures: [], controlMeasuresLoading: false });
@@ -355,7 +368,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       const currentRiskCauses = get().riskCauses;
       if (currentRiskCauses.length === 0) {
-        set({ controlMeasures: [], controlMeasuresLoading: false });
+        console.log("[AppStore] fetchControlMeasures: No risk causes found, skipping CM fetch.");
+        set({ controlMeasures: [] });
         return;
       }
       let allCMs: ControlMeasure[] = [];
@@ -369,10 +383,12 @@ export const useAppStore = create<AppState>((set, get) => ({
         (CONTROL_MEASURE_TYPE_KEYS.indexOf(a.controlType) - CONTROL_MEASURE_TYPE_KEYS.indexOf(b.controlType)) || 
         (a.sequenceNumber - b.sequenceNumber)
       );
-      set({ controlMeasures: sortedCMs, controlMeasuresLoading: false });
+      set({ controlMeasures: sortedCMs });
     } catch (error) {
       console.error("[AppStore] fetchControlMeasures: Failed:", error);
-      set({ controlMeasures: [], controlMeasuresLoading: false });
+      set({ controlMeasures: [] });
+    } finally {
+        set({ controlMeasuresLoading: false });
     }
   },
   addControlMeasure: async (data, riskCauseId, potentialRiskId, goalId, userId, period, sequenceNumber) => {
@@ -410,9 +426,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       throw error;
     }
   },
-  deleteControlMeasure: async (controlMeasureId, userId, period) => {
+  deleteControlMeasure: async (controlMeasureId, userId, period) => { // Added userId, period for potential future use in service
     try {
-      await deleteControlMeasureFromService(controlMeasureId); // Assuming service handles context internally or doesn't need userId/period for delete by ID
+      await deleteControlMeasureFromService(controlMeasureId); 
       set(state => ({
         controlMeasures: state.controlMeasures.filter(cm => cm.id !== controlMeasureId)
       }));
@@ -428,5 +444,3 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 }));
 
-// Helper for sorting ControlMeasures
-const CONTROL_MEASURE_TYPE_KEYS: ControlMeasureTypeKey[] = ['Prv', 'RM', 'Crr'];
