@@ -15,17 +15,15 @@ import { CONTROL_MEASURE_TYPE_KEYS, getControlTypeName } from '@/lib/types';
 import { useForm, type SubmitHandler, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { ArrowLeft, Loader2, Save, Calendar as CalendarIcon } from 'lucide-react';
+import { ArrowLeft, Loader2, Save, Calendar as CalendarIcon, PlusCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/auth-context';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import { format, parseISO, isValid as isValidDate } from 'date-fns';
-import { getGoalById } from '@/services/goalService';
-import { getPotentialRiskById } from '@/services/potentialRiskService';
-import { getRiskCauseById } from '@/services/riskCauseService';
-import { addControlMeasure, getControlMeasureById, updateControlMeasure, getControlMeasuresByRiskCauseId } from '@/services/controlMeasureService';
+import { id as localeID } from 'date-fns/locale'; // For date formatting
+import { useAppStore } from '@/stores/useAppStore';
 
 const controlMeasureFormSchema = z.object({
   controlType: z.custom<ControlMeasureTypeKey>((val) => CONTROL_MEASURE_TYPE_KEYS.includes(val as ControlMeasureTypeKey), {
@@ -51,8 +49,16 @@ export default function ManageControlMeasurePage() {
   const controlMeasureIdParam = params.controlMeasureId as string;
   const isCreatingNew = controlMeasureIdParam === 'new';
 
-  const { currentUser, appUser, loading: authLoading } = useAuth();
+  const { currentUser, appUser, loading: authLoading, profileLoading, isProfileComplete } = useAuth();
   const { toast } = useToast();
+  
+  const store = useAppStore();
+  const storeGetControlMeasureById = store.getControlMeasureById;
+  const storeAddControlMeasure = store.addControlMeasure;
+  const storeUpdateControlMeasure = store.updateControlMeasure;
+  const storeGetRiskCauseById = store.getRiskCauseById;
+  const storeGetPotentialRiskById = store.getPotentialRiskById;
+  const storeGetGoalById = store.getGoalById;
 
   const [pageIsLoading, setPageIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -92,153 +98,173 @@ export default function ManageControlMeasurePage() {
   const uprDisplayName = useMemo(() => appUser?.displayName || 'UPR...', [appUser]);
 
   const returnPath = useMemo(() => {
-    if (parentRiskCause && parentRiskCause.id) {
-      return `/risk-cause-analysis/${parentRiskCause.id}`;
-    }
-    if (riskCauseIdQuery) {
-      return `/risk-cause-analysis/${riskCauseIdQuery}`;
-    }
-    return '/risk-analysis'; // Fallback
-  }, [parentRiskCause, riskCauseIdQuery]);
+    if (parentRiskCause?.id) return `/risk-cause-analysis/${parentRiskCause.id}`;
+    if (riskCauseIdQuery) return `/risk-cause-analysis/${riskCauseIdQuery}`;
+    if (currentControlMeasure?.riskCauseId) return `/risk-cause-analysis/${currentControlMeasure.riskCauseId}`;
+    return '/risk-analysis'; 
+  }, [parentRiskCause, riskCauseIdQuery, currentControlMeasure]);
 
 
   const fetchData = useCallback(async () => {
-    if (authLoading || !currentUserId || !currentPeriod) {
-      setPageIsLoading(true);
+    if (!currentUserId || !currentPeriod) {
+      console.warn("[ManageCMPage] fetchData: Missing user context.");
+      setPageIsLoading(false);
       return;
     }
     setPageIsLoading(true);
-    console.log("[ManageControlMeasurePage] fetchData triggered. isCreatingNew:", isCreatingNew, "controlMeasureIdParam:", controlMeasureIdParam);
+    console.log("[ManageCMPage] fetchData triggered. isCreatingNew:", isCreatingNew, "CM ID:", controlMeasureIdParam);
 
     try {
-      let riskCauseForContext: RiskCause | null = null;
-      let potentialRiskForContext: PotentialRisk | null = null;
-      let goalForContext: Goal | null = null;
+      let fetchedRiskCause: RiskCause | null = null;
+      let fetchedPotentialRisk: PotentialRisk | null = null;
+      let fetchedGoal: Goal | null = null;
+      let fetchedControlMeasure: ControlMeasure | null = null;
 
       if (isCreatingNew) {
         if (!riskCauseIdQuery || !potentialRiskIdQuery || !goalIdQuery) {
           toast({ title: "Konteks Tidak Lengkap", description: "ID Induk (Penyebab/Potensi/Sasaran) diperlukan untuk membuat pengendalian baru.", variant: "destructive" });
-          router.push('/risk-analysis');
+          router.push('/risk-analysis'); // Fallback lebih aman
           return;
         }
-        const [cause, pRisk, goal] = await Promise.all([
-          getRiskCauseById(riskCauseIdQuery, currentUserId, currentPeriod),
-          getPotentialRiskById(potentialRiskIdQuery, currentUserId, currentPeriod),
-          getGoalById(goalIdQuery, currentUserId, currentPeriod),
-        ]);
-        if (!cause || !pRisk || !goal) {
+        fetchedRiskCause = await storeGetRiskCauseById(riskCauseIdQuery, currentUserId, currentPeriod);
+        fetchedPotentialRisk = await storeGetPotentialRiskById(potentialRiskIdQuery, currentUserId, currentPeriod);
+        fetchedGoal = await storeGetGoalById(goalIdQuery, currentUserId, currentPeriod);
+        
+        if (!fetchedRiskCause || !fetchedPotentialRisk || !fetchedGoal) {
           toast({ title: "Data Induk Tidak Ditemukan", description: "Salah satu data induk (penyebab, potensi, atau sasaran) tidak ditemukan atau tidak cocok konteks.", variant: "destructive" });
-          router.push(returnPath); // Use calculated returnPath
+          router.push(returnPath);
           return;
         }
-        riskCauseForContext = cause;
-        potentialRiskForContext = pRisk;
-        goalForContext = goal;
         setCurrentControlMeasure(null);
         reset({ controlType: 'Prv', description: "", keyControlIndicator: "", target: "", responsiblePerson: "", deadline: null, budget: null });
       } else {
-        const control = await getControlMeasureById(controlMeasureIdParam, currentUserId, currentPeriod);
-        if (!control) {
+        fetchedControlMeasure = await storeGetControlMeasureById(controlMeasureIdParam, currentUserId, currentPeriod);
+        if (!fetchedControlMeasure) {
           toast({ title: "Pengendalian Tidak Ditemukan", description: "Tindakan pengendalian tidak ditemukan atau tidak cocok konteks.", variant: "destructive" });
-          router.push(returnPath); // Use calculated returnPath
+          router.push(returnPath);
           return;
         }
-        setCurrentControlMeasure(control);
-        const [cause, pRisk, goal] = await Promise.all([
-          getRiskCauseById(control.riskCauseId, currentUserId, currentPeriod),
-          getPotentialRiskById(control.potentialRiskId, currentUserId, currentPeriod),
-          getGoalById(control.goalId, currentUserId, currentPeriod),
-        ]);
-         if (!cause || !pRisk || !goal) {
-          toast({ title: "Data Induk Tidak Ditemukan", description: "Data induk untuk tindakan pengendalian ini tidak ditemukan atau tidak cocok konteks.", variant: "destructive" });
-          router.push(returnPath); // Use calculated returnPath
+        setCurrentControlMeasure(fetchedControlMeasure);
+        fetchedRiskCause = await storeGetRiskCauseById(fetchedControlMeasure.riskCauseId, currentUserId, currentPeriod);
+        fetchedPotentialRisk = await storeGetPotentialRiskById(fetchedControlMeasure.potentialRiskId, currentUserId, currentPeriod);
+        fetchedGoal = await storeGetGoalById(fetchedControlMeasure.goalId, currentUserId, currentPeriod);
+
+        if (!fetchedRiskCause || !fetchedPotentialRisk || !fetchedGoal) {
+          toast({ title: "Data Induk Tidak Ditemukan", description: "Data induk untuk tindakan pengendalian ini tidak ditemukan.", variant: "destructive" });
+          router.push(returnPath);
           return;
         }
-        riskCauseForContext = cause;
-        potentialRiskForContext = pRisk;
-        goalForContext = goal;
         reset({
-          controlType: control.controlType,
-          description: control.description,
-          keyControlIndicator: control.keyControlIndicator || "",
-          target: control.target || "",
-          responsiblePerson: control.responsiblePerson || "",
-          deadline: control.deadline && isValidDate(parseISO(control.deadline)) ? parseISO(control.deadline) : null,
-          budget: control.budget,
+          controlType: fetchedControlMeasure.controlType,
+          description: fetchedControlMeasure.description,
+          keyControlIndicator: fetchedControlMeasure.keyControlIndicator || "",
+          target: fetchedControlMeasure.target || "",
+          responsiblePerson: fetchedControlMeasure.responsiblePerson || "",
+          deadline: fetchedControlMeasure.deadline && isValidDate(parseISO(fetchedControlMeasure.deadline)) ? parseISO(fetchedControlMeasure.deadline) : null,
+          budget: fetchedControlMeasure.budget,
         });
       }
-      setParentRiskCause(riskCauseForContext);
-      setParentPotentialRisk(potentialRiskForContext);
-      setGrandParentGoal(goalForContext);
-
+      setParentRiskCause(fetchedRiskCause);
+      setParentPotentialRisk(fetchedPotentialRisk);
+      setGrandParentGoal(fetchedGoal);
     } catch (error: any) {
-      console.error("[ManageControlMeasurePage] Error loading data:", error.message);
+      console.error("[ManageCMPage] Error loading data:", error.message);
       toast({ title: "Gagal Memuat Data", description: error.message, variant: "destructive" });
       router.push(returnPath);
     } finally {
       setPageIsLoading(false);
     }
-  }, [authLoading, currentUserId, currentPeriod, isCreatingNew, controlMeasureIdParam, riskCauseIdQuery, potentialRiskIdQuery, goalIdQuery, reset, router, toast, returnPath]);
+  }, [controlMeasureIdParam, isCreatingNew, currentUserId, currentPeriod, riskCauseIdQuery, potentialRiskIdQuery, goalIdQuery, reset, router, toast, returnPath, storeGetControlMeasureById, storeGetRiskCauseById, storeGetPotentialRiskById, storeGetGoalById]);
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    if (!authLoading && isProfileComplete && currentUserId && currentPeriod) {
+      fetchData();
+    } else if (!authLoading && (!currentUser || !isProfileComplete)) {
+        setPageIsLoading(false); // Jika tidak ada user atau profil tidak lengkap, stop loading
+        // AppLayout akan mengarahkan ke login atau profile-setup
+    }
+  }, [authLoading, profileLoading, isProfileComplete, currentUser, currentUserId, currentPeriod, fetchData]);
 
-
-  const onSubmit: SubmitHandler<ControlMeasureFormData> = async (formData) => {
+  const processSave = async (formData: ControlMeasureFormData, forNewEntry: boolean): Promise<string | null> => {
     if (!currentUserId || !currentPeriod) {
-      toast({ title: "Konteks Pengguna/Periode Hilang", description: "Tidak dapat menyimpan. Harap muat ulang.", variant: "destructive" });
-      return;
+      toast({ title: "Konteks Pengguna/Periode Hilang", variant: "destructive" });
+      return null;
     }
-    if (isCreatingNew && (!parentRiskCause || !parentPotentialRisk || !grandParentGoal)) {
-      toast({ title: "Konteks Induk Hilang", description: "Tidak dapat menyimpan. Data induk tidak lengkap.", variant: "destructive" });
-      return;
+    if (!parentRiskCause || !parentPotentialRisk || !grandParentGoal) {
+      toast({ title: "Konteks Induk Hilang", description: "Data induk (Penyebab/Potensi/Sasaran) tidak lengkap.", variant: "destructive" });
+      return null;
     }
-    if (!isCreatingNew && (!currentControlMeasure || !parentRiskCause || !parentPotentialRisk || !grandParentGoal)) { // Added checks for edit mode
-      toast({ title: "Data Pengendalian atau Induk Hilang", description: "Tidak dapat menyimpan. Data pengendalian saat ini atau data induknya tidak ada.", variant: "destructive" });
-      return;
-    }
-
+  
     setIsSaving(true);
-    const controlDataForService = {
+    const controlDataPayload: Omit<ControlMeasure, 'id' | 'createdAt' | 'updatedAt' | 'userId' | 'period' | 'riskCauseId' | 'potentialRiskId' | 'goalId' | 'sequenceNumber'> = {
       controlType: formData.controlType,
       description: formData.description,
       keyControlIndicator: formData.keyControlIndicator || null,
       target: formData.target || null,
       responsiblePerson: formData.responsiblePerson || null,
-      deadline: formData.deadline ? formData.deadline.toISOString() : null,
+      deadline: formData.deadline ? formData.deadline.toISOString().split('T')[0] : null, // Simpan hanya tanggal YYYY-MM-DD
       budget: formData.budget === null || isNaN(Number(formData.budget)) ? null : Number(formData.budget),
     };
-
+  
     try {
-      if (isCreatingNew && parentRiskCause && parentPotentialRisk && grandParentGoal) {
-        const existingControls = await getControlMeasuresByRiskCauseId(parentRiskCause.id, currentUserId, currentPeriod);
-        const newSequenceNumber = (existingControls.filter(c => c.controlType === formData.controlType).length) + 1;
-        
-        await addControlMeasure(
-          controlDataForService,
+      if (forNewEntry) {
+        const newControl = await storeAddControlMeasure(
+          controlDataPayload,
           parentRiskCause.id,
           parentPotentialRisk.id,
           grandParentGoal.id,
           currentUserId,
-          currentPeriod,
-          newSequenceNumber
+          currentPeriod
         );
-        toast({ title: "Pengendalian Ditambahkan", description: `Pengendalian "${formData.description}" telah ditambahkan.` });
+        if (!newControl) throw new Error("Gagal menambahkan tindakan pengendalian baru melalui store.");
+        return newControl.id; // Return new ID for potential "Save & New"
       } else if (currentControlMeasure && currentControlMeasure.id) {
-        await updateControlMeasure(currentControlMeasure.id, controlDataForService);
-        toast({ title: "Pengendalian Diperbarui", description: `Pengendalian "${formData.description}" telah diperbarui.` });
+        const updatedControl = await storeUpdateControlMeasure(currentControlMeasure.id, controlDataPayload, currentUserId, currentPeriod);
+        if (!updatedControl) throw new Error("Gagal memperbarui tindakan pengendalian melalui store.");
+        return updatedControl.id;
+      } else {
+        throw new Error("Kondisi tidak valid untuk menyimpan pengendalian.");
       }
-      router.push(returnPath);
     } catch (error: any) {
       console.error("Error saving control measure:", error.message);
       toast({ title: "Gagal Menyimpan Pengendalian", description: error.message, variant: "destructive" });
+      return null;
     } finally {
       setIsSaving(false);
     }
   };
 
-  if (pageIsLoading || authLoading || !currentUserId || !currentPeriod) {
+  const onSubmitAndClose: SubmitHandler<ControlMeasureFormData> = async (formData) => {
+    const savedId = await processSave(formData, isCreatingNew);
+    if (savedId) {
+      toast({ title: isCreatingNew ? "Pengendalian Ditambahkan" : "Pengendalian Diperbarui", description: `Pengendalian "${formData.description}" telah disimpan.` });
+      router.push(returnPath);
+    }
+  };
+
+  const onSubmitAndNew: SubmitHandler<ControlMeasureFormData> = async (formData) => {
+    if (!isCreatingNew) { // Hanya untuk mode pembuatan baru
+        toast({ title: "Aksi Tidak Valid", description: "Simpan & Tambah Baru hanya untuk pengendalian baru.", variant: "warning"});
+        return;
+    }
+    const savedId = await processSave(formData, true);
+    if (savedId) {
+      toast({ title: "Pengendalian Disimpan", description: `Pengendalian "${formData.description}" ditambahkan. Silakan input yang baru.` });
+      reset({ // Reset form ke default untuk entri baru
+        controlType: 'Prv',
+        description: "",
+        keyControlIndicator: "",
+        target: "",
+        responsiblePerson: "",
+        deadline: null,
+        budget: null,
+      });
+      // Tidak navigasi, tetap di halaman '/new' dengan query params yang sama
+    }
+  };
+
+
+  if (authLoading || profileLoading || pageIsLoading) {
     return (
       <div className="flex flex-col items-center justify-center h-screen">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
@@ -247,6 +273,15 @@ export default function ManageControlMeasurePage() {
     );
   }
 
+  if (!currentUser || !isProfileComplete) {
+    // AppLayout akan mengarahkan ke login atau profile-setup
+    return (
+        <div className="flex flex-col items-center justify-center h-screen">
+            <p className="text-xl text-muted-foreground">Mengarahkan...</p>
+        </div>
+    );
+  }
+  
   if ((isCreatingNew && (!parentRiskCause || !parentPotentialRisk || !grandParentGoal)) || 
       (!isCreatingNew && (!currentControlMeasure || !parentRiskCause || !parentPotentialRisk || !grandParentGoal))) {
      return (
@@ -271,7 +306,7 @@ export default function ManageControlMeasurePage() {
         description={`UPR: ${uprDisplayName}, Periode: ${currentPeriod || '...'}.`}
         actions={
           <Button onClick={() => router.push(returnPath)} variant="outline">
-            <ArrowLeft className="mr-2 h-4 w-4" /> Kembali ke Analisis Penyebab
+            <ArrowLeft className="mr-2 h-4 w-4" /> Kembali
           </Button>
         }
       />
@@ -292,7 +327,8 @@ export default function ManageControlMeasurePage() {
           <CardTitle>Detail Tindakan Pengendalian</CardTitle>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+          {/* Menggunakan handleSubmit dari react-hook-form untuk setiap tombol submit */}
+          <form className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-1.5">
                 <Label htmlFor="controlType">Tipe Pengendalian</Label>
@@ -323,6 +359,7 @@ export default function ManageControlMeasurePage() {
                   placeholder="Contoh: Manajer SDM, Kepala Divisi TI"
                   disabled={isSaving}
                 />
+                 {errors.responsiblePerson && <p className="text-xs text-destructive mt-1">{errors.responsiblePerson.message}</p>}
               </div>
             </div>
 
@@ -348,6 +385,7 @@ export default function ManageControlMeasurePage() {
                   placeholder="Contoh: Persentase penyelesaian pelatihan"
                   disabled={isSaving}
                 />
+                 {errors.keyControlIndicator && <p className="text-xs text-destructive mt-1">{errors.keyControlIndicator.message}</p>}
               </div>
 
               <div className="space-y-1.5">
@@ -358,6 +396,7 @@ export default function ManageControlMeasurePage() {
                   placeholder="Contoh: 100% pegawai mengikuti pelatihan"
                   disabled={isSaving}
                 />
+                 {errors.target && <p className="text-xs text-destructive mt-1">{errors.target.message}</p>}
               </div>
             </div>
 
@@ -380,7 +419,7 @@ export default function ManageControlMeasurePage() {
                             disabled={isSaving}
                         >
                             <CalendarIcon className="mr-2 h-4 w-4" />
-                            {field.value ? format(field.value, "dd/MM/yyyy") : <span>Pilih tanggal</span>}
+                            {field.value ? format(field.value, "dd/MM/yyyy", { locale: localeID }) : <span>Pilih tanggal</span>}
                         </Button>
                         </PopoverTrigger>
                         <PopoverContent className="w-auto p-0">
@@ -389,6 +428,7 @@ export default function ManageControlMeasurePage() {
                             selected={field.value}
                             onSelect={field.onChange}
                             initialFocus
+                            disabled={(date) => date < new Date("1900-01-01")}
                         />
                         </PopoverContent>
                     </Popover>
@@ -433,11 +473,17 @@ export default function ManageControlMeasurePage() {
               </div>
             </div>
 
-            <div className="flex justify-end pt-4">
-              <Button type="submit" disabled={isSaving}>
+            <div className="flex justify-end items-center gap-2 pt-4">
+              <Button type="button" onClick={handleSubmit(onSubmitAndClose)} disabled={isSaving}>
                 {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                {isCreatingNew ? "Simpan Pengendalian Baru" : "Simpan Perubahan Pengendalian"}
+                {isCreatingNew ? "Simpan & Tutup" : "Simpan Perubahan & Tutup"}
               </Button>
+              {isCreatingNew && (
+                <Button type="button" variant="outline" onClick={handleSubmit(onSubmitAndNew)} disabled={isSaving}>
+                  {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PlusCircle className="mr-2 h-4 w-4" />}
+                  Simpan & Tambah Baru
+                </Button>
+              )}
             </div>
           </form>
         </CardContent>
@@ -445,6 +491,5 @@ export default function ManageControlMeasurePage() {
     </div>
   );
 }
-
 
     
