@@ -20,18 +20,16 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { useToast } from '@/hooks/use-toast';
 import { getCalculatedRiskLevel, getRiskLevelColor } from '@/app/risk-cause-analysis/[riskCauseId]/page'; 
 import { useAuth } from '@/contexts/auth-context';
-import { getGoals } from '@/services/goalService';
-import { getPotentialRisksByGoalId } from '@/services/potentialRiskService';
-import { getRiskCausesByPotentialRiskId, deleteRiskCauseAndSubCollections } from '@/services/riskCauseService';
+// Services will be called via store
+import { useAppStore } from '@/stores/useAppStore';
 
 
 interface EnrichedRiskCause extends RiskCause {
   potentialRiskDescription: string;
   potentialRiskCategory: RiskCategory | null;
+  potentialRiskSequenceNumber: number;
   goalName: string;
   goalCode: string; 
-  potentialRiskSequenceNumber: number; 
-  // goalUprId and goalPeriod are no longer needed here as we operate under a single user context
   goalId: string;
 }
 
@@ -64,12 +62,20 @@ const ALL_POSSIBLE_CALCULATED_RISK_LEVELS: CalculatedRiskLevelCategory[] = ['San
 export default function RiskAnalysisPage() {
   const router = useRouter();
   const { toast } = useToast();
-  const { currentUser, appUser, loading: authLoading } = useAuth(); // Menggunakan appUser dari context
+  const { currentUser, appUser, loading: authLoading } = useAuth(); 
   
-  const [allEnrichedRiskCauses, setAllEnrichedRiskCauses] = useState<EnrichedRiskCause[]>([]);
-  const [allGoals, setAllGoals] = useState<Goal[]>([]); 
+  const store = useAppStore();
+  const { 
+    goals, 
+    potentialRisks, 
+    riskCauses: storeRiskCauses, 
+    fetchGoals, // Ensure fetchGoals is called to trigger subsequent fetches
+    deleteRiskCause: deleteRiskCauseFromStore, 
+    riskCausesLoading 
+  } = store;
   
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true); // Local loading state for this page
+  const [enrichedRiskCauses, setEnrichedRiskCauses] = useState<EnrichedRiskCause[]>([]);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategories, setSelectedCategories] = useState<RiskCategory[]>([]); 
@@ -96,95 +102,52 @@ export default function RiskAnalysisPage() {
   const currentUserId = useMemo(() => currentUser?.uid || null, [currentUser]);
   const currentPeriod = useMemo(() => appUser?.activePeriod || null, [appUser]);
 
-  const loadData = useCallback(async () => {
-    console.log("[RiskAnalysisPage] loadData triggered. AuthLoading:", authLoading, "CurrentUser:", !!currentUser, "AppUser:", !!appUser);
-    if (authLoading) {
-      console.log("[RiskAnalysisPage] Auth is still loading, loadData will wait.");
-      setIsLoading(true); // Ensure loading state is true if auth is loading
-      return;
+  useEffect(() => {
+    if (!authLoading && currentUserId && currentPeriod) {
+      setIsLoading(true); // Set loading true before fetching
+      fetchGoals(currentUserId, currentPeriod) // This will trigger fetchPotentialRisks and then fetchRiskCauses in store
+        .finally(() => {
+          // The store's loading states (goalsLoading, potentialRisksLoading, riskCausesLoading)
+          // will be updated by the store actions themselves.
+          // This page's isLoading can be set to false once store.riskCausesLoading is false.
+        });
+    } else if (!authLoading && (!currentUser || !currentUserId || !currentPeriod)) {
+      setIsLoading(false);
+      setEnrichedRiskCauses([]);
+    } else if (authLoading) {
+      setIsLoading(true);
     }
-
-    if (!currentUser || !currentUserId || !currentPeriod) {
-        console.warn("[RiskAnalysisPage] loadData: currentUser, currentUserId, or currentPeriod is missing. Aborting.", { currentUserId, currentPeriod });
-        setIsLoading(false);
-        setAllEnrichedRiskCauses([]);
-        setAllGoals([]);
-        return;
-    }
-    console.log(`[RiskAnalysisPage] loadData: Starting data fetch for userId: ${currentUserId}, period: ${currentPeriod}`);
-    setIsLoading(true);
-    setAllEnrichedRiskCauses([]); // Reset before fetching
-    setAllGoals([]); // Reset before fetching
-
-    try {
-        const goalsResult = await getGoals(currentUserId, currentPeriod);
-        console.log("[RiskAnalysisPage] loadData: getGoals result:", goalsResult);
-
-        let loadedGoals: Goal[] = [];
-        if (goalsResult.success && goalsResult.goals) {
-            loadedGoals = goalsResult.goals;
-        } else {
-            console.warn("[RiskAnalysisPage] loadData: Failed to load goals or no goals found:", goalsResult.message);
-            toast({ title: "Peringatan Data Sasaran", description: goalsResult.message || "Tidak dapat memuat daftar sasaran.", variant: "default" });
-            // Tidak melempar error, lanjutkan dengan array kosong untuk goals
-        }
-        setAllGoals(loadedGoals);
-        console.log(`[RiskAnalysisPage] loadData: ${loadedGoals.length} goals loaded.`);
-
-        let collectedEnrichedRiskCauses: EnrichedRiskCause[] = [];
-        for (const goal of loadedGoals) {
-            console.log(`[RiskAnalysisPage] loadData: Processing goal ID: ${goal.id}, Name: ${goal.name}`);
-            const pRisks = await getPotentialRisksByGoalId(goal.id, currentUserId, currentPeriod);
-            console.log(`[RiskAnalysisPage] loadData: Found ${pRisks.length} potential risks for goal ${goal.id}.`);
-
-            for (const pRisk of pRisks) {
-                console.log(`[RiskAnalysisPage] loadData: Processing potential risk ID: ${pRisk.id}, Description: ${pRisk.description}`);
-                const causes = await getRiskCausesByPotentialRiskId(pRisk.id, currentUserId, currentPeriod);
-                console.log(`[RiskAnalysisPage] loadData: Found ${causes.length} risk causes for potential risk ${pRisk.id}.`);
-
-                const enrichedCauses = causes.map(cause => ({
-                    ...cause,
-                    potentialRiskDescription: pRisk.description,
-                    potentialRiskCategory: pRisk.category,
-                    potentialRiskSequenceNumber: pRisk.sequenceNumber || 0,
-                    goalName: goal.name,
-                    goalCode: goal.code || "", 
-                    goalId: goal.id,
-                }));
-                collectedEnrichedRiskCauses.push(...enrichedCauses);
-            }
-        }
-        console.log(`[RiskAnalysisPage] loadData: Total ${collectedEnrichedRiskCauses.length} enriched risk causes collected.`);
-        setAllEnrichedRiskCauses(collectedEnrichedRiskCauses);
-        setSelectedCauseIds([]);
-    } catch (error: any) {
-        const errorMessage = error.message || String(error);
-        console.error("[RiskAnalysisPage] Error loading data for Risk Analysis page:", errorMessage);
-        toast({ title: "Gagal Memuat Data", description: errorMessage || "Terjadi kesalahan saat memuat data analisis risiko.", variant: "destructive" });
-        setAllEnrichedRiskCauses([]); // Pastikan reset jika ada error
-        setAllGoals([]); // Pastikan reset jika ada error
-    } finally {
-        console.log("[RiskAnalysisPage] loadData finished, setting isLoading to false.");
-        setIsLoading(false);
-    }
-  }, [currentUser, currentUserId, currentPeriod, toast, authLoading]); // authLoading ditambahkan sebagai dependensi
+  }, [authLoading, currentUserId, currentPeriod, fetchGoals]);
 
   useEffect(() => {
-    // Efek ini akan berjalan saat komponen pertama kali dimuat dan setiap kali dependensi berubah.
-    // authLoading ditambahkan untuk memastikan kita tidak mencoba loadData sebelum status auth siap.
-    if (!authLoading && currentUserId && currentPeriod) {
-      console.log("[RiskAnalysisPage] useEffect: Context ready (authLoading false, currentUserId, currentPeriod available). Calling loadData.");
-      loadData();
-    } else if (!authLoading && (!currentUser || !currentUserId || !currentPeriod)) {
-        console.warn("[RiskAnalysisPage] useEffect: Context not fully ready after auth check. Clearing data and stopping loading.", { currentUser:!!currentUser, currentUserId, currentPeriod });
-        setIsLoading(false); // Pastikan loading dihentikan jika konteks tidak siap
-        setAllEnrichedRiskCauses([]);
-        setAllGoals([]);
-    } else if (authLoading) {
-        console.log("[RiskAnalysisPage] useEffect: Auth is loading, waiting to call loadData.");
-        setIsLoading(true); // Set loading true while auth is in progress
+    // This effect will run when storeRiskCauses changes
+    if (!riskCausesLoading && currentUserId && currentPeriod) {
+      console.log("[RiskAnalysisPage] storeRiskCauses updated or riskCausesLoading changed. Count:", storeRiskCauses.length);
+      const enriched: EnrichedRiskCause[] = storeRiskCauses
+        .filter(rc => rc.userId === currentUserId && rc.period === currentPeriod) // Ensure context match
+        .map(cause => {
+          const parentPR = potentialRisks.find(pr => pr.id === cause.potentialRiskId);
+          const grandParentGoal = parentPR ? goals.find(g => g.id === parentPR.goalId) : undefined;
+          const {level, score} = getCalculatedRiskLevel(cause.likelihood, cause.impact);
+          return {
+            ...cause,
+            potentialRiskDescription: parentPR?.description || 'N/A',
+            potentialRiskCategory: parentPR?.category || null,
+            potentialRiskSequenceNumber: parentPR?.sequenceNumber || 0,
+            goalName: grandParentGoal?.name || 'N/A',
+            goalCode: grandParentGoal?.code || '',
+            goalId: grandParentGoal?.id || '',
+            riskScore: score,
+            riskLevelText: level,
+          };
+        });
+      setEnrichedRiskCauses(enriched);
+      setIsLoading(false); // Set loading to false after enrichment
+    } else if (riskCausesLoading) {
+      setIsLoading(true); // If store is loading causes, page is also loading
     }
-  }, [loadData, currentUserId, currentPeriod, currentUser, authLoading]);
+  }, [storeRiskCauses, riskCausesLoading, potentialRisks, goals, currentUserId, currentPeriod]);
+
 
   const toggleCategoryFilter = (category: RiskCategory) => {
     setSelectedCategories(prev => 
@@ -219,7 +182,7 @@ export default function RiskAnalysisPage() {
   };
 
   const filteredAndSortedCauses = useMemo(() => {
-    let tempCauses = [...allEnrichedRiskCauses];
+    let tempCauses = [...enrichedRiskCauses];
 
     if (searchTerm) {
       const lowerSearchTerm = searchTerm.toLowerCase();
@@ -228,7 +191,7 @@ export default function RiskAnalysisPage() {
         (cause.keyRiskIndicator && cause.keyRiskIndicator.toLowerCase().includes(lowerSearchTerm)) ||
         cause.potentialRiskDescription.toLowerCase().includes(lowerSearchTerm) ||
         cause.goalName.toLowerCase().includes(lowerSearchTerm) ||
-        `${cause.goalCode || ''}.PR${cause.potentialRiskSequenceNumber || ''}.PC${cause.sequenceNumber || ''}`.toLowerCase().includes(lowerSearchTerm)
+        `${cause.goalCode || 'S?'}.PR${cause.potentialRiskSequenceNumber || '?'}.PC${cause.sequenceNumber || '?'}`.toLowerCase().includes(lowerSearchTerm)
       );
     }
 
@@ -258,7 +221,7 @@ export default function RiskAnalysisPage() {
         const codeB = `${b.goalCode || 'S?'}.PR${b.potentialRiskSequenceNumber || 0}.PC${b.sequenceNumber || 0}`;
         return codeA.localeCompare(codeB, undefined, {numeric: true, sensitivity: 'base'});
     });
-  }, [allEnrichedRiskCauses, searchTerm, selectedCategories, selectedGoalIds, selectedSources, selectedRiskLevels]);
+  }, [enrichedRiskCauses, searchTerm, selectedCategories, selectedGoalIds, selectedSources, selectedRiskLevels]);
 
   const handleSelectCause = (causeId: string, checked: boolean) => {
     setSelectedCauseIds(prev =>
@@ -283,12 +246,14 @@ export default function RiskAnalysisPage() {
   const confirmDeleteSingleCause = async () => {
     if (!causeToDelete || !currentUser || !currentUserId || !currentPeriod) {
       toast({ title: "Gagal Menghapus", description: "Konteks pengguna atau data penyebab tidak lengkap.", variant: "destructive" });
+      setIsSingleDeleteDialogOpen(false);
+      setCauseToDelete(null);
       return;
     }
     try {
-      await deleteRiskCauseAndSubCollections(causeToDelete.id, currentUserId, currentPeriod);
+      await deleteRiskCauseFromStore(causeToDelete.id, currentUserId, currentPeriod);
       toast({ title: "Penyebab Risiko Dihapus", description: `Penyebab "${causeToDelete.description}" (Kode: ${causeToDelete.goalCode}.PR${causeToDelete.potentialRiskSequenceNumber}.PC${causeToDelete.sequenceNumber}) dan semua data pengendalian terkait telah dihapus.`, variant: "destructive" });
-      loadData(); 
+      // Store should update, which will re-trigger useEffect for enrichedRiskCauses
     } catch (error: any) {
       const errorMessage = error.message || String(error);
       console.error("Error deleting single risk cause:", errorMessage);
@@ -310,6 +275,7 @@ export default function RiskAnalysisPage() {
   const confirmDeleteSelectedCauses = async () => {
     if (!currentUser || !currentUserId || !currentPeriod) {
       toast({ title: "Gagal Hapus Massal", description: "Konteks pengguna tidak lengkap.", variant: "destructive" });
+      setIsBulkDeleteDialogOpen(false);
       return;
     }
     let deletedCount = 0;
@@ -317,10 +283,10 @@ export default function RiskAnalysisPage() {
 
     for (const causeId of selectedCauseIds) {
         try {
-            await deleteRiskCauseAndSubCollections(causeId, currentUserId, currentPeriod);
+            await deleteRiskCauseFromStore(causeId, currentUserId, currentPeriod);
             deletedCount++;
         } catch (error: any) {
-            const cause = allEnrichedRiskCauses.find(c => c.id === causeId);
+            const cause = enrichedRiskCauses.find(c => c.id === causeId);
             const errorMessage = error.message || String(error);
             console.error(`Gagal menghapus penyebab ${cause?.description || causeId}:`, errorMessage);
             errors.push(cause?.description || causeId);
@@ -334,13 +300,14 @@ export default function RiskAnalysisPage() {
         toast({ title: "Gagal Menghapus Sebagian", description: `Gagal menghapus penyebab: ${errors.join(', ')}. Pesan: ${errors.length > 0 ? errors[0] : ''}`, variant: "destructive" });
     }
     
-    loadData(); 
+    setSelectedCauseIds([]); // Clear selection
     setIsBulkDeleteDialogOpen(false);
+    // Store update will trigger re-fetch/re-enrichment
   };
 
   const { totalCauses, completeCauses, incompleteCauses } = useMemo(() => {
-    const total = allEnrichedRiskCauses.length;
-    const complete = allEnrichedRiskCauses.filter(
+    const total = enrichedRiskCauses.length; // Use enriched list for consistency with display
+    const complete = enrichedRiskCauses.filter(
       c => c.keyRiskIndicator && c.riskTolerance && c.likelihood && c.impact
     ).length;
     return {
@@ -348,7 +315,7 @@ export default function RiskAnalysisPage() {
       completeCauses: complete,
       incompleteCauses: total - complete,
     };
-  }, [allEnrichedRiskCauses]);
+  }, [enrichedRiskCauses]);
 
   if (authLoading || (currentUser && !appUser)) { 
      return (
@@ -374,7 +341,7 @@ export default function RiskAnalysisPage() {
     );
   }
   
-  if (isLoading && !authLoading) { // Hanya tampilkan loading spesifik halaman jika auth sudah selesai
+  if (isLoading) { 
     return (
       <div className="flex flex-col items-center justify-center h-screen">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
@@ -383,7 +350,7 @@ export default function RiskAnalysisPage() {
     );
   }
 
-  const relevantGoalsForFilter = Array.isArray(allGoals) ? allGoals.filter(g => g.userId === currentUserId && g.period === currentPeriod) : [];
+  const relevantGoalsForFilter = Array.isArray(goals) ? goals.filter(g => g.userId === currentUserId && g.period === currentPeriod) : [];
 
 
   return (
@@ -566,26 +533,33 @@ export default function RiskAnalysisPage() {
         )}
       </div>
 
-      {filteredAndSortedCauses.length === 0 && !isLoading && (
+      {(riskCausesLoading && !isLoading) && ( // Show specific loading for table if page itself isn't loading but causes are
+         <div className="flex flex-col items-center justify-center py-10">
+          <Loader2 className="h-8 w-8 animate-spin text-primary mb-3" />
+          <p className="text-muted-foreground">Memuat daftar penyebab risiko...</p>
+        </div>
+      )}
+
+      {!riskCausesLoading && filteredAndSortedCauses.length === 0 && (
         <div className="text-center py-10 border-2 border-dashed border-muted-foreground/30 rounded-lg">
           <ListChecks className="mx-auto h-12 w-12 text-muted-foreground" />
           <h3 className="mt-2 text-lg font-medium">
-            {allEnrichedRiskCauses.length === 0 
+            {enrichedRiskCauses.length === 0 
               ? "Belum ada penyebab risiko yang teridentifikasi untuk dianalisis."
               : "Tidak ada penyebab risiko yang cocok dengan kriteria filter Anda."}
           </h3>
           <p className="mt-1 text-sm text-muted-foreground">
-            {allEnrichedRiskCauses.length === 0
+            {enrichedRiskCauses.length === 0
               ? "Identifikasi potensi risiko dan penyebabnya terlebih dahulu di menu Identifikasi Risiko."
               : "Coba sesuaikan pencarian atau filter Anda."}
           </p>
         </div>
       )}
 
-      {filteredAndSortedCauses.length > 0 && !isLoading && (
+      {!riskCausesLoading && filteredAndSortedCauses.length > 0 && (
         <Card className="w-full">
           <CardContent className="p-0">
-            <div className="relative w-full overflow-x-auto"> {/* Wrapper untuk scroll tabel */}
+            <div className="relative w-full overflow-x-auto"> 
                 <Table>
                 <TableHeader>
                     <TableRow>
@@ -708,6 +682,3 @@ export default function RiskAnalysisPage() {
     </div>
   );
 }
-
-
-    
