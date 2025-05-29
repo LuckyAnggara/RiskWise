@@ -14,14 +14,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import type { PotentialRisk, Goal, RiskCategory, RiskCause, RiskSource, AppUser } from '@/lib/types';
-import { RISK_CATEGORIES, RISK_SOURCES, LIKELIHOOD_LEVELS_DESC_MAP, IMPACT_LEVELS_DESC_MAP, CalculatedRiskLevelCategory } from '@/lib/types';
+import { RISK_CATEGORIES, RISK_SOURCES } from '@/lib/types'; // Removed LIKELIHOOD_LEVELS_DESC_MAP, IMPACT_LEVELS_DESC_MAP, CalculatedRiskLevelCategory
 import { useForm, type SubmitHandler, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { ArrowLeft, PlusCircle, Trash2, Loader2, Save, BarChart3, Wand2, Settings2, LayoutGrid, List, ChevronDown } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { Separator } from '@/components/ui/separator';
-import { BrainstormCausesContextModal } from '@/components/risks/brainstorm-causes-context-modal';
+import { BrainstormContextModal } from '@/components/risks/brainstorm-context-modal';
 import { BrainstormSuggestionsModal, type AISuggestionItem as AICSuggestionItem } from '@/components/risks/brainstorm-suggestions-modal'; 
 
 import {
@@ -31,7 +31,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { RiskCauseCardItem } from '@/components/risks/risk-cause-card-item';
-import { getCalculatedRiskLevel, getRiskLevelColor } from '@/app/risk-cause-analysis/[riskCauseId]/page';
+// Import getCalculatedRiskLevel, getRiskLevelColor from types.ts or a shared util
+import { getCalculatedRiskLevel, getRiskLevelColor } from '@/lib/types'; // Assuming they are moved here or a shared util
+
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
 import { useAuth } from '@/contexts/auth-context';
@@ -84,10 +86,34 @@ export default function ManagePotentialRiskPage() {
   const [isBrainstormCausesSuggestionsModalOpen, setIsBrainstormCausesSuggestionsModalOpen] = useState(false);
   const [aiCauseSuggestions, setAICauseSuggestions] = useState<AICSuggestionItem[]>([]);
 
+  const currentUserIdFromAuth = useMemo(() => appUser?.uid || null, [appUser]);
+  const currentPeriodFromAuth = useMemo(() => appUser?.activePeriod || null, [appUser]);
+  const uprDisplayName = useMemo(() => appUser?.displayName || 'UPR...', [appUser]);
+
+  const displayedRiskCauses = useMemo(() => {
+    if (currentPotentialRisk && currentUserIdFromAuth && currentPeriodFromAuth) {
+      return store.riskCauses.filter(rc =>
+        rc.potentialRiskId === currentPotentialRisk.id &&
+        rc.userId === currentUserIdFromAuth &&
+        rc.period === currentPeriodFromAuth
+      ).sort((a, b) => (a.sequenceNumber || 0) - (b.sequenceNumber || 0));
+    }
+    return [];
+  }, [store.riskCauses, currentPotentialRisk, currentUserIdFromAuth, currentPeriodFromAuth]);
+
+
+  const goalIdFromQuery = searchParams.get('goalId');
+  const returnPath = useMemo(() => {
+    const fromQuery = searchParams.get('from');
+    if (fromQuery) return fromQuery;
+    if (currentPotentialRisk?.goalId) return `/risks/${currentPotentialRisk.goalId}`;
+    if (isCreatingNew && goalIdFromQuery) return `/risks/${goalIdFromQuery}`;
+    return `/all-risks`;
+  }, [searchParams, currentPotentialRisk?.goalId, isCreatingNew, goalIdFromQuery]);
+
   const [causeViewMode, setCauseViewMode] = useState<'table' | 'card'>('table');
 
-  const { toast } = useToast();
-  
+
   const {
     register: registerPotentialRisk,
     handleSubmit: handleSubmitPotentialRisk,
@@ -112,67 +138,44 @@ export default function ManagePotentialRiskPage() {
     defaultValues: { causeDescription: "", causeSource: "Internal" },
   });
 
-  const currentUserIdFromAuth = appUser?.uid;
-  const currentPeriodFromAuth = appUser?.activePeriod;
-  const uprDisplayName = useMemo(() => appUser?.displayName || 'UPR...', [appUser]);
-
-
-  const displayedRiskCauses = useMemo(() => {
-    if (currentPotentialRisk && currentUserIdFromAuth && currentPeriodFromAuth) {
-      return store.riskCauses.filter(rc =>
-        rc.potentialRiskId === currentPotentialRisk.id &&
-        rc.userId === currentUserIdFromAuth &&
-        rc.period === currentPeriodFromAuth
-      ).sort((a, b) => (a.sequenceNumber || 0) - (b.sequenceNumber || 0));
-    }
-    return [];
-  }, [store.riskCauses, currentPotentialRisk, currentUserIdFromAuth, currentPeriodFromAuth]);
-
-
-  const goalIdFromQuery = searchParams.get('goalId');
-  const returnPath = useMemo(() => {
-    const fromQuery = searchParams.get('from');
-    if (fromQuery) return fromQuery;
-    if (currentPotentialRisk?.goalId) return `/risks/${currentPotentialRisk.goalId}`;
-    if (isCreatingNew && goalIdFromQuery) return `/risks/${goalIdFromQuery}`;
-    return `/all-risks`;
-  }, [searchParams, currentPotentialRisk?.goalId, isCreatingNew, goalIdFromQuery]);
-
+  const { toast } = useToast();
 
   useEffect(() => {
     const loadPageData = async () => {
-      const currentUserId = currentUserIdFromAuth; // Use the memoized value from outside
-      const currentPeriod = currentPeriodFromAuth; // Use the memoized value from outside
-
-      if (!currentUserId || !currentPeriod || !isProfileComplete || authLoading || profileLoading) {
-        if (!authLoading && !profileLoading) { // Only set to false if auth has settled
-          setPageIsLoading(false);
-        }
-        console.log("[ManagePRPage] loadPageData: Pre-conditions not met or auth/profile still loading.", { currentUserId, currentPeriod, isProfileComplete, authLoading, profileLoading });
-        return;
-      }
-
       let isActive = true;
+      const currentUserId = currentUserIdFromAuth;
+      const currentPeriod = currentPeriodFromAuth;
+      
       console.log(`[ManagePRPage] loadPageData called. isCreatingNew: ${isCreatingNew}, potentialRiskIdParam: ${potentialRiskIdParam}, UserID: ${currentUserId}, Period: ${currentPeriod}`);
       setPageIsLoading(true);
       
       setCurrentPotentialRisk(null);
       resetPotentialRiskForm({ description: "", goalId: "", category: null, owner: "" });
 
+      if (!currentUserId || !currentPeriod || !isProfileComplete || authLoading || profileLoading) {
+        if (!authLoading && !profileLoading && isActive) {
+          setPageIsLoading(false);
+        }
+        console.log("[ManagePRPage] loadPageData: Pre-conditions not met or auth/profile still loading.", { currentUserId, currentPeriod, isProfileComplete, authLoading, profileLoading });
+        return;
+      }
+
       try {
-        let fetchedGoals: Goal[] = [];
-        if (store.goals.length === 0 && !store.goalsLoading) {
-          console.log("[ManagePRPage] Goals not in store or store not loading goals, fetching goals from service...");
-          await store.fetchGoals(currentUserId, currentPeriod); // This will update store.goals and trigger re-renders if needed
+        let fetchedGoals: Goal[] = store.goals;
+        if (fetchedGoals.length === 0 && !store.goalsLoading) {
+          console.log("[ManagePRPage] Goals not in store, fetching goals from service...");
+          await store.fetchGoals(currentUserId, currentPeriod); // This will update store.goals
           if (!isActive) return;
-          fetchedGoals = store.goals.filter(g => g.userId === currentUserId && g.period === currentPeriod);
-        } else if (store.goals.length > 0) {
-          fetchedGoals = store.goals.filter(g => g.userId === currentUserId && g.period === currentPeriod);
+          fetchedGoals = store.goals; // Re-access from store after fetch
         }
         
-        const sortedGoals = [...fetchedGoals].sort((a, b) => (a.code || '').localeCompare(b.code || '', undefined, { numeric: true, sensitivity: 'base' }));
-        if (isActive) setAllGoals(sortedGoals);
-        console.log("[ManagePRPage] Total relevant goals fetched/from store:", sortedGoals.length);
+        const sortedGoals = [...fetchedGoals].filter(g => g.userId === currentUserId && g.period === currentPeriod)
+                                             .sort((a, b) => (a.code || '').localeCompare(b.code || '', undefined, { numeric: true, sensitivity: 'base' }));
+        
+        if (isActive) {
+          setAllGoals(sortedGoals);
+          console.log("[ManagePRPage] Total relevant goals fetched/from store:", sortedGoals.length);
+        }
 
         const initialGoalIdForNew = goalIdFromQuery || (sortedGoals.length > 0 ? sortedGoals[0].id : "");
 
@@ -187,10 +190,11 @@ export default function ManagePotentialRiskPage() {
         } else if (potentialRiskIdParam) {
           console.log(`[ManagePRPage] Editing existing PR. Fetching PR ID: ${potentialRiskIdParam}`);
           
+          // Try from store first, then service
           let risk = store.potentialRisks.find(p => p.id === potentialRiskIdParam && p.userId === currentUserId && p.period === currentPeriod);
-          if (!risk) {
-            console.log(`[ManagePRPage] PR ${potentialRiskIdParam} not in store, fetching from service.`);
-            risk = await getPotentialRiskByIdFromService(potentialRiskIdParam, currentUserId, currentPeriod);
+          if (!risk && !store.potentialRisksLoading) { // if not in store and store is not already loading them
+            console.log(`[ManagePRPage] PR ${potentialRiskIdParam} not in store or store not loading, fetching PR from service.`);
+            risk = await store.getPotentialRiskById(potentialRiskIdParam, currentUserId, currentPeriod);
           }
           
           if (!isActive) return;
@@ -204,13 +208,13 @@ export default function ManagePotentialRiskPage() {
                 category: risk.category,
                 owner: risk.owner || "",
               });
-              // Fetch risk causes if not already in store for this PR
-              const causesInStore = store.riskCauses.filter(rc => rc.potentialRiskId === risk.id && rc.userId === currentUserId && rc.period === currentPeriod);
-              if (causesInStore.length === 0 && !store.riskCausesLoading) {
-                console.log(`[ManagePRPage] RiskCauses for PR ${risk.id} not in store, fetching...`);
-                await store.fetchRiskCauses(currentUserId, currentPeriod, risk.id); // Fetch specific to PR
+              // Ensure risk causes for this PR are loaded
+              const causesForThisPRInStore = store.riskCauses.filter(rc => rc.potentialRiskId === risk.id && rc.userId === currentUserId && rc.period === currentPeriod);
+              if (causesForThisPRInStore.length === 0 && !store.riskCausesLoading) {
+                 console.log(`[ManagePRPage] RiskCauses for PR ${risk.id} not in store, fetching...`);
+                 await store.fetchRiskCauses(currentUserId, currentPeriod, risk.id); // Fetch specific to PR
               } else {
-                 console.log(`[ManagePRPage] RiskCauses for PR ${risk.id} already in store or loading: ${causesInStore.length} found.`);
+                 console.log(`[ManagePRPage] RiskCauses for PR ${risk.id} already in store or loading: ${causesForThisPRInStore.length} found.`);
               }
             }
           } else {
@@ -236,39 +240,46 @@ export default function ManagePotentialRiskPage() {
         }
       }
     };
-
-    loadPageData();
+    
+    // Using currentUserIdFromAuth and currentPeriodFromAuth in dependency array
+    if (currentUserIdFromAuth && currentPeriodFromAuth && isProfileComplete && !authLoading && !profileLoading) {
+        loadPageData();
+    } else if (!authLoading && !profileLoading) {
+        // If auth context is resolved but user/period is still not available (e.g. profile incomplete)
+        setPageIsLoading(false);
+    }
     
     return () => { 
-      // isActive = false; 
+      // isActive = false; // This logic was problematic
       console.log("[ManagePRPage] Main useEffect cleanup.");
     };
   }, [
       potentialRiskIdParam, 
       isCreatingNew,
-      currentUserIdFromAuth, 
-      currentPeriodFromAuth, 
+      currentUserIdFromAuth, // Use memoized primitive value
+      currentPeriodFromAuth, // Use memoized primitive value
       isProfileComplete, 
       authLoading, 
       profileLoading,
-      store, 
+      store, // store object reference should be stable
       resetPotentialRiskForm, 
       setPotentialRiskValue, 
       router, 
       toast, 
-      searchParams, 
-      pathname,
-      returnPath,
-      goalIdFromQuery
+      searchParams, // from next/navigation, stable
+      pathname, // from next/navigation, stable
+      goalIdFromQuery,
+      returnPath // from useMemo, should be stable if its deps are
   ]);
 
 
   const onPotentialRiskSubmit: SubmitHandler<PotentialRiskFormData> = async (formData) => {
     setIsSavingPR(true);
+    
     const userIdForService = currentUser?.uid; 
     const periodForService = appUser?.activePeriod;
 
-    if (!currentUser || !userIdForService || !periodForService) {
+    if (!currentUser || typeof userIdForService !== 'string' || !userIdForService.trim() || typeof periodForService !== 'string' || !periodForService.trim()) {
         toast({ title: "Kesalahan Kritis", description: "User ID atau Periode tidak valid. Harap coba lagi atau segarkan halaman.", variant: "destructive" });
         setIsSavingPR(false);
         return;
@@ -297,7 +308,9 @@ export default function ManagePotentialRiskPage() {
         if (savedPotentialRisk) {
           const toastDescription = `Potensi Risiko "${savedPotentialRisk.description}" (Kode: ${parentGoal.code || '?'}.PR${savedPotentialRisk.sequenceNumber}) dibuat. Anda sekarang dapat menambahkan penyebabnya.`;
           toast({ title: "Sukses", description: toastDescription });
-          router.replace(`/all-risks/manage/${savedPotentialRisk.id}?from=${encodeURIComponent(returnPath)}`); 
+          // router.replace(`/all-risks/manage/${savedPotentialRisk.id}?from=${encodeURIComponent(returnPath)}`); 
+          // Replace with pathname to avoid full reload if already on manage page, just update the ID
+          router.replace(`${pathname.substring(0, pathname.lastIndexOf('/'))}/${savedPotentialRisk.id}?from=${encodeURIComponent(returnPath)}`);
         } else {
           throw new Error("Gagal membuat potensi risiko baru melalui store.");
         }
@@ -310,8 +323,6 @@ export default function ManagePotentialRiskPage() {
         
         if (currentPotentialRisk.goalId !== formData.goalId) {
             updateData.goalId = formData.goalId;
-            // TODO: Consider if sequenceNumber needs recalculation if goalId changes
-            // For now, assume sequenceNumber stays relative to its original potentialRisk identity
         }
         
         savedPotentialRisk = await store.updatePotentialRisk(currentPotentialRisk.id, updateData);
@@ -319,7 +330,7 @@ export default function ManagePotentialRiskPage() {
           const updatedParentGoal = allGoals.find(g => g.id === savedPotentialRisk!.goalId);
           const toastDescription = `Potensi Risiko "${savedPotentialRisk.description}" (Kode: ${updatedParentGoal?.code || '?'}.PR${savedPotentialRisk.sequenceNumber}) diperbarui.`;
           toast({ title: "Sukses", description: toastDescription });
-          setCurrentPotentialRisk(savedPotentialRisk); // Update local state for immediate reflection
+          setCurrentPotentialRisk(savedPotentialRisk); 
         } else {
           throw new Error("Gagal memperbarui potensi risiko melalui store.");
         }
@@ -413,10 +424,10 @@ export default function ManagePotentialRiskPage() {
   };
 
   const handleAISuggestionsReady = (suggestions: AICSuggestionItem[]) => {
-    const currentUserId = currentUser?.uid; 
-    const currentPeriod = appUser?.activePeriod;
+    const userIdForService = currentUser?.uid; 
+    const periodForService = appUser?.activePeriod;
 
-    if (!currentPotentialRisk || !currentUserId || !currentPeriod) {
+    if (!currentPotentialRisk || !userIdForService || !periodForService) {
       toast({ title: "Konteks Hilang", description: "Tidak dapat memproses saran AI tanpa konteks potensi risiko yang aktif.", variant: "warning" });
       return;
     }
@@ -498,12 +509,15 @@ export default function ManagePotentialRiskPage() {
         <div className="flex flex-col items-center justify-center h-screen">
             <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
             <p className="text-xl text-muted-foreground">Mengarahkan atau menunggu profil lengkap...</p>
+            <Link href={returnPath} passHref>
+                <Button variant="outline" className="mt-4">
+                    <ArrowLeft className="mr-2 h-4 w-4" /> Kembali
+                </Button>
+            </Link>
         </div>
     );
   }
-  if (isCreatingNew && allGoals.length === 0 && !pageIsLoading && appUser?.uid){
-    // Tetap tampilkan form, tapi beri tahu user di dalam form (sudah ada logika toast)
-  } else if (!isCreatingNew && !currentPotentialRisk && !pageIsLoading && appUser?.uid) {
+  if (!isCreatingNew && !currentPotentialRisk && !pageIsLoading && appUser?.uid){
      return (
       <div className="flex flex-col items-center justify-center h-screen">
         <p className="text-xl text-muted-foreground">Potensi risiko tidak ditemukan atau Anda tidak memiliki akses.</p>
@@ -813,7 +827,7 @@ export default function ManagePotentialRiskPage() {
         </>
       )}
       {currentPotentialRisk && parentGoalForDisplay && isBrainstormCausesContextModalOpen && (
-        <BrainstormCausesContextModal
+        <BrainstormContextModal
             isOpen={isBrainstormCausesContextModalOpen}
             onOpenChange={setIsBrainstormCausesContextModalOpen}
             potentialRisk={currentPotentialRisk}
@@ -846,6 +860,3 @@ export default function ManagePotentialRiskPage() {
     </div>
   );
 }
-
-
-    
