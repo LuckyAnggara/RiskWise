@@ -104,6 +104,7 @@ export default function RiskCauseAnalysisPage() {
   const searchParams = useSearchParams();
   const riskCauseId = params.riskCauseId as string;
 
+  // States from context/store
   const { currentUser, appUser, loading: authLoading, profileLoading, isProfileComplete } = useAuth();
   const store = useAppStore();
   
@@ -138,8 +139,9 @@ export default function RiskCauseAnalysisPage() {
     impactJustification: string;
   } | null>(null);
   const [isAILikelihoodImpactLoading, setIsAILikelihoodImpactLoading] = useState(false);
-
+  
   const [isKriToleranceSuggestionsModalOpen, setIsKriToleranceSuggestionsModalOpen] = useState(false);
+  // Using state for suggestions received from AI Action
   const [aiKriToleranceSuggestions, setAiKriToleranceSuggestions] = useState<any | null>(null); // Ganti 'any' dengan tipe yang lebih spesifik
   const [isAIKriToleranceLoading, setIsAIKriToleranceLoading] = useState(false);
 
@@ -155,6 +157,7 @@ export default function RiskCauseAnalysisPage() {
   const riskAppetiteFromUser = useMemo(() => appUser?.riskAppetite ?? 5, [appUser]);
   const uprDisplayName = useMemo(() => appUser?.displayName || 'UPR...', [appUser]);
 
+  // State to store the 'from' query parameter specifically for the back button logic
   const riskCauseIdQueryFromParam = searchParams.get('from'); 
 
   const returnPathForButton = useMemo(() => {
@@ -165,8 +168,10 @@ export default function RiskCauseAnalysisPage() {
     return '/risk-analysis'; // Fallback umum
   }, [searchParams, parentPotentialRisk?.id, riskCauseIdQueryFromParam]);
 
+  // --- Effects ---
+
   // useEffect untuk mereset form dan AI suggestions ketika currentRiskCause berubah
-  useEffect(() => {
+ useEffect(() => {
     if (currentRiskCause) {
       console.log("[RiskCauseAnalysisPage] currentRiskCause changed, resetting form with:", {
         kri: currentRiskCause.keyRiskIndicator,
@@ -189,7 +194,7 @@ export default function RiskCauseAnalysisPage() {
       setAiLikelihoodImpactSuggestion(null);
       setAiKriToleranceSuggestions(null);
     }
-  }, [currentRiskCause, reset]);
+ }, [currentRiskCause, reset]);
 
 
   // useEffect utama untuk mengambil data
@@ -286,7 +291,7 @@ export default function RiskCauseAnalysisPage() {
       isActive = false; // Cleanup function untuk mencegah update state pada unmounted component
       console.log("[RiskCauseAnalysisPage] useEffect for main data fetch CLEANUP.");
     };
-  }, [riskCauseId, currentUserId, currentPeriod, isProfileComplete, authLoading, profileLoading, store, reset, router, toast, searchParams]); // returnPathForButton sengaja dihilangkan untuk mencegah loop
+  }, [riskCauseId, currentUserId, currentPeriod, isProfileComplete, authLoading, profileLoading, store, reset, router, toast, returnPathForButton]); 
 
 
   const displayedControls = useMemo(() => {
