@@ -6,5 +6,5 @@
 </template>
   
   <script setup>
-    import { Toaster } from '@/components/ui/sonner' // Sesuaikan path jika diperlukan
+  import { Toaster } from '@/components/ui/sonner'
   </script>

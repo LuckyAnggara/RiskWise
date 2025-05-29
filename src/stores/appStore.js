@@ -28,55 +28,74 @@ export const useAppStore = defineStore('app', {
     // ... getters
   },
   actions: {
+    async getUser(userId) {
+      console.log('Instance Supabase:', supabase);
+      console.log('getUser dipanggil dengan id:', userId);
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', userId)
+        .single();
+
+      if (error) {
+        console.error('Supabase error:', error);
+      } else {
+        console.log('User data:', data);
+        this.userData = data;
+      }
+    },
     async fetchAppUserProfile(userId) {
       if (!userId) {
         this.appUser = null;
         this.isProfileComplete = false;
+        this.profileLoading = false; // Pastikan di-set false
         return;
       }
       this.profileLoading = true;
+      this.getUser(userId)
       try {
         const { data, error } = await supabase
           .from('users')
           .select('*')
           .eq('id', userId)
           .single();
-        if (error && error.code !== 'PGRST116') { // PGRST116: no rows found
-            console.error("Error fetching app user profile:", error);
-            throw error;
+    
+        if (error && error.code !== 'PGRST116') {
+          console.error("[AppStore] fetchAppUserProfile: Error fetching profile:", error);
+          throw error;
         }
-        this.appUser = data;
-        this.checkProfileCompleteness();
-        
-        // Panggil triggerInitialDataFetch setelah appUser berhasil dimuat dan profil lengkap
+        this.appUser = data; // Bisa null jika PGRST116
+        console.log('[AppStore] fetchAppUserProfile: Profile data received:', data);
+        this.checkProfileCompleteness(); // Panggil ini setelah appUser di-set
+    
         if (this.isProfileComplete && this.appUser && this.appUser.id && this.appUser.active_period) {
-            this.triggerInitialDataFetch(this.appUser.id, this.appUser.active_period);
+            // this.triggerInitialDataFetch(this.appUser.id, this.appUser.active_period); // Mungkin tidak perlu di sini jika trigger dari guard/layout
         } else if (!this.isProfileComplete) {
-            this.resetAllData();
+            // this.resetAllData(); // Mungkin terlalu agresif, tergantung alur
         }
-
       } catch (err) {
-        console.error('Failed to fetch app user profile:', err);
+        console.error('[AppStore] fetchAppUserProfile: Failed to fetch profile:', err);
         this.appUser = null;
-        this.isProfileComplete = false;
-        this.resetAllData();
+        this.isProfileComplete = false; // Pastikan di-set false
+        // this.resetAllData();
       } finally {
-        this.profileLoading = false;
+        this.profileLoading = false; // SANGAT PENTING
+        console.log('[AppStore] fetchAppUserProfile: Finished. profileLoading:', this.profileLoading, 'isProfileComplete:', this.isProfileComplete);
       }
     },
     checkProfileCompleteness() {
       if (!this.appUser) {
         this.isProfileComplete = false;
-        return;
+      } else {
+        this.isProfileComplete = !!(
+          this.appUser.display_name &&
+          this.appUser.upr_id && // Pastikan field ini sesuai dengan nama kolom di DB Anda
+          this.appUser.active_period &&
+          this.appUser.available_periods &&
+          this.appUser.available_periods.length > 0
+        );
       }
-      // Sesuaikan kondisi ini dengan definisi profil lengkap Anda di Supabase
-      this.isProfileComplete = !!(
-        this.appUser.display_name &&
-        this.appUser.upr_id &&
-        this.appUser.active_period &&
-        this.appUser.available_periods &&
-        this.appUser.available_periods.length > 0
-      );
+      console.log('[AppStore] checkProfileCompleteness: isProfileComplete set to', this.isProfileComplete);
     },
     clearAppUserProfile() {
         this.appUser = null;
