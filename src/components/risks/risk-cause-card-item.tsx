@@ -1,12 +1,11 @@
 
 "use client";
 
-import type { RiskCause, LikelihoodLevelDesc, ImpactLevelDesc } from '@/lib/types';
+import type { RiskCause } from '@/lib/types';
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"; 
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Settings2, BarChart3, Trash2 } from 'lucide-react';
-import { LIKELIHOOD_LEVELS_DESC_MAP, IMPACT_LEVELS_DESC_MAP, type CalculatedRiskLevelCategory } from '@/lib/types';
 import Link from 'next/link';
 import {
   DropdownMenu,
@@ -14,25 +13,25 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { getCalculatedRiskLevel, getRiskLevelColor } from '@/app/risk-cause-analysis/[riskCauseId]/page';
+import { getCalculatedRiskLevel, getRiskLevelColor } from '@/app/risk-cause-analysis/[riskCauseId]/page'; // Assuming these are still exported
 
 interface RiskCauseCardItemProps {
   riskCause: RiskCause;
-  potentialRiskFullCode: string; 
-  returnPath: string;
-  canDelete: boolean; 
-  onDeleteClick?: () => void; 
+  potentialRiskFullCode: string; // e.g., G1.PR1
+  returnPath: string; // Path to return to after analysis, e.g., /all-risks/manage/[potentialRiskId]
+  canDelete: boolean;
+  onDeleteClick?: () => void;
 }
 
-export function RiskCauseCardItem({ 
-    riskCause, 
-    potentialRiskFullCode, 
-    returnPath, 
-    canDelete,
-    onDeleteClick 
+export function RiskCauseCardItem({
+  riskCause,
+  potentialRiskFullCode,
+  returnPath,
+  canDelete,
+  onDeleteClick
 }: RiskCauseCardItemProps) {
   const causeCode = `${potentialRiskFullCode}.PC${riskCause.sequenceNumber || '?'}`;
-  const {level: causeRiskLevelText, score: causeRiskScore} = getCalculatedRiskLevel(riskCause.likelihood, riskCause.impact);
+  const { level: causeRiskLevelText, score: causeRiskScore } = getCalculatedRiskLevel(riskCause.likelihood, riskCause.impact);
 
   return (
     <Card className="flex flex-col h-full">
@@ -50,14 +49,14 @@ export function RiskCauseCardItem({
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem asChild>
-                   <Link href={`/risk-cause-analysis/${riskCause.id}?from=${encodeURIComponent(returnPath)}`}>
+                  <Link href={`/risk-cause-analysis/${riskCause.id}?from=${encodeURIComponent(returnPath)}`}>
                     <BarChart3 className="mr-2 h-4 w-4" /> Analisis Detail
                   </Link>
                 </DropdownMenuItem>
-                <DropdownMenuItem 
-                    onClick={onDeleteClick} 
-                    className="text-destructive focus:text-destructive focus:bg-destructive/10" 
-                    disabled={!canDelete}
+                <DropdownMenuItem
+                  onClick={onDeleteClick}
+                  className="text-destructive focus:text-destructive focus:bg-destructive/10"
+                  disabled={!canDelete}
                 >
                   <Trash2 className="mr-2 h-4 w-4" /> Hapus
                 </DropdownMenuItem>
@@ -82,13 +81,13 @@ export function RiskCauseCardItem({
           <div>
             <p className="font-medium text-foreground">Kemungkinan:</p>
             <Badge variant={riskCause.likelihood ? "outline" : "ghost"} className={`text-[10px] ${!riskCause.likelihood ? "text-muted-foreground" : ""}`}>
-              {riskCause.likelihood ? `${riskCause.likelihood}` : 'N/A'}
+              {riskCause.likelihood || 'N/A'}
             </Badge>
           </div>
           <div>
             <p className="font-medium text-foreground">Dampak:</p>
             <Badge variant={riskCause.impact ? "outline" : "ghost"} className={`text-[10px] ${!riskCause.impact ? "text-muted-foreground" : ""}`}>
-              {riskCause.impact ? `${riskCause.impact}` : 'N/A'}
+              {riskCause.impact || 'N/A'}
             </Badge>
           </div>
           <div>
@@ -101,13 +100,11 @@ export function RiskCauseCardItem({
       </CardContent>
       <CardFooter className="pt-2 pb-3">
         <Link href={`/risk-cause-analysis/${riskCause.id}?from=${encodeURIComponent(returnPath)}`} className="w-full">
-            <Button variant="outline" size="sm" className="w-full text-xs">
-                 <BarChart3 className="mr-2 h-3 w-3" /> Analisis Detail Penyebab
-            </Button>
+          <Button variant="outline" size="sm" className="w-full text-xs">
+            <BarChart3 className="mr-2 h-3 w-3" /> Analisis Detail Penyebab
+          </Button>
         </Link>
       </CardFooter>
     </Card>
   );
 }
-
-    
