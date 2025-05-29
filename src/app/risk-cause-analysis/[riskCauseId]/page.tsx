@@ -1,4 +1,3 @@
-
 // src/app/risk-cause-analysis/[riskCauseId]/page.tsx
 "use client";
 
@@ -29,7 +28,7 @@ import { KriToleranceAISuggestionsModal } from '@/components/risks/kri-tolerance
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { format, parseISO, isValid as isValidDate } from 'date-fns';
-// import { id as localeID } from 'date-fns/locale'; 
+// import { id as localeID } from 'date-fns/locale'; // date-fns locale for id if needed
 
 import { useAuth } from '@/contexts/auth-context';
 import { useAppStore } from '@/stores/useAppStore';
@@ -39,8 +38,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { shallow } from 'zustand/shallow'; // Import shallow
 
 
+// Helper functions (assuming they are correctly defined elsewhere or here)
 export const getCalculatedRiskLevel = (
   likelihood: LikelihoodLevelDesc | null,
   impact: ImpactLevelDesc | null
@@ -91,6 +92,7 @@ export const getControlGuidance = (riskLevel: CalculatedRiskLevelCategory | 'N/A
   }
 };
 
+
 const riskCauseAnalysisSchema = z.object({
   keyRiskIndicator: z.string().nullable(),
   riskTolerance: z.string().nullable(),
@@ -111,8 +113,8 @@ export default function RiskCauseAnalysisPage() {
   const { controlMeasures, controlMeasuresLoading } = useAppStore(state => ({
     controlMeasures: state.controlMeasures,
     controlMeasuresLoading: state.controlMeasuresLoading,
-  }));
-  
+  }), shallow); // Use shallow equality
+
   const { reset, control, watch, setValue, getValues, handleSubmit, formState: { errors: analysisFormErrors } } = useForm<RiskCauseAnalysisFormData>({
     resolver: zodResolver(riskCauseAnalysisSchema),
     defaultValues: {
@@ -122,7 +124,7 @@ export default function RiskCauseAnalysisPage() {
       impact: null,
     }
   });
-
+  
   const [localDataLoading, setLocalDataLoading] = useState(true);
   const [currentRiskCause, setCurrentRiskCause] = useState<RiskCause | null>(null);
   const [parentPotentialRisk, setParentPotentialRisk] = useState<PotentialRisk | null>(null);
@@ -162,28 +164,30 @@ export default function RiskCauseAnalysisPage() {
   const uprDisplayName = useMemo(() => appUser?.displayName || 'UPR Tidak Ditemukan', [appUser]);
 
   const riskCauseIdQueryFromParam = searchParams.get('from');
+
   const returnPathForButton = useMemo(() => {
-    const fromQuery = riskCauseIdQueryFromParam;
+    const fromQuery = riskCauseIdQueryFromParam; // from searchParams
     if (fromQuery) return fromQuery;
+    // Fallback if 'from' is not present, try to construct from parentPotentialRisk
     if (parentPotentialRisk?.id) return `/all-risks/manage/${parentPotentialRisk.id}`;
-    return '/risk-analysis'; 
-  }, [riskCauseIdQueryFromParam, parentPotentialRisk?.id]);
+    return '/risk-analysis'; // Absolute fallback
+  }, [searchParams, parentPotentialRisk?.id, riskCauseIdQueryFromParam]);
 
 
-  // Effect for fetching main page data (RiskCause, PotentialRisk, Goal)
   useEffect(() => {
-    let isActive = true;
-    console.log(`[RiskCauseAnalysisPage] Main useEffect TRIGGERED. RiskCauseID: ${riskCauseId}, UserID: ${currentUserId}, Period: ${currentPeriod}`);
+    let isActive = true; // Flag to prevent state updates on unmounted component
+    console.log(`[RiskCauseAnalysisPage] Main useEffect TRIGGERED. RC_ID: ${riskCauseId}, UserID: ${currentUserId}, Period: ${currentPeriod}, AuthLoading: ${authLoading}, ProfileLoading: ${profileLoading}, ProfileComplete: ${isProfileComplete}`);
 
     async function loadPageData() {
       if (!isActive) return;
       console.log(`[RiskCauseAnalysisPage] loadPageData: Fetching data for RC_ID: ${riskCauseId}, UserID: ${currentUserId}, Period: ${currentPeriod}`);
       
       setLocalDataLoading(true);
+      // Reset states before fetching new data
       setCurrentRiskCause(null);
       setParentPotentialRisk(null);
       setGrandParentGoal(null);
-      // store.setControlMeasures([]); // This line was removed, store manages its own state
+      // store.setControlMeasures([]) was removed here - fetchControlMeasures handles replacement
       setAiLikelihoodImpactSuggestion(null);
       setAiKriToleranceSuggestions(null);
       reset({ keyRiskIndicator: null, riskTolerance: null, likelihood: null, impact: null });
@@ -225,20 +229,9 @@ export default function RiskCauseAnalysisPage() {
 
       } catch (error: any) {
         if (!isActive) return;
-        let displayErrorMessage: string;
-        if (error instanceof Error && error.message) {
-            displayErrorMessage = error.message;
-        } else {
-            displayErrorMessage = String(error);
-        }
-        
-        if (displayErrorMessage.toLowerCase().includes('maximum call stack size exceeded')) {
-            console.error("[RiskCauseAnalysisPage] Error in loadPageData: Caught a 'Maximum call stack size exceeded' error during data fetch.");
-            toast({ title: "Kesalahan Kritis Memuat Data", description: "Terjadi error rekursi saat memuat data. Harap hubungi administrator.", variant: "destructive" });
-        } else {
-            console.error("[RiskCauseAnalysisPage] Error in loadPageData:", displayErrorMessage.substring(0, 500));
-            toast({ title: "Kesalahan Memuat Data", description: displayErrorMessage.substring(0, 200), variant: "destructive" });
-        }
+        const errorMessage = error.message || String(error);
+        console.error("[RiskCauseAnalysisPage] Error in loadPageData:", errorMessage);
+        toast({ title: "Kesalahan Memuat Data", description: errorMessage, variant: "destructive" });
         router.push(returnPathForButton); 
       } finally {
         if (isActive) {
@@ -255,7 +248,7 @@ export default function RiskCauseAnalysisPage() {
       console.log("[RiskCauseAnalysisPage] Main useEffect: Conditions NOT met, not calling loadPageData.", 
         { riskCauseId, currentUserId, currentPeriod, isProfileComplete, authLoading, profileLoading });
       if(!authLoading && !profileLoading) {
-        setLocalDataLoading(false); 
+        setLocalDataLoading(false); // Ensure loading stops if pre-conditions aren't met after auth check
       }
     }
     return () => { 
@@ -274,10 +267,9 @@ export default function RiskCauseAnalysisPage() {
       router, 
       toast, 
       searchParams, // from next/navigation, stable
-      returnPathForButton // from useMemo
+      returnPathForButton // Added based on previous analysis
   ]);
   
-  // useEffect to reset form when currentRiskCause changes (actual data loaded)
   useEffect(() => {
     if (currentRiskCause) {
       const formValues = {
@@ -321,8 +313,13 @@ export default function RiskCauseAnalysisPage() {
     };
 
     try {
-      await store.updateRiskCause(currentRiskCause.id, updatedRiskCauseData);
-      toast({ title: "Sukses", description: `Analisis untuk penyebab risiko ${riskCauseCodeDisplay} telah disimpan.` });
+      const updatedCause = await store.updateRiskCause(currentRiskCause.id, updatedRiskCauseData);
+      if (updatedCause) {
+        setCurrentRiskCause(updatedCause); // Update local state to reflect changes, especially for analysisUpdatedAt
+        toast({ title: "Sukses", description: `Analisis untuk penyebab risiko ${riskCauseCodeDisplay} telah disimpan.` });
+      } else {
+        toast({ title: "Gagal Menyimpan", description: "Gagal memperbarui analisis penyebab risiko di store.", variant: "destructive" });
+      }
     } catch (error: any) {
       const errorMessage = error.message || String(error);
       console.error("[RiskCauseAnalysisPage] Error saving risk cause analysis:", errorMessage);
@@ -459,7 +456,7 @@ export default function RiskCauseAnalysisPage() {
 
   const pageIsActuallyLoading = authLoading || profileLoading || localDataLoading || controlMeasuresLoading;
 
-  if (authLoading || profileLoading || (localDataLoading && !currentRiskCause) ) { // Keep showing loader if essential context/data is missing
+  if (authLoading || profileLoading || (localDataLoading && !currentRiskCause) ) { 
     return (
       <div className="flex flex-col items-center justify-center h-screen">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
@@ -710,15 +707,15 @@ export default function RiskCauseAnalysisPage() {
       <Card>
         <CardHeader>
           <CardTitle>Rencana Pengendalian Risiko</CardTitle>
-           {calculatedRiskScore !== null && riskAppetiteFromUser !== null && calculatedRiskScore <= riskAppetiteFromUser && (
-            <Alert variant="default" className="mt-2 text-sm bg-sky-50 dark:bg-sky-900/30 border-sky-200 dark:border-sky-700">
-              <Info className="h-4 w-4 text-sky-700 dark:text-sky-300" />
-              <AlertTitle className="font-semibold text-sky-800 dark:text-sky-200">Informasi Selera Risiko</AlertTitle>
-              <AlertDescription className="text-sky-700 dark:text-sky-300">
-                Berdasarkan Selera Risiko Anda (batas: {riskAppetiteFromUser}), penyebab risiko ini dengan skor tingkat risiko {calculatedRiskScore} mungkin tidak memerlukan tindakan pengendalian prioritas tinggi. Pertimbangkan efisiensi sumber daya.
-              </AlertDescription>
-            </Alert>
-          )}
+            {calculatedRiskScore !== null && riskAppetiteFromUser !== null && calculatedRiskScore <= riskAppetiteFromUser && (
+              <Alert variant="default" className="mt-2 text-sm bg-sky-50 dark:bg-sky-900/30 border-sky-200 dark:border-sky-700">
+                <Info className="h-4 w-4 text-sky-700 dark:text-sky-300" />
+                <AlertTitle className="font-semibold text-sky-800 dark:text-sky-200">Informasi Selera Risiko</AlertTitle>
+                <AlertDescription className="text-sky-700 dark:text-sky-300">
+                  Berdasarkan Selera Risiko Anda (batas: {riskAppetiteFromUser}), penyebab risiko ini dengan skor tingkat risiko {calculatedRiskScore} mungkin tidak memerlukan tindakan pengendalian prioritas tinggi. Pertimbangkan efisiensi sumber daya.
+                </AlertDescription>
+              </Alert>
+            )}
           <CardDescription className="mt-1">
             {controlGuidanceText}
           </CardDescription>
@@ -767,7 +764,7 @@ export default function RiskCauseAnalysisPage() {
                         <TableCell className="text-xs max-w-[150px] truncate" title={controlItem.keyControlIndicator || ''}>{controlItem.keyControlIndicator || '-'}</TableCell>
                         <TableCell className="text-xs max-w-[150px] truncate" title={controlItem.target || ''}>{controlItem.target || '-'}</TableCell>
                         <TableCell className="text-xs max-w-[150px] truncate" title={controlItem.responsiblePerson || ''}>{controlItem.responsiblePerson || '-'}</TableCell>
-                        <TableCell className="text-xs">{controlItem.deadline && isValidDate(parseISO(controlItem.deadline)) ? format(parseISO(controlItem.deadline), "dd/MM/yyyy", { locale: { localize: {} as any, formatLong: {} as any } as any }) : '-'}</TableCell>
+                        <TableCell className="text-xs">{controlItem.deadline && isValidDate(parseISO(controlItem.deadline)) ? format(parseISO(controlItem.deadline), "dd/MM/yyyy"/*, { locale: localeID }*/) : '-'}</TableCell>
                         <TableCell className="text-xs text-right">{controlItem.budget ? controlItem.budget.toLocaleString('id-ID') : '-'}</TableCell>
                         <TableCell className="text-right">
                            <DropdownMenu>
