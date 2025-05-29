@@ -4,7 +4,7 @@
 export const LIKELIHOOD_LEVELS_DESC_MAP = {
   "Hampir tidak terjadi (1)": 1,
   "Jarang terjadi (2)": 2,
-  "Kadang Terjadi (3)": 3,
+  "Kadang Terjadi (3)": 3, // Pastikan konsisten dengan input pengguna jika ada case sensitivity
   "Sering terjadi (4)": 4,
   "Hampir pasti terjadi (5)": 5,
 } as const;
@@ -60,11 +60,11 @@ export interface Goal {
   id: string;
   name: string;
   description: string;
-  code: string; // e.g., "A1", "B2"
+  code: string; 
   userId: string;
   period: string;
-  createdAt: string; // ISO string
-  updatedAt?: string; // ISO string
+  createdAt: string; 
+  updatedAt?: string; 
 }
 
 export interface PotentialRisk {
@@ -72,48 +72,48 @@ export interface PotentialRisk {
   goalId: string;
   userId: string;
   period: string;
-  sequenceNumber: number; // Nomor urut untuk PR di dalam Goal, e.g., 1, 2, 3
+  sequenceNumber: number; 
   description: string;
   category: RiskCategory | null;
   owner: string | null;
-  identifiedAt: string; // ISO string
-  updatedAt?: string; // ISO string
+  identifiedAt: string; 
+  updatedAt?: string; 
 }
 
 export interface RiskCause {
   id: string;
   potentialRiskId: string;
-  goalId: string; // Denormalized for easier querying/context
+  goalId: string; 
   userId: string;
   period: string;
-  sequenceNumber: number; // Nomor urut untuk RC di dalam PotentialRisk, e.g., 1, 2, 3
+  sequenceNumber: number; 
   description: string;
   source: RiskSource;
   keyRiskIndicator: string | null;
   riskTolerance: string | null;
   likelihood: LikelihoodLevelDesc | null;
   impact: ImpactLevelDesc | null;
-  createdAt: string; // ISO string
-  analysisUpdatedAt?: string; // ISO string
+  createdAt: string; 
+  analysisUpdatedAt?: string; 
 }
 
 export interface ControlMeasure {
   id: string;
   riskCauseId: string;
-  potentialRiskId: string; // Denormalized
-  goalId: string; // Denormalized
+  potentialRiskId: string; 
+  goalId: string; 
   userId: string;
   period: string;
   controlType: ControlMeasureTypeKey;
-  sequenceNumber: number; // Nomor urut untuk CM di dalam RiskCause berdasarkan type
+  sequenceNumber: number; 
   description: string;
   keyControlIndicator: string | null;
   target: string | null;
   responsiblePerson: string | null;
-  deadline: string | null; // ISO string date
+  deadline: string | null; 
   budget: number | null;
-  createdAt: string; // ISO string
-  updatedAt?: string; // ISO string
+  createdAt: string; 
+  updatedAt?: string; 
 }
 
 export type UserRole = 'admin' | 'userSatker';
@@ -121,16 +121,16 @@ export type UserRole = 'admin' | 'userSatker';
 export interface AppUser {
   uid: string;
   email: string | null;
-  displayName: string | null; // Ini juga akan menjadi Nama UPR
+  displayName: string | null; 
   photoURL: string | null;
   role: UserRole;
-  uprId: string | null; // Akan selalu sama dengan displayName
+  uprId: string | null; 
   activePeriod: string | null;
   availablePeriods: string[] | null;
-  riskAppetite: number | null; // Selera Risiko, default 5
+  riskAppetite: number | null; 
   monitoringSettings?: MonitoringSettings | null;
-  createdAt: string; // ISO string
-  updatedAt?: string; // ISO string
+  createdAt: string; 
+  updatedAt?: string; 
 }
 
 export interface MonitoringSession {
@@ -138,11 +138,11 @@ export interface MonitoringSession {
   userId: string;
   period: string; 
   name: string; 
-  startDate: string; // ISO string date
-  endDate: string;   // ISO string date
+  startDate: string; 
+  endDate: string;   
   status: 'Aktif' | 'Selesai' | 'Dibatalkan';
-  createdAt: string; // ISO string date
-  updatedAt?: string; // ISO string date
+  createdAt: string; 
+  updatedAt?: string; 
 }
 
 export interface MonitoredControlMeasureData {
@@ -165,12 +165,60 @@ export interface RiskExposure {
   exposureValue: number | null; 
   exposureUnit: string | null; 
   exposureNotes?: string | null;
-  recordedAt: string; // ISO string date
+  recordedAt: string; 
   monitoredControls?: MonitoredControlMeasureData[]; 
-  updatedAt?: string; // ISO string date
+  updatedAt?: string; 
 }
 
 
 export const getControlTypeName = (typeKey: ControlMeasureTypeKey): string => {
   return CONTROL_MEASURE_TYPES[typeKey];
+};
+
+export const getCalculatedRiskLevel = (likelihood: LikelihoodLevelDesc | null, impact: ImpactLevelDesc | null): { level: CalculatedRiskLevelCategory | 'N/A'; score: number | null } => {
+  if (!likelihood || !impact) return { level: 'N/A', score: null };
+  
+  const likelihoodValue = LIKELIHOOD_LEVELS_DESC_MAP[likelihood];
+  const impactValue = IMPACT_LEVELS_DESC_MAP[impact];
+
+  if (likelihoodValue === undefined || impactValue === undefined) return { level: 'N/A', score: null };
+
+  const score = likelihoodValue * impactValue;
+
+  let level: CalculatedRiskLevelCategory;
+  if (score >= 20) level = 'Sangat Tinggi';
+  else if (score >= 16) level = 'Tinggi';
+  else if (score >= 12) level = 'Sedang';
+  else if (score >= 6) level = 'Rendah';
+  else if (score >= 1) level = 'Sangat Rendah';
+  else level = 'Sangat Rendah'; // Default to Sangat Rendah if score is 0 or less, though not expected with 1-5 scale
+
+  return { level, score };
+};
+
+export const getRiskLevelColor = (level: CalculatedRiskLevelCategory | 'N/A') => {
+  switch (level?.toLowerCase()) {
+    case 'sangat tinggi': return 'bg-red-600 hover:bg-red-700 text-white';
+    case 'tinggi': return 'bg-orange-500 hover:bg-orange-600 text-white';
+    case 'sedang': return 'bg-yellow-400 hover:bg-yellow-500 text-black dark:bg-yellow-500 dark:text-black';
+    case 'rendah': return 'bg-blue-500 hover:bg-blue-600 text-white'; 
+    case 'sangat rendah': return 'bg-green-500 hover:bg-green-600 text-white';
+    default: return 'bg-gray-400 hover:bg-gray-500 text-white';
+  }
+};
+
+// Fungsi ini juga lebih baik ditaruh di sini karena berkaitan dengan CalculatedRiskLevelCategory
+export const getControlGuidance = (riskLevel: CalculatedRiskLevelCategory | 'N/A'): string => {
+  switch (riskLevel) {
+    case 'Sangat Tinggi':
+    case 'Tinggi':
+      return "Disarankan: Preventif (Prv), Mitigasi (RM), dan Korektif (Crr).";
+    case 'Sedang':
+      return "Disarankan: Preventif (Prv) dan Mitigasi (RM).";
+    case 'Rendah':
+    case 'Sangat Rendah':
+      return "Disarankan: Preventif (Prv).";
+    default:
+      return "Tentukan tingkat risiko penyebab terlebih dahulu untuk mendapatkan panduan pengendalian.";
+  }
 };
