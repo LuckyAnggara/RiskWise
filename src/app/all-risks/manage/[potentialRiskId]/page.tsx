@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { useParams, useRouter, useSearchParams, usePathname } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { PageHeader } from '@/components/ui/page-header';
 import { Button } from '@/components/ui/button';
@@ -13,8 +13,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import type { PotentialRisk, Goal, RiskCategory, RiskCause, RiskSource, AppUser, CalculatedRiskLevelCategory } from '@/lib/types';
-import { RISK_CATEGORIES, RISK_SOURCES } from '@/lib/types';
+import type { PotentialRisk, Goal, RiskCategory, RiskCause, RiskSource, AppUser } from '@/lib/types';
+import { RISK_CATEGORIES, RISK_SOURCES, LIKELIHOOD_LEVELS_DESC_MAP, IMPACT_LEVELS_DESC_MAP, CalculatedRiskLevelCategory } from '@/lib/types';
 import { useForm, type SubmitHandler, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -22,7 +22,7 @@ import { ArrowLeft, PlusCircle, Trash2, Loader2, Save, BarChart3, Wand2, Setting
 import { useToast } from "@/hooks/use-toast";
 import { Separator } from '@/components/ui/separator';
 import { BrainstormCausesContextModal } from '@/components/risks/brainstorm-causes-context-modal';
-import { BrainstormSuggestionsModal, type AISuggestionItem as AICSuggestionItem } from '@/components/risks/brainstorm-suggestions-modal';
+import { BrainstormSuggestionsModal, type AISuggestionItem as AICSuggestionItem } from '@/components/risks/brainstorm-suggestions-modal'; // Renamed AISuggestionItem
 
 import {
   DropdownMenu,
@@ -36,7 +36,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 
 import { useAuth } from '@/contexts/auth-context';
 import { useAppStore } from '@/stores/useAppStore';
-
+import { usePathname } from 'next/navigation'; // Correct import for usePathname
 
 const potentialRiskFormSchema = z.object({
   description: z.string().min(10, "Deskripsi potensi risiko minimal 10 karakter."),
@@ -72,11 +72,21 @@ export default function ManagePotentialRiskPage() {
   const store = useAppStore();
   
   const [pageIsLoading, setPageIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
+  const [isSavingPR, setIsSavingPR] = useState(false);
   
-  const allGoals = store.goals; 
+  const [allGoals, setAllGoals] = useState<Goal[]>([]); 
   const [currentPotentialRisk, setCurrentPotentialRisk] = useState<PotentialRisk | null>(null);
+  
+  const [causeViewMode, setCauseViewMode] = useState<'table' | 'card'>('table');
+  const [causeToDelete, setCauseToDelete] = useState<RiskCause | null>(null);
+  const [isDeleteCauseAlertOpen, setIsDeleteCauseAlertOpen] = useState(false);
 
+  const [isBrainstormCausesContextModalOpen, setIsBrainstormCausesContextModalOpen] = useState(false);
+  const [isBrainstormCausesSuggestionsModalOpen, setIsBrainstormCausesSuggestionsModalOpen] = useState(false);
+  const [aiCauseSuggestions, setAICauseSuggestions] = useState<AICSuggestionItem[]>([]);
+
+  const { toast } = useToast();
+  
   const currentUserId = useMemo(() => currentUser?.uid || null, [currentUser]);
   const currentPeriod = useMemo(() => appUser?.activePeriod || null, [appUser]);
   const uprDisplayName = useMemo(() => appUser?.displayName || 'UPR...', [appUser]);
@@ -92,21 +102,9 @@ export default function ManagePotentialRiskPage() {
     return [];
   }, [store.riskCauses, currentPotentialRisk, currentUserId, currentPeriod]);
 
-
-  const [causeViewMode, setCauseViewMode] = useState<'table' | 'card'>('table');
-  const [causeToDelete, setCauseToDelete] = useState<RiskCause | null>(null);
-  const [isDeleteCauseAlertOpen, setIsDeleteCauseAlertOpen] = useState(false);
-
-  const [isBrainstormCausesContextModalOpen, setIsBrainstormCausesContextModalOpen] = useState(false);
-  const [isBrainstormCausesSuggestionsModalOpen, setIsBrainstormCausesSuggestionsModalOpen] = useState(false);
-  const [aiCauseSuggestions, setAICauseSuggestions] = useState<AICSuggestionItem[]>([]);
-
-
-  const { toast } = useToast();
-  
-  const defaultBackPath = useMemo(() => {
-    const from = searchParams.get('from');
-    if (from) return from;
+  const returnPath = useMemo(() => {
+    const fromQuery = searchParams.get('from');
+    if (fromQuery) return fromQuery;
     if (currentPotentialRisk?.goalId) return `/risks/${currentPotentialRisk.goalId}`;
     const goalIdFromQuery = searchParams.get('goalId');
     if (goalIdFromQuery) return `/risks/${goalIdFromQuery}`;
@@ -137,11 +135,10 @@ export default function ManagePotentialRiskPage() {
     defaultValues: { causeDescription: "", causeSource: "Internal" },
   });
 
-
   const fetchPageData = useCallback(async () => {
-    if (!currentUserId || !currentPeriod) {
-      console.warn("[ManagePRPage] fetchPageData: User context not ready. Aborting.");
-      setPageIsLoading(false);
+    if (!currentUserId || !currentPeriod || authLoading || profileLoading) {
+      console.warn("[ManagePRPage] fetchPageData: User context not ready or auth in progress. Aborting.", { currentUserId, currentPeriod, authLoading, profileLoading });
+      if (!authLoading && !profileLoading) setPageIsLoading(false);
       return;
     }
     let isActive = true;
@@ -151,90 +148,91 @@ export default function ManagePotentialRiskPage() {
     setCurrentPotentialRisk(null);
     resetPotentialRiskForm({ description: "", goalId: "", category: null, owner: "" });
 
-    // Pastikan goals sudah dimuat oleh store, jika tidak, panggil fetchGoals
-    if (store.goals.length === 0 && !store.goalsLoading) {
-      console.log("[ManagePRPage] No goals in store, attempting to fetch via store.fetchGoals.");
-      await store.fetchGoals(currentUserId, currentPeriod); // Ini akan memuat goals -> potentialRisks -> riskCauses
+    try {
+      const goalsResult = await store.fetchGoals(currentUserId, currentPeriod); // fetchGoals should now update store.goals
+      const fetchedGoalsFromStore = store.goals.filter(g => g.userId === currentUserId && g.period === currentPeriod);
+      
       if (!isActive) return;
-    }
-    
-    const goalIdFromQuery = searchParams.get('goalId');
-    const currentGoalsInStore = store.goals.filter(g => g.userId === currentUserId && g.period === currentPeriod);
-    const initialGoalId = goalIdFromQuery || (currentGoalsInStore.length > 0 ? currentGoalsInStore[0].id : "");
+      const sortedGoals = Array.isArray(fetchedGoalsFromStore) ? 
+        [...fetchedGoalsFromStore].sort((a, b) => (a.code || '').localeCompare(b.code || '', undefined, { numeric: true, sensitivity: 'base' })) : 
+        [];
+      setAllGoals(sortedGoals);
+      
+      const goalIdFromQuery = searchParams.get('goalId');
+      const initialGoalId = goalIdFromQuery || (sortedGoals.length > 0 ? sortedGoals[0].id : "");
 
-    if (isCreatingNew) {
+      if (isCreatingNew) {
         console.log("[ManagePRPage] Creating new PR. Setting goalId to:", initialGoalId);
         setPotentialRiskValue("goalId", initialGoalId);
-        if (currentGoalsInStore.length === 0 && goalIdFromQuery) {
-            console.warn("[ManagePRPage] No goals available yet, but goalId provided in query for new PR.");
+        if (sortedGoals.length === 0 && !goalIdFromQuery) {
+          console.warn("[ManagePRPage] No goals available for new PR, and no goalId in query. User might need to create a goal first.");
+          toast({ title: "Perhatian", description: "Tidak ada sasaran yang tersedia. Harap buat sasaran terlebih dahulu sebelum membuat potensi risiko.", variant: "warning", duration: 7000 });
         }
-        if (isActive) store.fetchRiskCausesForPR(null, currentUserId, currentPeriod); // Kosongkan/reset causes untuk PR baru
-    } else if (potentialRiskIdParam) {
+      } else if (potentialRiskIdParam) {
         console.log(`[ManagePRPage] Editing existing PR. Fetching PR ID: ${potentialRiskIdParam}`);
-        try {
-          let risk = store.potentialRisks.find(pr => pr.id === potentialRiskIdParam && pr.userId === currentUserId && pr.period === currentPeriod);
-          if (!risk) {
-             console.log(`[ManagePRPage] PR ${potentialRiskIdParam} not in store, fetching from service...`);
-             risk = await store.getPotentialRiskById(potentialRiskIdParam, currentUserId, currentPeriod);
+        let risk = await store.getPotentialRiskById(potentialRiskIdParam, currentUserId, currentPeriod);
+        if (!isActive) return;
+        if (risk) {
+          console.log("[ManagePRPage] PR found:", risk);
+          setCurrentPotentialRisk(risk);
+          resetPotentialRiskForm({
+            description: risk.description,
+            goalId: risk.goalId,
+            category: risk.category,
+            owner: risk.owner || "",
+          });
+          // Ensure causes for this PR are fetched if not already part of a global fetch
+          if (!store.riskCauses.some(rc => rc.potentialRiskId === risk?.id)) {
+            await store.fetchRiskCauses(currentUserId, currentPeriod); // This will fetch all for period, then filter
           }
-
-          if (!isActive) return;
-          if (risk) {
-            console.log("[ManagePRPage] PR found:", risk);
-            setCurrentPotentialRisk(risk);
-            resetPotentialRiskForm({
-              description: risk.description,
-              goalId: risk.goalId,
-              category: risk.category,
-              owner: risk.owner || "",
-            });
-            // Panggil fetchRiskCausesForPR untuk memuat causes spesifik untuk PR ini
-            if (isActive) store.fetchRiskCausesForPR(risk.id, currentUserId, currentPeriod);
-          } else {
-            console.warn(`[ManagePRPage] PR with ID ${potentialRiskIdParam} not found or context mismatch.`);
-            toast({ title: "Kesalahan", description: "Potensi Risiko tidak ditemukan atau tidak cocok dengan konteks pengguna/periode.", variant: "destructive" });
-            if (isActive) router.push(defaultBackPath);
-          }
-        } catch (error: any) {
-           if (!isActive) return;
-           const errorMessage = error.message || String(error);
-           console.error("[ManagePRPage] Error fetching potential risk by ID:", errorMessage);
-           toast({ title: "Gagal Memuat Potensi Risiko", description: errorMessage, variant: "destructive"});
-           if (isActive) router.push(defaultBackPath);
+        } else {
+          console.warn(`[ManagePRPage] PR with ID ${potentialRiskIdParam} not found or context mismatch.`);
+          toast({ title: "Kesalahan", description: "Potensi Risiko tidak ditemukan atau tidak cocok dengan konteks pengguna/periode.", variant: "destructive" });
+          if (isActive) router.push(returnPath);
         }
+      }
+    } catch (error: any) {
+      if (!isActive) return;
+      const errorMessage = error.message || String(error);
+      console.error("[ManagePRPage] Error during fetchPageData:", errorMessage);
+      toast({ title: "Gagal Memuat Data Halaman", description: errorMessage, variant: "destructive" });
+      if (isActive) router.push(returnPath);
+    } finally {
+      if (isActive) {
+        setPageIsLoading(false);
+        console.log("[ManagePRPage] fetchPageData finished.");
+      }
     }
-    
-    if (isActive) setPageIsLoading(false);
-    console.log("[ManagePRPage] fetchPageData finished.");
     return () => { isActive = false; };
   }, [
-      potentialRiskIdParam, isCreatingNew, resetPotentialRiskForm, router, toast, defaultBackPath, 
-      currentUserId, currentPeriod, searchParams, store, setPotentialRiskValue // store dan fungsi store lainnya stabil
+      potentialRiskIdParam, isCreatingNew, resetPotentialRiskForm, router, toast, returnPath, 
+      currentUserId, currentPeriod, searchParams, store, setPotentialRiskValue, authLoading, profileLoading
   ]);
+
 
   useEffect(() => {
     let timeoutId: NodeJS.Timeout;
     if (authLoading || profileLoading) {
+      console.log("[ManagePRPage] useEffect: Auth or profile still loading.");
       setPageIsLoading(true);
       return;
     }
-    if (!currentUser || !isProfileComplete ) {
-      setPageIsLoading(false); 
-      timeoutId = setTimeout(() => { 
-        if (!authLoading && !currentUser) {
-            router.push('/login');
-        } else if (!authLoading && !isProfileComplete && !pathname.startsWith('/profile-setup') && pathname !== '/settings') {
-            // Arahkan ke profile-setup hanya jika bukan di /settings
-            router.push('/profile-setup');
-        }
-      }, 100);
+    if (!currentUser) {
+      console.log("[ManagePRPage] useEffect: User not authenticated. Redirecting to /login.");
+      timeoutId = setTimeout(() => { router.push('/login'); }, 100);
       return;
+    }
+    if (!isProfileComplete && pathname !== '/profile-setup' && pathname !== '/settings') {
+        console.log("[ManagePRPage] useEffect: Profile incomplete. Redirecting to /profile-setup.");
+        timeoutId = setTimeout(() => { router.push('/profile-setup'); }, 100);
+        return;
     }
     
     if (currentUserId && currentPeriod && isProfileComplete) {
+      console.log("[ManagePRPage] useEffect: User context ready, calling fetchPageData.");
       fetchPageData();
     } else {
-        console.log("[ManagePRPage] useEffect: User context (currentUserId, currentPeriod, isProfileComplete) not fully ready. Skipping fetchPageData.");
+        console.log("[ManagePRPage] useEffect: User context not fully ready for fetchPageData. Skipping.", {currentUserId, currentPeriod, isProfileComplete});
         setPageIsLoading(false);
     }
     return () => clearTimeout(timeoutId);
@@ -242,20 +240,23 @@ export default function ManagePotentialRiskPage() {
 
 
   const onPotentialRiskSubmit: SubmitHandler<PotentialRiskFormData> = async (formData) => {
-    if (!currentUser || !currentUserId || !currentPeriod || !appUser) {
-      toast({ title: "Konteks Tidak Lengkap", description: "Informasi pengguna atau periode tidak tersedia.", variant: "destructive" });
-      setIsSaving(false);
+    setIsSavingPR(true);
+    const userIdForService = currentUser?.uid;
+    const periodForService = appUser?.activePeriod;
+
+    if (!userIdForService || !periodForService) {
+        toast({ title: "Kesalahan Kritis", description: "User ID atau Periode tidak valid. Harap coba lagi atau segarkan halaman.", variant: "destructive" });
+        setIsSavingPR(false);
+        return;
+    }
+    
+    const parentGoal = allGoals.find(g => g.id === formData.goalId && g.userId === userIdForService && g.period === periodForService);
+    if (!parentGoal) {
+      toast({ title: "Kesalahan", description: "Sasaran induk yang dipilih tidak valid atau tidak cocok dengan konteks.", variant: "destructive" });
+      setIsSavingPR(false);
       return;
     }
     
-    const parentGoal = store.goals.find(g => g.id === formData.goalId && g.userId === currentUserId && g.period === currentPeriod);
-    if (!parentGoal) {
-      toast({ title: "Kesalahan", description: "Sasaran induk yang dipilih tidak valid atau tidak cocok dengan konteks.", variant: "destructive" });
-      setIsSaving(false);
-      return;
-    }
-
-    setIsSaving(true);
     try {
       let savedPotentialRisk: PotentialRisk | null = null;
       const pRiskDataPayload: Omit<PotentialRisk, 'id' | 'identifiedAt' | 'userId' | 'period' | 'sequenceNumber' | 'goalId'> = {
@@ -264,44 +265,34 @@ export default function ManagePotentialRiskPage() {
         owner: formData.owner || null,
       };
 
-      if (isCreatingNew) {
-        const existingPRsForGoal = store.potentialRisks.filter(pr => pr.goalId === parentGoal.id && pr.userId === currentUserId && pr.period === currentPeriod);
-        const newSequenceNumber = (existingPRsForGoal.length || 0) + 1;
-        
-        const userIdForService = currentUser.uid;
-        const periodForService = appUser.activePeriod;
 
-        if (!userIdForService || !periodForService) {
-            toast({ title: "Kesalahan Kritis", description: "User ID atau Periode tidak valid saat mencoba menyimpan. Harap coba lagi.", variant: "destructive" });
-            setIsSaving(false);
-            return;
-        }
+      if (isCreatingNew) {
+        const existingPRsForGoal = store.potentialRisks.filter(pr => pr.goalId === parentGoal.id && pr.userId === userIdForService && pr.period === periodForService);
+        const newSequenceNumber = (existingPRsForGoal.reduce((max, pr) => Math.max(max, pr.sequenceNumber || 0), 0)) + 1;
         
         savedPotentialRisk = await store.addPotentialRisk(pRiskDataPayload, parentGoal.id, userIdForService, periodForService, newSequenceNumber);
         if (savedPotentialRisk) {
           const toastDescription = `Potensi Risiko "${savedPotentialRisk.description}" (Kode: ${parentGoal.code || '?'}.PR${savedPotentialRisk.sequenceNumber}) dibuat. Anda sekarang dapat menambahkan penyebabnya.`;
           toast({ title: "Sukses", description: toastDescription });
           setCurrentPotentialRisk(savedPotentialRisk); 
-          router.replace(`/all-risks/manage/${savedPotentialRisk.id}?from=${encodeURIComponent(defaultBackPath)}`); 
+          router.replace(`/all-risks/manage/${savedPotentialRisk.id}?from=${encodeURIComponent(returnPath)}`); 
         } else {
           throw new Error("Gagal membuat potensi risiko baru melalui store.");
         }
       } else if (currentPotentialRisk) {
-        const updateData: Partial<Omit<PotentialRisk, 'id' | 'userId' | 'period' | 'identifiedAt' | 'sequenceNumber' | 'updatedAt' | 'goalId'>> = { 
+        const updateData: Partial<Omit<PotentialRisk, 'id' | 'userId' | 'period' | 'identifiedAt' | 'sequenceNumber' | 'updatedAt' | 'goalId'>> & { goalId?: string } = { 
             description: formData.description,
             category: formData.category === NO_CATEGORY_SENTINEL ? null : formData.category as RiskCategory,
             owner: formData.owner || null,
         };
-        
-        let goalIdToUpdate = currentPotentialRisk.goalId;
-        if(currentPotentialRisk.goalId !== formData.goalId) {
-            (updateData as any).goalId = formData.goalId; 
-            goalIdToUpdate = formData.goalId; 
+        // Handle goal change if allowed (this requires more complex logic if causes/controls need to be re-associated)
+        if (currentPotentialRisk.goalId !== formData.goalId) {
+            updateData.goalId = formData.goalId; // Add goalId to update if it changed
         }
         
-        savedPotentialRisk = await store.updatePotentialRisk(currentPotentialRisk.id, updateData, goalIdToUpdate);
+        savedPotentialRisk = await store.updatePotentialRisk(currentPotentialRisk.id, updateData);
         if (savedPotentialRisk) {
-          const updatedParentGoal = store.goals.find(g => g.id === savedPotentialRisk!.goalId);
+          const updatedParentGoal = allGoals.find(g => g.id === savedPotentialRisk!.goalId);
           const toastDescription = `Potensi Risiko "${savedPotentialRisk.description}" (Kode: ${updatedParentGoal?.code || '?'}.PR${savedPotentialRisk.sequenceNumber}) diperbarui.`;
           toast({ title: "Sukses", description: toastDescription });
           setCurrentPotentialRisk(savedPotentialRisk); 
@@ -310,7 +301,7 @@ export default function ManagePotentialRiskPage() {
         }
       } else {
         toast({ title: "Kesalahan", description: "Tidak dapat menyimpan. Data potensi risiko tidak lengkap.", variant: "destructive" });
-        setIsSaving(false);
+        setIsSavingPR(false);
         return;
       }
     } catch (error: any) {
@@ -318,12 +309,15 @@ export default function ManagePotentialRiskPage() {
         console.error("[ManagePRPage] Error saving potential risk:", errorMessage);
         toast({ title: "Gagal Menyimpan", description: `Terjadi kesalahan saat menyimpan potensi risiko: ${errorMessage}`, variant: "destructive" });
     } finally {
-        setIsSaving(false);
+        setIsSavingPR(false);
     }
   };
 
   const onRiskCauseSubmit: SubmitHandler<RiskCauseFormData> = async (data) => {
-    if (!currentUser || !currentUserId || !currentPeriod || !appUser) {
+    const userIdForService = currentUser?.uid;
+    const periodForService = appUser?.activePeriod;
+
+    if (!userIdForService || !periodForService) {
         toast({ title: "Konteks Pengguna/Periode Hilang", variant: "destructive" });
         return;
     }
@@ -334,14 +328,14 @@ export default function ManagePotentialRiskPage() {
     
     try {
       const existingCausesForPR = displayedRiskCauses; 
-      const newSequenceNumber = (existingCausesForPR.length || 0) + 1;
+      const newSequenceNumber = (existingCausesForPR.reduce((max, rc) => Math.max(max, rc.sequenceNumber || 0), 0)) + 1;
 
       const newCauseData: Omit<RiskCause, 'id' | 'createdAt' | 'userId' | 'period' | 'potentialRiskId' | 'goalId' | 'sequenceNumber' > = {
           description: data.causeDescription,
           source: data.causeSource,
       };
       
-      const newCause = await store.addRiskCause(newCauseData, currentPotentialRisk.id, currentPotentialRisk.goalId, currentUserId, currentPeriod, newSequenceNumber);
+      const newCause = await store.addRiskCause(newCauseData, currentPotentialRisk.id, currentPotentialRisk.goalId, userIdForService, periodForService, newSequenceNumber);
       
       if (newCause) {
         const toastDescription = `Penyebab "${newCause.description}" (PC${newCause.sequenceNumber}) ditambahkan.`;
@@ -358,7 +352,10 @@ export default function ManagePotentialRiskPage() {
   };
 
   const handleDeleteRiskCauseSubmit = async () => {
-    if (!currentUser || !currentUserId || !currentPeriod || !appUser) {
+    const userIdForService = currentUser?.uid;
+    const periodForService = appUser?.activePeriod;
+    
+    if (!userIdForService || !periodForService) {
         toast({ title: "Konteks Pengguna/Periode Hilang", variant: "destructive" });
         setIsDeleteCauseAlertOpen(false); setCauseToDelete(null); return;
     }
@@ -368,13 +365,13 @@ export default function ManagePotentialRiskPage() {
     }
     
     try {
-      await store.deleteRiskCause(causeToDelete.id, currentUserId, currentPeriod); 
-      const toastDescription = `Penyebab "${causeToDelete.description}" (PC${causeToDelete.sequenceNumber}) dan data terkait telah dihapus.`;
+      await store.deleteRiskCause(causeToDelete.id, userIdForService, periodForService); 
+      const toastDescription = `Penyebab "${causeToDelete.description}" (PC${causeToDelete.sequenceNumber || '?'}) dan data terkait telah dihapus.`;
       toast({ title: "Penyebab Risiko Dihapus", description: toastDescription, variant: "destructive" });
     } catch (error: any) {
-        const errorMessage = error.message || String(error);
-        console.error("[ManagePRPage] Error deleting risk cause:", errorMessage);
-        toast({ title: "Gagal Menghapus", description: `Terjadi kesalahan: ${errorMessage}`, variant: "destructive" });
+      const errorMessage = error.message || String(error);
+      console.error("[ManagePRPage] Error deleting risk cause:", errorMessage);
+      toast({ title: "Gagal Menghapus", description: `Terjadi kesalahan: ${errorMessage}`, variant: "destructive" });
     } finally {
         setIsDeleteCauseAlertOpen(false);
         setCauseToDelete(null);
@@ -399,7 +396,10 @@ export default function ManagePotentialRiskPage() {
   };
 
   const handleSaveAISelectedCauses = async (selectedItems: AICSuggestionItem[]) => {
-     if (!currentUser || !currentUserId || !currentPeriod || !appUser) {
+    const userIdForService = currentUser?.uid;
+    const periodForService = appUser?.activePeriod;
+
+    if (!userIdForService || !periodForService) {
         toast({ title: "Konteks Pengguna/Periode Hilang", variant: "destructive" });
         setIsBrainstormCausesSuggestionsModalOpen(false); return;
     }
@@ -409,7 +409,7 @@ export default function ManagePotentialRiskPage() {
     }
 
     try {
-      let currentSequence = displayedRiskCauses.length; 
+      let currentSequence = displayedRiskCauses.reduce((max, rc) => Math.max(max, rc.sequenceNumber || 0), 0);
       const createdCausesPromises: Promise<RiskCause | null>[] = [];
 
       for (const item of selectedItems) {
@@ -419,7 +419,7 @@ export default function ManagePotentialRiskPage() {
             source: item.source || "Internal", 
         };
         createdCausesPromises.push(
-          store.addRiskCause(newCauseData, currentPotentialRisk.id, currentPotentialRisk.goalId, currentUserId, currentPeriod, currentSequence)
+          store.addRiskCause(newCauseData, currentPotentialRisk.id, currentPotentialRisk.goalId, userIdForService, periodForService, currentSequence)
         );
       }
       
@@ -440,10 +440,9 @@ export default function ManagePotentialRiskPage() {
     }
   };
 
-  const isLoadingPageContext = authLoading || profileLoading || store.goalsLoading || (!isCreatingNew && store.potentialRisksLoading && !currentPotentialRisk);
-  const isLoadingData = pageIsLoading || isLoadingPageContext;
+  const isLoadingPageContext = authLoading || profileLoading || pageIsLoading;
 
-  if (isLoadingData) {
+  if (isLoadingPageContext) {
     return (
       <div className="flex flex-col items-center justify-center h-screen">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
@@ -452,7 +451,7 @@ export default function ManagePotentialRiskPage() {
     );
   }
   
-  if (!currentUser || !isProfileComplete) {
+  if (!currentUser || !isProfileComplete) { 
     return (
         <div className="flex flex-col items-center justify-center h-screen">
             <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
@@ -460,10 +459,24 @@ export default function ManagePotentialRiskPage() {
         </div>
     );
   }
+  if (isCreatingNew && allGoals.length === 0 && !pageIsLoading && currentUserId){
+    // Tetap tampilkan form, tapi beri tahu user
+  } else if (!isCreatingNew && !currentPotentialRisk && !pageIsLoading && currentUserId) {
+     return (
+      <div className="flex flex-col items-center justify-center h-screen">
+        <p className="text-xl text-muted-foreground">Potensi risiko tidak ditemukan atau Anda tidak memiliki akses.</p>
+         <Link href={returnPath} passHref>
+            <Button variant="outline" className="mt-4">
+                <ArrowLeft className="mr-2 h-4 w-4" /> Kembali
+            </Button>
+          </Link>
+      </div>
+    );
+  }
 
-  const parentGoalForDisplay = store.goals.find(g => g.id === (currentPotentialRisk ? currentPotentialRisk.goalId : (isCreatingNew ? getPotentialRiskValues("goalId") : '')));
+  const parentGoalForDisplay = allGoals.find(g => g.id === (currentPotentialRisk ? currentPotentialRisk.goalId : (isCreatingNew ? getPotentialRiskValues("goalId") : '')));
   const goalCodeForPR = parentGoalForDisplay?.code || 'S?';
-  const potentialRiskCode = goalCodeForPR && currentPotentialRisk && typeof currentPotentialRisk.sequenceNumber === 'number' ? `${goalCodeForPR}.PR${currentPotentialRisk.sequenceNumber}` : (isCreatingNew ? "PR Baru" : "PR...");
+  const potentialRiskCode = currentPotentialRisk?.sequenceNumber ? `${goalCodeForPR}.PR${currentPotentialRisk.sequenceNumber}` : (isCreatingNew ? "PR Baru" : "PR...");
 
 
   return (
@@ -472,7 +485,7 @@ export default function ManagePotentialRiskPage() {
         title={isCreatingNew ? "Tambah Potensi Risiko Baru" : `Edit Potensi Risiko (${potentialRiskCode})`}
         description={`Kelola detail dan penyebab potensi risiko. UPR: ${uprDisplayName}, Periode: ${currentPeriod || '...'}.`}
         actions={
-          <Link href={defaultBackPath} passHref>
+          <Link href={returnPath} passHref>
             <Button variant="outline">
                 <ArrowLeft className="mr-2 h-4 w-4" /> Kembali
             </Button>
@@ -495,7 +508,7 @@ export default function ManagePotentialRiskPage() {
                     <Select
                         onValueChange={field.onChange}
                         value={field.value}
-                        disabled={(allGoals.filter(g => g.userId === currentUserId && g.period === currentPeriod).length === 0) || isSaving}
+                        disabled={(allGoals.filter(g => g.userId === currentUserId && g.period === currentPeriod).length === 0) || isSavingPR}
                     >
                         <SelectTrigger id="goalIdPotentialRisk" className={potentialRiskErrors.goalId ? "border-destructive" : ""}>
                         <SelectValue placeholder="Pilih sasaran" />
@@ -523,7 +536,7 @@ export default function ManagePotentialRiskPage() {
                 className={potentialRiskErrors.description ? "border-destructive" : ""}
                 rows={3}
                 placeholder="Jelaskan potensi risiko..."
-                disabled={isSaving}
+                disabled={isSavingPR}
               />
               {potentialRiskErrors.description && <p className="text-xs text-destructive mt-1">{potentialRiskErrors.description.message}</p>}
             </div>
@@ -538,7 +551,7 @@ export default function ManagePotentialRiskPage() {
                             <Select
                                 value={field.value || NO_CATEGORY_SENTINEL}
                                 onValueChange={(value) => field.onChange(value === NO_CATEGORY_SENTINEL ? null : value as RiskCategory)}
-                                disabled={isSaving}
+                                disabled={isSavingPR}
                             >
                                 <SelectTrigger id="categoryPotentialRisk" className={potentialRiskErrors.category ? "border-destructive" : ""}>
                                 <SelectValue placeholder="Pilih kategori (opsional)" />
@@ -562,15 +575,15 @@ export default function ManagePotentialRiskPage() {
                     {...registerPotentialRisk("owner")}
                     placeholder="Contoh: Kepala Operasional, Departemen TI"
                     className={potentialRiskErrors.owner ? "border-destructive" : ""}
-                    disabled={isSaving}
+                    disabled={isSavingPR}
                     />
                     {potentialRiskErrors.owner && <p className="text-xs text-destructive mt-1">{potentialRiskErrors.owner.message}</p>}
                 </div>
             </div>
 
             <div className="flex justify-end">
-              <Button type="submit" disabled={isSaving || (allGoals.filter(g => g.userId === currentUserId && g.period === currentPeriod).length === 0 && isCreatingNew) || !currentUser}>
-                {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+              <Button type="submit" disabled={isSavingPR || (allGoals.filter(g => g.userId === currentUserId && g.period === currentPeriod).length === 0 && isCreatingNew) || !currentUser}>
+                {isSavingPR ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                 {isCreatingNew ? "Buat Potensi Risiko" : "Simpan Perubahan"}
               </Button>
             </div>
@@ -593,10 +606,11 @@ export default function ManagePotentialRiskPage() {
                         variant="outline"
                         size="sm"
                         onClick={() => setIsBrainstormCausesContextModalOpen(true)}
-                        disabled={!currentPotentialRisk || !parentGoalForDisplay || !currentUser}
-                        className="text-xs"
+                        disabled={!currentPotentialRisk || !parentGoalForDisplay || !currentUser || store.riskCausesLoading}
+                        className="text-xs h-8"
                     >
-                        <Wand2 className="mr-2 h-3 w-3" /> Brainstorm Penyebab (AI)
+                        {store.riskCausesLoading ? <Loader2 className="mr-1.5 h-3 w-3 animate-spin" /> : <Wand2 className="mr-1.5 h-3 w-3" />}
+                         Brainstorm Penyebab (AI)
                     </Button>
                      <div className="flex items-center space-x-1 border p-0.5 rounded-md">
                         <Button
@@ -605,6 +619,7 @@ export default function ManagePotentialRiskPage() {
                             onClick={() => setCauseViewMode('table')}
                             aria-label="Tampilan Tabel Penyebab"
                             className="h-7 w-7"
+                            disabled={store.riskCausesLoading}
                         >
                             <List className="h-4 w-4" />
                         </Button>
@@ -613,7 +628,8 @@ export default function ManagePotentialRiskPage() {
                             size="icon"
                             onClick={() => setCauseViewMode('card')}
                             aria-label="Tampilan Kartu Penyebab"
-                            className="h-7 w-7"
+                            className="h-7 w-7" 
+                            disabled={store.riskCausesLoading}
                         >
                             <LayoutGrid className="h-4 w-4" />
                         </Button>
@@ -669,15 +685,15 @@ export default function ManagePotentialRiskPage() {
 
               <div>
                 <h3 className="text-lg font-semibold mb-2">Penyebab yang Ada ({displayedRiskCauses.length})</h3>
-                {store.riskCausesLoading && displayedRiskCauses.length === 0 && <p className="text-sm text-muted-foreground">Memuat penyebab risiko...</p>}
-                {!store.riskCausesLoading && displayedRiskCauses.length === 0 ? (
+                {(store.riskCausesLoading && displayedRiskCauses.length === 0 && currentPotentialRisk) && <div className="flex items-center text-sm text-muted-foreground"><Loader2 className="mr-2 h-4 w-4 animate-spin"/> Memuat penyebab risiko...</div>}
+                {(!store.riskCausesLoading || (currentPotentialRisk && displayedRiskCauses.length > 0) ) && displayedRiskCauses.length === 0 ? (
                   <p className="text-sm text-muted-foreground">Belum ada penyebab yang teridentifikasi untuk potensi risiko ini.</p>
                 ) : causeViewMode === 'table' ? (
                   <div className="border rounded-md overflow-x-auto">
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead className="w-[80px]">Kode</TableHead>
+                          <TableHead className="w-[80px]">Kode PC</TableHead>
                           <TableHead className="min-w-[250px]">Deskripsi</TableHead>
                           <TableHead className="min-w-[100px]">Sumber</TableHead>
                           <TableHead className="min-w-[150px]">KRI</TableHead>
@@ -689,11 +705,11 @@ export default function ManagePotentialRiskPage() {
                       <TableBody>
                         {displayedRiskCauses.map(cause => {
                             const {level: causeRiskLevelText, score: causeRiskScore} = getCalculatedRiskLevel(cause.likelihood, cause.impact);
-                            const returnPath = `/all-risks/manage/${currentPotentialRisk.id}`;
-                            const causeFullCode = `${potentialRiskCode}.PC${cause.sequenceNumber || '?'}`;
+                            const returnPathAnalysis = `/all-risks/manage/${currentPotentialRisk.id}?from=${encodeURIComponent(returnPath)}`;
+                            const causeDisplayCode = `PC${cause.sequenceNumber || '?'}`;
                             return (
                               <TableRow key={cause.id}>
-                                <TableCell className="font-mono text-xs">{causeFullCode}</TableCell>
+                                <TableCell className="font-mono text-xs">{causeDisplayCode}</TableCell>
                                 <TableCell className="text-xs max-w-sm truncate" title={cause.description}>{cause.description}</TableCell>
                                 <TableCell><Badge variant="outline" className="text-xs">{cause.source}</Badge></TableCell>
                                 <TableCell className="text-xs max-w-[150px] truncate" title={cause.keyRiskIndicator || ''}>{cause.keyRiskIndicator || '-'}</TableCell>
@@ -712,7 +728,7 @@ export default function ManagePotentialRiskPage() {
                                     </DropdownMenuTrigger>
                                     <DropdownMenuContent align="end">
                                       <DropdownMenuItem asChild>
-                                        <Link href={`/risk-cause-analysis/${cause.id}?from=${encodeURIComponent(returnPath)}`}>
+                                        <Link href={`/risk-cause-analysis/${cause.id}?from=${encodeURIComponent(returnPathAnalysis)}`}>
                                           <BarChart3 className="mr-2 h-4 w-4" />
                                           Analisis Detail
                                         </Link>
@@ -740,8 +756,8 @@ export default function ManagePotentialRiskPage() {
                       <RiskCauseCardItem
                         key={cause.id}
                         riskCause={cause}
-                        potentialRiskFullCode={potentialRiskCode}
-                        returnPath={`/all-risks/manage/${currentPotentialRisk.id}`}
+                        potentialRiskFullCode={potentialRiskCode} 
+                        returnPath={`/all-risks/manage/${currentPotentialRisk.id}?from=${encodeURIComponent(returnPath)}`}
                         canDelete={!!currentUser}
                         onDeleteClick={() => handleOpenDeleteCauseAlert(cause)}
                       />
@@ -758,7 +774,7 @@ export default function ManagePotentialRiskPage() {
             isOpen={isBrainstormCausesContextModalOpen}
             onOpenChange={setIsBrainstormCausesContextModalOpen}
             potentialRisk={currentPotentialRisk}
-            goalDescription={parentGoalForDisplay.description}
+            goalDescription={parentGoalForDisplay.description} 
             onSuggestionsReady={handleAISuggestionsReady}
         />
       )}
@@ -775,7 +791,7 @@ export default function ManagePotentialRiskPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Konfirmasi Hapus Penyebab</AlertDialogTitle>
             <AlertDialogDescription>
-              Apakah Anda yakin ingin menghapus penyebab "{causeToDelete?.description}" (PC{causeToDelete?.sequenceNumber})? Semua rencana pengendalian terkait juga akan dihapus. Tindakan ini tidak dapat dibatalkan.
+              Apakah Anda yakin ingin menghapus penyebab "{causeToDelete?.description}" (PC{causeToDelete?.sequenceNumber || '?'})? Semua rencana pengendalian terkait juga akan dihapus. Tindakan ini tidak dapat dibatalkan.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -787,5 +803,3 @@ export default function ManagePotentialRiskPage() {
     </div>
   );
 }
-    
-```
