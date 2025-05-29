@@ -14,15 +14,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { getCalculatedRiskLevel, getRiskLevelColor } from '@/app/risk-cause-analysis/[riskCauseId]/page'; // Import shared functions
+import { getCalculatedRiskLevel, getRiskLevelColor } from '@/app/risk-cause-analysis/[riskCauseId]/page';
 
 interface RiskCauseCardItemProps {
   riskCause: RiskCause;
   potentialRiskFullCode: string; 
-  // onAnalyze and onDelete will be handled by Link and direct calls from parent
   returnPath: string;
   canDelete: boolean; 
-  onDeleteClick?: () => void; // Make onDeleteClick optional and specific
+  onDeleteClick?: () => void; 
 }
 
 export function RiskCauseCardItem({ 
@@ -56,7 +55,7 @@ export function RiskCauseCardItem({
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem 
-                    onClick={onDeleteClick} // Use onDeleteClick
+                    onClick={onDeleteClick} 
                     className="text-destructive focus:text-destructive focus:bg-destructive/10" 
                     disabled={!canDelete}
                 >
@@ -95,7 +94,7 @@ export function RiskCauseCardItem({
           <div>
             <p className="font-medium text-foreground">Tingkat Risiko:</p>
             <Badge className={`${getRiskLevelColor(causeRiskLevelText)} text-[10px]`}>
-              {causeRiskLevelText === 'N/A' ? 'N/A' : `${causeRiskLevelText} (${causeRiskScore || 'N/A'})`}
+              {causeRiskLevelText === 'N/A' ? 'N/A' : `${causeRiskLevelText} (${causeRiskScore ?? 'N/A'})`}
             </Badge>
           </div>
         </div>
@@ -111,3 +110,4 @@ export function RiskCauseCardItem({
   );
 }
 
+    
